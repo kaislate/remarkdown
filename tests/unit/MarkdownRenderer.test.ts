@@ -29,3 +29,24 @@ describe('MarkdownRenderer.render (core)', () => {
     expect(a.blocks).toEqual(b.blocks);
   });
 });
+
+describe('MarkdownRenderer.render (plugins: footnote/tasklist/tables)', () => {
+  it('renders task-list checkboxes as input[type=checkbox]', async () => {
+    const { html } = await render(fixture('tables.md'));
+    expect(html).toMatch(/<input[^>]*checked[^>]*type="checkbox"/);
+    expect(html).toMatch(/<input[^>]*type="checkbox"(?![^>]*checked)/);
+  });
+
+  it('renders footnote references and footnote section', async () => {
+    const { html } = await render(fixture('tables.md'));
+    expect(html).toMatch(/footnote-ref/);
+    expect(html).toMatch(/footnotes/);
+  });
+
+  it('renders GFM tables', async () => {
+    const { html } = await render(fixture('tables.md'));
+    expect(html).toContain('<table');
+    expect(html).toContain('<thead');
+    expect(html).toContain('<tbody');
+  });
+});
