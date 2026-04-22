@@ -50,3 +50,15 @@ describe('MarkdownRenderer.render (plugins: footnote/tasklist/tables)', () => {
     expect(html).toContain('<tbody');
   });
 });
+
+describe('MarkdownRenderer.render (KaTeX)', () => {
+  it('renders inline math as KaTeX HTML', async () => {
+    const { html } = await render(fixture('math.md'));
+    expect(html).toMatch(/class="katex"/);
+  });
+
+  it('renders display math in a block container', async () => {
+    const { html } = await render(fixture('math.md'));
+    expect(html).toMatch(/katex-display/);
+  });
+});

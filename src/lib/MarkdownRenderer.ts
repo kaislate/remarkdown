@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
+import katex from '@vscode/markdown-it-katex';
 
 export interface RenderResult {
   html: string;
@@ -15,7 +16,8 @@ const md = new MarkdownIt({
   breaks: false,
 })
   .use(footnote)
-  .use(taskLists, { enabled: true, label: false });
+  .use(taskLists, { enabled: true, label: false })
+  .use(katex.default ?? katex);
 
 const BLOCK_TAG_TO_KIND: Record<string, string> = {
   H1: 'h', H2: 'h', H3: 'h', H4: 'h', H5: 'h', H6: 'h',
