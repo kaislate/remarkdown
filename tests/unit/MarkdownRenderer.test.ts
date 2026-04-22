@@ -62,3 +62,16 @@ describe('MarkdownRenderer.render (KaTeX)', () => {
     expect(html).toMatch(/katex-display/);
   });
 });
+
+describe('MarkdownRenderer.render (Shiki)', () => {
+  it('highlights a TypeScript code fence with Shiki output (pre.shiki class)', async () => {
+    const { html } = await render(fixture('code.md'));
+    expect(html).toMatch(/class="shiki[^"]*github-dark/);
+    expect(html).toMatch(/<span[^>]*style="color:/);
+  });
+
+  it('falls back to a plain <pre><code> for fences without a language', async () => {
+    const { html } = await render('```\njust text\n```\n');
+    expect(html).toMatch(/<pre[^>]*><code>just text\n<\/code><\/pre>/);
+  });
+});

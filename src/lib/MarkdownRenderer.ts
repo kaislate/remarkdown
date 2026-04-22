@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
+import { getSingletonHighlighter, type Highlighter } from 'shiki';
 
 export interface RenderResult {
   html: string;
@@ -18,6 +19,53 @@ const md = new MarkdownIt({
   .use(footnote)
   .use(taskLists, { enabled: true, label: false })
   .use(katex.default ?? katex);
+
+// Preload common languages lazily the first time render() is called.
+const SUPPORTED_LANGS = [
+  'typescript', 'javascript', 'tsx', 'jsx', 'rust', 'python', 'go',
+  'bash', 'shell', 'json', 'yaml', 'toml', 'sql', 'html', 'css',
+  'markdown', 'svelte',
+];
+
+let highlighterPromise: Promise<Highlighter> | null = null;
+function getHighlighter(): Promise<Highlighter> {
+  if (!highlighterPromise) {
+    highlighterPromise = getSingletonHighlighter({
+      themes: ['github-dark'],
+      langs: SUPPORTED_LANGS,
+    });
+  }
+  return highlighterPromise;
+}
+
+async function highlightFences(html: string): Promise<string> {
+  // Replace all <pre><code class="language-xyz">…</code></pre> with Shiki output.
+  const fenceRe = /<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g;
+  const matches = [...html.matchAll(fenceRe)];
+  if (matches.length === 0) return html;
+
+  const highlighter = await getHighlighter();
+  let out = html;
+  for (const m of matches) {
+    const lang = m[1];
+    const raw = decodeEntities(m[2]);
+    const resolvedLang = highlighter.getLoadedLanguages().includes(lang as never)
+      ? lang
+      : 'text';
+    const replaced = highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
+    out = out.replace(m[0], replaced);
+  }
+  return out;
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
 
 const BLOCK_TAG_TO_KIND: Record<string, string> = {
   H1: 'h', H2: 'h', H3: 'h', H4: 'h', H5: 'h', H6: 'h',
@@ -56,7 +104,8 @@ function extractPlaintext(html: string): string {
 
 export async function render(markdown: string): Promise<RenderResult> {
   const rawHtml = md.render(markdown);
-  const { html, blocks } = tagTopLevelBlocks(rawHtml);
+  const highlightedHtml = await highlightFences(rawHtml);
+  const { html, blocks } = tagTopLevelBlocks(highlightedHtml);
   const plaintext = extractPlaintext(html);
   return { html, plaintext, blocks };
 }
