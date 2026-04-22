@@ -24,8 +24,17 @@ const md = new MarkdownIt({
 const SUPPORTED_LANGS = [
   'typescript', 'javascript', 'tsx', 'jsx', 'rust', 'python', 'go',
   'bash', 'shell', 'json', 'yaml', 'toml', 'sql', 'html', 'css',
-  'markdown', 'svelte',
+  'markdown', 'svelte', 'cpp', 'objc', 'fsharp',
 ];
+
+// Map non-standard language identifiers (as emitted by markdown-it) to Shiki canonical names.
+const LANG_ALIASES: Record<string, string> = {
+  'c++': 'cpp',
+  'objective-c': 'objc',
+  'f#': 'fsharp',
+};
+
+const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g;
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
@@ -39,23 +48,16 @@ function getHighlighter(): Promise<Highlighter> {
 }
 
 async function highlightFences(html: string): Promise<string> {
-  // Replace all <pre><code class="language-xyz">…</code></pre> with Shiki output.
-  const fenceRe = /<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g;
-  const matches = [...html.matchAll(fenceRe)];
-  if (matches.length === 0) return html;
-
+  if (!html.includes('<pre><code class="language-')) return html;
   const highlighter = await getHighlighter();
-  let out = html;
-  for (const m of matches) {
-    const lang = m[1];
-    const raw = decodeEntities(m[2]);
-    const resolvedLang = highlighter.getLoadedLanguages().includes(lang as never)
-      ? lang
-      : 'text';
-    const replaced = highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
-    out = out.replace(m[0], replaced);
-  }
-  return out;
+  // Use the callback form so every match is replaced, even if two fences share identical text.
+  return html.replace(fenceRe, (_m, lang, body) => {
+    const raw = decodeEntities(body);
+    const loaded = highlighter.getLoadedLanguages() as readonly string[];
+    const normalizedLang = LANG_ALIASES[lang] ?? lang;
+    const resolvedLang = loaded.includes(normalizedLang) ? normalizedLang : 'text';
+    return highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
+  });
 }
 
 function decodeEntities(s: string): string {
@@ -108,8 +110,11 @@ export interface RenderOptions {
 }
 
 function isAbsoluteUrl(src: string): boolean {
-  return /^(https?:|asset:|data:|file:)/i.test(src) || src.startsWith('/');
-  // Note: leading slash is treated as already-absolute within the webview.
+  return (
+    /^(https?:|asset:|data:|file:)/i.test(src) ||
+    src.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(src) // Windows drive-letter absolute paths
+  );
 }
 
 function joinPath(baseDir: string, rel: string): string {
@@ -129,7 +134,9 @@ function rewriteImageSrcs(html: string, opts: RenderOptions): string {
   const { baseDir, toAssetUrl } = opts;
   return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (m, pre, src, post) => {
     if (isAbsoluteUrl(src)) return m;
-    const abs = joinPath(baseDir, src);
+    // Decode percent-encoded backslashes (markdown-it encodes \ as %5C) then normalize to forward slash.
+    const normalized = src.replace(/%5C/gi, '/').replace(/\\/g, '/');
+    const abs = joinPath(baseDir, normalized);
     return `<img${pre}src="${toAssetUrl(abs)}"${post}>`;
   });
 }

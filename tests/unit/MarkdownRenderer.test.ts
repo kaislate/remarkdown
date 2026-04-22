@@ -105,3 +105,42 @@ describe('MarkdownRenderer.render (image src rewriting)', () => {
     expect(html).toContain('src="./p.png"');
   });
 });
+
+describe('MarkdownRenderer.render (regression fixes)', () => {
+  it('highlights all occurrences of a repeated identical code fence', async () => {
+    const src = '```ts\nconst x = 1;\n```\n\n```ts\nconst x = 1;\n```';
+    const { html } = await render(src);
+    const matches = html.match(/class="shiki[^"]*github-dark/g) ?? [];
+    expect(matches.length).toBe(2);
+  });
+
+  it('highlights a fence with a non-word language identifier (c++)', async () => {
+    // Shiki's canonical name is "cpp", but markdown-it will emit class="language-c++".
+    // The regex must match — whether it's highlighted with real cpp grammar depends on Shiki's
+    // language aliases, but the test pins that the fence is recognized and transformed.
+    const src = '```c++\nint x = 1;\n```';
+    const { html } = await render(src);
+    // Should no longer render as plain <pre><code class="language-c++">
+    expect(html).not.toMatch(/class="language-c\+\+"/);
+  });
+
+  it('leaves a Windows drive-letter image path untouched (treats as absolute)', async () => {
+    const md = '![x](C:/Users/me/img.png)';
+    const { html } = await render(md, {
+      baseDir: '/tmp/doc',
+      toAssetUrl: (p) => `asset://${p}`,
+    });
+    // The drive-letter path is NOT joined to baseDir — it's left as-is so Tauri/webview can resolve.
+    expect(html).toContain('src="C:/Users/me/img.png"');
+    expect(html).not.toContain('/tmp/doc/C:');
+  });
+
+  it('normalizes backslashes in relative image paths before joining', async () => {
+    const md = '![x](.\\\\img\\\\a.png)';
+    const { html } = await render(md, {
+      baseDir: '/tmp/doc',
+      toAssetUrl: (p) => `asset://${p}`,
+    });
+    expect(html).toContain('asset:///tmp/doc/img/a.png');
+  });
+});
