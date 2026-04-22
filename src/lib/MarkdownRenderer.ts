@@ -102,10 +102,43 @@ function extractPlaintext(html: string): string {
   return (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
-export async function render(markdown: string): Promise<RenderResult> {
+export interface RenderOptions {
+  baseDir?: string;
+  toAssetUrl?: (absolutePath: string) => string;
+}
+
+function isAbsoluteUrl(src: string): boolean {
+  return /^(https?:|asset:|data:|file:)/i.test(src) || src.startsWith('/');
+  // Note: leading slash is treated as already-absolute within the webview.
+}
+
+function joinPath(baseDir: string, rel: string): string {
+  // Minimal POSIX-style join (our stored paths are normalized to forward slashes).
+  const parts = (baseDir + '/' + rel).split('/').filter(Boolean);
+  const stack: string[] = [];
+  for (const p of parts) {
+    if (p === '.') continue;
+    if (p === '..') stack.pop();
+    else stack.push(p);
+  }
+  return '/' + stack.join('/');
+}
+
+function rewriteImageSrcs(html: string, opts: RenderOptions): string {
+  if (!opts.baseDir || !opts.toAssetUrl) return html;
+  const { baseDir, toAssetUrl } = opts;
+  return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (m, pre, src, post) => {
+    if (isAbsoluteUrl(src)) return m;
+    const abs = joinPath(baseDir, src);
+    return `<img${pre}src="${toAssetUrl(abs)}"${post}>`;
+  });
+}
+
+export async function render(markdown: string, options: RenderOptions = {}): Promise<RenderResult> {
   const rawHtml = md.render(markdown);
   const highlightedHtml = await highlightFences(rawHtml);
-  const { html, blocks } = tagTopLevelBlocks(highlightedHtml);
+  const withImages = rewriteImageSrcs(highlightedHtml, options);
+  const { html, blocks } = tagTopLevelBlocks(withImages);
   const plaintext = extractPlaintext(html);
   return { html, plaintext, blocks };
 }

@@ -75,3 +75,33 @@ describe('MarkdownRenderer.render (Shiki)', () => {
     expect(html).toMatch(/<pre[^>]*><code>just text\n<\/code><\/pre>/);
   });
 });
+
+describe('MarkdownRenderer.render (image src rewriting)', () => {
+  it('rewrites relative image srcs using the provided toAssetUrl function', async () => {
+    const md = '![pic](./img/a.png)\n\n![other](../sibling/b.jpg)';
+    const calls: string[] = [];
+    const { html } = await render(md, {
+      baseDir: '/tmp/doc',
+      toAssetUrl: (abs) => {
+        calls.push(abs);
+        return `asset://localhost/${abs.replace(/^\//, '')}`;
+      },
+    });
+    expect(html).toContain('asset://localhost/tmp/doc/img/a.png');
+    expect(html).toContain('asset://localhost/tmp/sibling/b.jpg');
+    expect(calls).toContain('/tmp/doc/img/a.png');
+  });
+
+  it('leaves absolute URLs (http/https/asset/data) untouched', async () => {
+    const md = '![a](https://example.com/x.png)\n\n![b](data:image/png;base64,AAAA)';
+    const { html } = await render(md, { baseDir: '/tmp/doc', toAssetUrl: () => 'NEVER' });
+    expect(html).toContain('https://example.com/x.png');
+    expect(html).toContain('data:image/png;base64,AAAA');
+    expect(html).not.toContain('NEVER');
+  });
+
+  it('leaves images as-is when no baseDir is provided', async () => {
+    const { html } = await render('![x](./p.png)');
+    expect(html).toContain('src="./p.png"');
+  });
+});
