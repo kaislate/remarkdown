@@ -1,0 +1,31 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { render } from '../../src/lib/MarkdownRenderer';
+
+const fixture = (name: string) =>
+  readFileSync(resolve(__dirname, '../fixtures', name), 'utf-8');
+
+describe('MarkdownRenderer.render (core)', () => {
+  it('returns html, plaintext, and blocks for a simple document', async () => {
+    const result = await render(fixture('simple.md'));
+    expect(result.html).toContain('<h1');
+    expect(result.html).toContain('Heading');
+    expect(result.plaintext).toContain('First paragraph with bold and italic.');
+    expect(result.blocks.length).toBeGreaterThan(0);
+  });
+
+  it('tags top-level children with data-block-id', async () => {
+    const { html } = await render('# A\n\nB\n\nC');
+    // Expect something like id="h:1", "p:2", "p:3"
+    expect(html).toMatch(/data-block-id="h:1"/);
+    expect(html).toMatch(/data-block-id="p:2"/);
+    expect(html).toMatch(/data-block-id="p:3"/);
+  });
+
+  it('block ids are stable across renders of the same input', async () => {
+    const a = await render(fixture('simple.md'));
+    const b = await render(fixture('simple.md'));
+    expect(a.blocks).toEqual(b.blocks);
+  });
+});
