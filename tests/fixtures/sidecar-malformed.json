@@ -1,0 +1,8 @@
+{
+  "_comment": "broken",
+  "$schema": "remarkdown/v1",
+  "document": { "path": "x.md", "sha256": "0", "lastSeenBytes": 0 },
+  "annotations": [
+    { "id": "01X", "type": "highlight", "color": "#fff" }
+  ]
+}
