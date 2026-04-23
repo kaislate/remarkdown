@@ -1,0 +1,10 @@
+{
+  "_comment": "remarkdown annotations for: empty.md",
+  "$schema": "remarkdown/v1",
+  "document": {
+    "path": "empty.md",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "lastSeenBytes": 0
+  },
+  "annotations": []
+}

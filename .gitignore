@@ -5,3 +5,13 @@ src-tauri/target/
 *.log
 .DS_Store
 Thumbs.db
+
+# deps / build output
+coverage/
+
+# Rust
+src-tauri/gen/
+
+# IDE
+.vscode/
+.idea/

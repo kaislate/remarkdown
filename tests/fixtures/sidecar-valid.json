@@ -1,0 +1,48 @@
+{
+  "_comment": "remarkdown annotations for: on-reading-well.md",
+  "$schema": "remarkdown/v1",
+  "document": {
+    "path": "on-reading-well.md",
+    "sha256": "7ac1bc4a5e4b7a9f2e8c1f5a6d3b8c2e4f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c",
+    "lastSeenBytes": 4821
+  },
+  "annotations": [
+    {
+      "id": "01HP8XYZABCDEFGHJKMNPQRSTV",
+      "type": "highlight",
+      "color": "#ffd25a",
+      "anchor": {
+        "text": "must read slowly, and with care",
+        "prefix": "The reader who would truly understand ",
+        "suffix": ", turning the pages back when needed.",
+        "blockHint": "p:3"
+      },
+      "createdAt": "2026-04-21T14:32:00Z",
+      "updatedAt": "2026-04-21T14:32:00Z"
+    },
+    {
+      "id": "01HP8ABCABCDEFGHJKMNPQRSTV",
+      "type": "note",
+      "anchor": {
+        "text": "thesis",
+        "prefix": "This is the ",
+        "suffix": " of the whole essay.",
+        "blockHint": "p:4"
+      },
+      "body": "This is the thesis of the whole essay.",
+      "createdAt": "2026-04-21T14:33:00Z",
+      "updatedAt": "2026-04-21T14:33:00Z"
+    },
+    {
+      "id": "01HP8DEFABCDEFGHJKMNPQRSTV",
+      "type": "drawing",
+      "anchorBlock": "p:4",
+      "caption": "arrow pointing at 'dialogue'",
+      "strokes": [
+        { "color": "#d6336c", "width": 2, "points": [[12, 40], [13, 41], [20, 60]] }
+      ],
+      "createdAt": "2026-04-21T14:34:00Z",
+      "updatedAt": "2026-04-21T14:34:00Z"
+    }
+  ]
+}
