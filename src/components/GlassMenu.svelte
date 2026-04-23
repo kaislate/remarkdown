@@ -1,7 +1,7 @@
 <script lang="ts">
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
-  import { recordRecent } from '../stores/recent';
+  import { recent, recordRecent } from '../stores/recent';
   import { orphanedAnnots } from '../stores/annots';
   import { openModal } from '../stores/modals';
 
@@ -19,6 +19,21 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') open = false;
+  }
+
+  function basename(p: string): string {
+    return p.split(/[\\/]/).pop() ?? p;
+  }
+
+  async function openRecent(path: string) {
+    open = false;
+    try {
+      await loadDocument(path);
+      await recordRecent(path);
+    } catch (e) {
+      // Error handling lands in Task 6.
+      console.warn('[remarkdown] failed to open recent:', e);
+    }
   }
 </script>
 
@@ -43,6 +58,20 @@
       >
         Orphaned Annotations{$orphanedAnnots.length > 0 ? ` (${$orphanedAnnots.length})` : ''}
       </button>
+      {#if $recent.length > 0}
+        <div class="separator" role="separator"></div>
+        <div class="submenu-label">Open Recent</div>
+        {#each $recent as path (path)}
+          <button
+            class="item recent"
+            role="menuitem"
+            onclick={() => openRecent(path)}
+            title={path}
+          >
+            {basename(path)}
+          </button>
+        {/each}
+      {/if}
     </div>
   {/if}
 </div>
@@ -102,4 +131,23 @@
     opacity: 0.5;
   }
   .item[disabled]:hover { background: transparent; }
+  .separator {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+  }
+  .submenu-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-2);
+    padding: 4px 10px;
+  }
+  .item.recent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+  }
 </style>

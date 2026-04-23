@@ -12,10 +12,13 @@ vi.mock('../../src/stores/doc', () => ({
   clearDocument: vi.fn(),
 }));
 
-vi.mock('../../src/stores/recent', () => ({
-  recordRecent: vi.fn(),
-  recent: { subscribe: (fn: (v: string[]) => void) => { fn([]); return () => {}; } },
-}));
+vi.mock('../../src/stores/recent', async () => {
+  const { writable } = await import('svelte/store');
+  return {
+    recordRecent: vi.fn(),
+    recent: writable<string[]>([]),
+  };
+});
 
 import { openFileDialog } from '../../src/lib/tauri-api';
 import { loadDocument } from '../../src/stores/doc';
@@ -79,5 +82,37 @@ describe('GlassMenu — Orphaned Annotations item', () => {
     await user.click(screen.getByRole('button', { name: /menu/i }));
     await user.click(screen.getByRole('menuitem', { name: /orphaned/i }));
     expect(get(activeModal)).toEqual({ kind: 'orphans' });
+  });
+});
+
+describe('GlassMenu — Open Recent', () => {
+  it('shows recent paths when menu is open and recent is non-empty', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/a.md', '/home/kai/b.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByRole('menuitem', { name: /a\.md/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /b\.md/i })).toBeInTheDocument();
+  });
+
+  it('clicking a recent path calls loadDocument with the full path', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    const { loadDocument } = await import('../../src/stores/doc');
+    recent.set(['/home/kai/a.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /a\.md/i }));
+    expect(loadDocument).toHaveBeenCalledWith('/home/kai/a.md');
+  });
+
+  it('omits the Open Recent section when recent list is empty', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set([]);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.queryByText(/open recent/i)).toBeNull();
   });
 });
