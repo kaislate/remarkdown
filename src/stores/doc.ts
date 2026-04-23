@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { annots, docEpoch, replaceAll } from './annots';
+import { docEpoch, replaceAll } from './annots';
 import type { Annotation } from '../lib/schema';
 
 export interface DocState {
