@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import { get } from 'svelte/store';
+import userEvent from '@testing-library/user-event';
 import DrawLayer from '../../src/components/DrawLayer.svelte';
 import { annots, currentViewerRoot, docEpoch } from '../../src/stores/annots';
 import { setMode } from '../../src/stores/tool';
@@ -90,5 +91,70 @@ describe('DrawLayer', () => {
     svg.dispatchEvent(pe('pointermove', 50, 50));
     svg.dispatchEvent(pe('pointerup', 50, 50));
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+  });
+});
+
+describe('DrawLayer — right-click delete', () => {
+  it('shows a delete menu when right-clicking near a drawing stroke', async () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[50, 50], [60, 55], [70, 60]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    const root = get(currentViewerRoot)!;
+    root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    flushSync(() => {
+      document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 55 }));
+    });
+    expect(document.querySelector('.drawing-menu')).not.toBeNull();
+  });
+
+  it('clicking delete in the menu removes the drawing annotation', async () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[50, 50], [60, 55]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    const root = get(currentViewerRoot)!;
+    root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    flushSync(() => {
+      document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 55, clientY: 52 }));
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+    const deleteBtn = document.querySelector('.drawing-menu button') as HTMLButtonElement;
+    await user.click(deleteBtn);
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+  });
+
+  it('right-click far from any stroke does not open the menu', () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[50, 50]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    const root = get(currentViewerRoot)!;
+    root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    flushSync(() => {
+      document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 500, clientY: 500 }));
+    });
+    expect(document.querySelector('.drawing-menu')).toBeNull();
   });
 });
