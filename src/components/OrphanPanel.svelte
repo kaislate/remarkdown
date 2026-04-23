@@ -12,11 +12,18 @@
     if (a.type === 'drawing') return a.anchorBlock;
     return a.anchor.blockHint;
   }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && $activeModal?.kind === 'orphans') closeModal();
+  }
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#if $activeModal?.kind === 'orphans'}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="scrim" onclick={closeModal} role="presentation">
-    <div class="orphan-panel glass" role="dialog" aria-label="Orphaned annotations" onclick={(e) => e.stopPropagation()}>
+    <div class="orphan-panel glass" role="dialog" aria-modal="true" aria-label="Orphaned annotations" tabindex="-1" onclick={(e) => e.stopPropagation()}>
       <header>
         <h2>Orphaned annotations</h2>
         <button class="close" aria-label="Close" onclick={closeModal}>×</button>
