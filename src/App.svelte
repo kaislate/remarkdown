@@ -8,6 +8,7 @@
   import ToolRail from './components/ToolRail.svelte';
   import ColorStrip from './components/ColorStrip.svelte';
   import OrphanPanel from './components/OrphanPanel.svelte';
+  import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import Toasts from './components/Toasts.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -28,6 +29,7 @@
 <ToolRail />
 <ColorStrip />
 <OrphanPanel />
+<CorruptSidecarModal />
 <Toasts />
 
 {#if pulse > 0}

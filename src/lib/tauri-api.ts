@@ -51,3 +51,7 @@ export async function checkPathsExist(paths: string[]): Promise<boolean[]> {
 export function toAssetUrl(absolutePath: string): string {
   return convertFileSrc(absolutePath);
 }
+
+export async function backupCorruptSidecar(mdPath: string): Promise<string> {
+  return await invoke<string>('backup_corrupt_sidecar', { mdPath });
+}

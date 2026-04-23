@@ -4,6 +4,7 @@ import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
 import { docEpoch, replaceAll } from './annots';
 import { addToast } from './toasts';
+import { openModal } from './modals';
 import type { Annotation } from '../lib/schema';
 
 export interface DocState {
@@ -46,6 +47,7 @@ export async function loadDocument(path: string): Promise<void> {
       parsedAnnotations = result.value.annotations;
     } else {
       console.warn('[remarkdown] sidecar load failed:', result.error);
+      openModal({ kind: 'corrupt-sidecar', path: r.path });
     }
   }
   replaceAll(parsedAnnotations);
