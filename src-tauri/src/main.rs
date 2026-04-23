@@ -12,6 +12,9 @@ fn main() {
             commands::open_file_dialog,
             commands::read_document,
             commands::write_sidecar,
+            commands::push_recent,
+            commands::list_recent,
+            commands::clear_recent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

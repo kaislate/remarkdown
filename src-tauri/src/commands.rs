@@ -91,6 +91,21 @@ pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> 
     Ok(())
 }
 
+#[tauri::command]
+pub fn push_recent(app: tauri::AppHandle, path: String) -> Result<Vec<String>, CommandError> {
+    crate::recent::push(&app, path)
+}
+
+#[tauri::command]
+pub fn list_recent(app: tauri::AppHandle) -> Result<Vec<String>, CommandError> {
+    crate::recent::list(&app)
+}
+
+#[tauri::command]
+pub fn clear_recent(app: tauri::AppHandle) -> Result<(), CommandError> {
+    crate::recent::clear(&app)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
