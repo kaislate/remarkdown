@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { get } from 'svelte/store';
+import { flushSync } from 'svelte';
 import NoteLayer from '../../src/components/NoteLayer.svelte';
 import { annots, currentViewerRoot, docEpoch } from '../../src/stores/annots';
 import { setMode } from '../../src/stores/tool';
@@ -27,13 +28,15 @@ describe('NoteLayer', () => {
   it('renders a pin for each resolved note annotation', () => {
     mountViewer('<p data-block-id="p:1">Good evening friend</p>');
     render(NoteLayer);
-    annots.set([
-      {
-        id: '01A', type: 'note', body: 'hello',
-        anchor: { text: 'evening', prefix: 'Good ', suffix: ' friend', blockHint: 'p:1' },
-        createdAt: 'now', updatedAt: 'now',
-      },
-    ]);
+    flushSync(() => {
+      annots.set([
+        {
+          id: '01A', type: 'note', body: 'hello',
+          anchor: { text: 'evening', prefix: 'Good ', suffix: ' friend', blockHint: 'p:1' },
+          createdAt: 'now', updatedAt: 'now',
+        },
+      ]);
+    });
     const pins = document.querySelectorAll('.note-pin');
     expect(pins.length).toBe(1);
   });
@@ -41,10 +44,9 @@ describe('NoteLayer', () => {
   it('adds a note when the user clicks in note mode', async () => {
     const root = mountViewer('<p data-block-id="p:1">The cat sat on the mat</p>');
     render(NoteLayer);
-    setMode('note');
+    flushSync(() => setMode('note'));
 
     const p = root.querySelector('p')!;
-    // jsdom lacks caretPositionFromPoint so the impl falls back to first-word-in-block.
     const user = userEvent.setup();
     await user.click(p);
 
@@ -56,13 +58,15 @@ describe('NoteLayer', () => {
   it('opens a popover when a pin is clicked', async () => {
     mountViewer('<p data-block-id="p:1">hi friend</p>');
     render(NoteLayer);
-    annots.set([
-      {
-        id: '01A', type: 'note', body: 'existing',
-        anchor: { text: 'friend', prefix: 'hi ', suffix: '', blockHint: 'p:1' },
-        createdAt: 'now', updatedAt: 'now',
-      },
-    ]);
+    flushSync(() => {
+      annots.set([
+        {
+          id: '01A', type: 'note', body: 'existing',
+          anchor: { text: 'friend', prefix: 'hi ', suffix: '', blockHint: 'p:1' },
+          createdAt: 'now', updatedAt: 'now',
+        },
+      ]);
+    });
     const user = userEvent.setup();
     const pin = document.querySelector('.note-pin') as HTMLButtonElement;
     await user.click(pin);
