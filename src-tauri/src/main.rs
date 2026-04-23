@@ -11,6 +11,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
             commands::read_document,
+            commands::write_sidecar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

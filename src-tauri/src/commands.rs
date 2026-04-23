@@ -83,6 +83,14 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     })
 }
 
+#[tauri::command]
+pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> {
+    let md = PathBuf::from(md_path);
+    let sc = sidecar_path_for(&md);
+    crate::sidecar::atomic_write(&sc, json.as_bytes())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
