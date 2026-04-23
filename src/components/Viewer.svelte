@@ -1,5 +1,16 @@
 <script lang="ts">
   import { doc } from '../stores/doc';
+  import { currentViewerRoot } from '../stores/annots';
+  import HighlightLayer from './HighlightLayer.svelte';
+  import NoteLayer from './NoteLayer.svelte';
+  import DrawLayer from './DrawLayer.svelte';
+
+  let articleEl = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    if (articleEl) currentViewerRoot.set(articleEl);
+    return () => currentViewerRoot.set(null);
+  });
 </script>
 
 <div class="scroll">
@@ -8,9 +19,14 @@
       <p>Open a markdown file to start reading.</p>
     </div>
   {:else}
-    <article class="viewer">
-      {@html $doc.html}
-    </article>
+    <div class="content">
+      <article class="viewer" bind:this={articleEl}>
+        {@html $doc.html}
+      </article>
+      <HighlightLayer />
+      <NoteLayer />
+      <DrawLayer />
+    </div>
   {/if}
 </div>
 
@@ -29,6 +45,15 @@
     font-family: var(--font-sans);
     font-size: 14px;
     text-align: center;
+  }
+  .content {
+    position: relative;
+    max-width: 720px;
+    width: 100%;
+  }
+  .content .viewer {
+    max-width: none;
+    width: 100%;
   }
   .viewer {
     max-width: 720px;
