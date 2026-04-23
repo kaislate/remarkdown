@@ -1,8 +1,7 @@
-use std::fs;
-#[cfg(unix)]
-use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+#[cfg(unix)]
+use std::fs::File;
 
 pub fn atomic_write(target: &Path, contents: &[u8]) -> std::io::Result<()> {
     let dir = target.parent().ok_or_else(|| {
@@ -13,7 +12,8 @@ pub fn atomic_write(target: &Path, contents: &[u8]) -> std::io::Result<()> {
         .tempfile_in(dir)?;
     tmp.write_all(contents)?;
     tmp.as_file().sync_all()?;
-    // persist performs a rename; on Windows this replaces existing atomically when supported.
+    // persist performs an atomic rename-over-existing on both POSIX (rename syscall) and
+    // Windows (SetFileInformationByHandle/FileRenameInfo). Best-effort on SMB/filter drivers.
     tmp.persist(target).map_err(|e| e.error)?;
     // fsync the directory on unix for durability (best-effort).
     #[cfg(unix)]
@@ -26,6 +26,7 @@ pub fn atomic_write(target: &Path, contents: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::tempdir;
 
     #[test]

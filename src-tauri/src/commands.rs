@@ -6,12 +6,14 @@ use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
+    #[allow(dead_code)]
     #[error("dialog cancelled")]
     Cancelled,
     #[error("io error: {0}")]
     Io(String),
     #[error("file not utf-8")]
     NotUtf8,
+    #[allow(dead_code)]
     #[error("sidecar malformed: {0}")]
     SidecarMalformed(String),
 }
@@ -31,8 +33,8 @@ pub async fn open_file_dialog(app: tauri::AppHandle) -> Result<Option<String>, C
         });
     match rx.await {
         Ok(Some(path)) => Ok(Some(path)),
-        Ok(None) => Ok(None),
-        Err(_) => Err(CommandError::Cancelled),
+        Ok(None) => Ok(None), // user cancelled the dialog
+        Err(_) => Err(CommandError::Io("dialog closed unexpectedly".into())),
     }
 }
 
