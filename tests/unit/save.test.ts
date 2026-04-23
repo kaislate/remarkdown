@@ -158,3 +158,43 @@ describe('save retry behavior', () => {
     dispose();
   });
 });
+
+describe('save size warning', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(writeSidecar).mockReset().mockResolvedValue(undefined);
+    annots.set([]);
+    doc.set(null);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('emits a warning toast when serialized JSON exceeds 2 MB', async () => {
+    const { toasts, clearToasts } = await import('../../src/stores/toasts');
+    clearToasts();
+    doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    vi.mocked(writeSidecar).mockResolvedValue(undefined);
+
+    // Create a huge annotations list to exceed 2MB when serialized.
+    const big: any[] = [];
+    const bigText = 'x'.repeat(500);
+    for (let i = 0; i < 5000; i++) {
+      big.push({
+        id: `01_${i.toString().padStart(20, '0')}`,
+        type: 'highlight', color: '#ffd25a',
+        anchor: { text: bigText, prefix: bigText, suffix: bigText, blockHint: 'p:1' },
+        createdAt: 'now', updatedAt: 'now',
+      });
+    }
+    const dispose = installSaveWatcher();
+    annots.set(big);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    const warnings = get(toasts).filter((t) => t.kind === 'warning');
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0].message).toMatch(/large/i);
+    dispose();
+  });
+});

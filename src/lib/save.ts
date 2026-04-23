@@ -4,6 +4,10 @@ import { serializeSidecar } from './sidecar';
 import { doc } from '../stores/doc';
 import { annots } from '../stores/annots';
 import type { Sidecar } from './schema';
+import { addToast } from '../stores/toasts';
+
+const SIZE_WARN_BYTES = 2 * 1024 * 1024;
+let warnedOnceForThisPath: string | null = null;
 
 export const SAVE_DEBOUNCE_MS = 500;
 
@@ -32,6 +36,15 @@ async function doSave(): Promise<void> {
   const current = currentSidecar();
   if (!current) return;
   if (current.json === lastSerializedSnapshot) return;
+
+  const byteLen = new TextEncoder().encode(current.json).length;
+  if (byteLen > SIZE_WARN_BYTES && warnedOnceForThisPath !== current.path) {
+    addToast({
+      kind: 'warning',
+      message: 'Annotations file is getting large — drawings dominate the file size.',
+    });
+    warnedOnceForThisPath = current.path;
+  }
 
   let lastErr: unknown = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -69,7 +82,10 @@ function scheduleSave(): void {
 
 export function installSaveWatcher(): () => void {
   // Reset snapshot whenever doc changes so the first write for a new doc always fires.
-  const unsubDoc = doc.subscribe(() => { lastSerializedSnapshot = null; });
+  const unsubDoc = doc.subscribe(() => {
+    lastSerializedSnapshot = null;
+    warnedOnceForThisPath = null;
+  });
   let firstAnnots = true;
   const unsubAnnots = annots.subscribe(() => {
     // Skip the initial emit on subscribe.
