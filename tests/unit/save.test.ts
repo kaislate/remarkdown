@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { get } from 'svelte/store';
 
 vi.mock('../../src/lib/tauri-api', () => ({
   writeSidecar: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +88,73 @@ describe('save', () => {
     // advance past the debounce — no further writes should fire.
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
     expect(writeSidecar).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+});
+
+describe('save retry behavior', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(writeSidecar).mockReset().mockResolvedValue(undefined);
+    annots.set([]);
+    doc.set(null);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('retries up to 3 times on write failure', async () => {
+    doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    vi.mocked(writeSidecar).mockRejectedValue(new Error('denied'));
+    const dispose = installSaveWatcher();
+    annots.set([{
+      id: '01A', type: 'highlight', color: '#ffd25a',
+      anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 10);
+    // Retries are 100ms, 400ms, 1600ms — total ~2100ms after first failure.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(writeSidecar).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
+    dispose();
+  });
+
+  it('sets persistentSaveError after exhausting retries', async () => {
+    const { persistentSaveError } = await import('../../src/lib/save');
+    doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    vi.mocked(writeSidecar).mockRejectedValue(new Error('denied'));
+    const dispose = installSaveWatcher();
+    annots.set([{
+      id: '01A', type: 'highlight', color: '#ffd25a',
+      anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 3100);
+    expect(get(persistentSaveError)).toMatch(/denied/);
+    dispose();
+  });
+
+  it('clears persistentSaveError on a successful save', async () => {
+    const { persistentSaveError } = await import('../../src/lib/save');
+    doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    persistentSaveError.set('stale');
+    vi.mocked(writeSidecar).mockResolvedValue(undefined);
+    const dispose = installSaveWatcher();
+    annots.set([{
+      id: '01A', type: 'highlight', color: '#ffd25a',
+      anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    expect(get(persistentSaveError)).toBeNull();
     dispose();
   });
 });

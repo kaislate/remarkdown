@@ -9,6 +9,7 @@
   import ColorStrip from './components/ColorStrip.svelte';
   import OrphanPanel from './components/OrphanPanel.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
+  import ErrorBanner from './components/ErrorBanner.svelte';
   import Toasts from './components/Toasts.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -30,6 +31,7 @@
 <ColorStrip />
 <OrphanPanel />
 <CorruptSidecarModal />
+<ErrorBanner />
 <Toasts />
 
 {#if pulse > 0}

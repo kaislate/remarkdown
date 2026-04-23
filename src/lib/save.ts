@@ -8,6 +8,10 @@ import type { Sidecar } from './schema';
 export const SAVE_DEBOUNCE_MS = 500;
 
 export const savedPulse: Writable<number> = writable(0);
+export const persistentSaveError: Writable<string | null> = writable(null);
+
+const MAX_RETRIES = 3;
+const BACKOFF_MS = [100, 400, 1600];
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let lastSerializedSnapshot: string | null = null;
@@ -28,9 +32,23 @@ async function doSave(): Promise<void> {
   const current = currentSidecar();
   if (!current) return;
   if (current.json === lastSerializedSnapshot) return;
-  await writeSidecar(current.path, current.json);
-  lastSerializedSnapshot = current.json;
-  savedPulse.set(Date.now());
+
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await writeSidecar(current.path, current.json);
+      lastSerializedSnapshot = current.json;
+      savedPulse.set(Date.now());
+      persistentSaveError.set(null);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+      }
+    }
+  }
+  persistentSaveError.set(`Could not save annotations: ${String(lastErr)}`);
 }
 
 export async function flushSave(): Promise<void> {
