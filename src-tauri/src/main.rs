@@ -10,6 +10,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
+            commands::read_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
