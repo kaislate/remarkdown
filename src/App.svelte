@@ -1,16 +1,15 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import './styles/theme-dark.css';
   import './styles/glass.css';
+  import Viewer from './components/Viewer.svelte';
+  import GlassMenu from './components/GlassMenu.svelte';
+  import { refreshRecent } from './stores/recent';
+
+  onMount(async () => {
+    try { await refreshRecent(); } catch { /* ignore on first launch */ }
+  });
 </script>
 
-<main>
-  <h1>remarkdown</h1>
-  <p>Scaffold online.</p>
-</main>
-
-<style>
-  main {
-    padding: 2rem;
-    color: var(--fg-0);
-  }
-</style>
+<Viewer />
+<GlassMenu />
