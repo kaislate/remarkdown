@@ -161,21 +161,20 @@ describe('resolveAnchor — slow path (doc changed)', () => {
     expect(beforeText).toMatch(/Second context/);
   });
 
-  it('returns null when two candidates tie in score (cannot disambiguate)', () => {
-    // Both occurrences have the same surrounding context — truly ambiguous.
+  it('returns null when slow-path candidates tie (cannot disambiguate)', () => {
+    // Build an anchor in one doc, then reload a doc where the blockHint is gone
+    // AND two remaining blocks contain identical `target` in identical context.
+    // Slow path should find both, score them equally, and reject due to MIN_GAP.
     const r1 = buildRoot(
-      '<p data-block-id="p:1">prefix target suffix prefix target suffix</p>'
+      '<p data-block-id="p:99">context-here target context-here</p>'
     );
-    const block = r1.querySelector('[data-block-id="p:1"]')!;
-    const tn = block.firstChild as Text;
-    const r = document.createRange();
-    r.setStart(tn, tn.data.indexOf('target'));
-    r.setEnd(tn, tn.data.indexOf('target') + 'target'.length);
-    const anchor = createAnchor(r, r1)!;
+    const range = rangeOf(r1, 'p:99', 'target');
+    const anchor = createAnchor(range, r1)!;
     document.body.innerHTML = '';
 
     const r2 = buildRoot(
-      '<p data-block-id="p:1">prefix target suffix prefix target suffix</p>'
+      '<p data-block-id="p:1">context-here target context-here</p>' +
+      '<p data-block-id="p:2">context-here target context-here</p>'
     );
     const resolved = resolveAnchor(anchor, r2);
     expect(resolved).toBeNull();

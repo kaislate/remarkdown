@@ -62,6 +62,10 @@ export function createAnchor(range: Range, _viewerRoot: HTMLElement): Anchor | n
   if (!text) return null;
 
   const startOffset = posToPlaintextOffset(block, range.startContainer, range.startOffset);
+  // For cross-block ranges we clamp to the start block. text.length includes
+  // characters from both blocks, so the clamped endOffset may be past the block's
+  // actual text; Math.min protects against that. Prefix/suffix windows will be
+  // slightly off in this case — acceptable for v1 since cross-block selection is rare.
   const endOffset = startBlock === endBlock
     ? posToPlaintextOffset(block, range.endContainer, range.endOffset)
     : Math.min(startOffset + text.length, blockText(block).length);
@@ -93,17 +97,17 @@ function allIndexOf(hay: string, needle: string): number[] {
 }
 
 // Similarity measures in [0, 1] — trailing-char overlap for prefix, leading for suffix.
-// We normalize by the comparable window (min of the two lengths) so that
-// edge-of-block context (one side shorter than the other) isn't unfairly
-// penalized. Perfect match over the comparable window is 1.0; a tie between
-// two candidates at 1.0 is then correctly ambiguous.
+// We normalize by max(a.length, b.length) so a candidate whose context is shorter
+// than the anchor's window pays a length penalty rather than scoring 1.0 on a single
+// matching character. This prevents any short candidate context from silently
+// scoring a perfect match and resolving to the wrong position.
 function trailMatch(a: string, b: string): number {
   if (!a && !b) return 1;
   if (!a || !b) return 0;
   const lim = Math.min(a.length, b.length);
   let n = 0;
   while (n < lim && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1;
-  return n / lim;
+  return n / Math.max(a.length, b.length);
 }
 
 function headMatch(a: string, b: string): number {
@@ -112,7 +116,7 @@ function headMatch(a: string, b: string): number {
   const lim = Math.min(a.length, b.length);
   let n = 0;
   while (n < lim && a[n] === b[n]) n += 1;
-  return n / lim;
+  return n / Math.max(a.length, b.length);
 }
 
 function scoreCandidate(anchor: Anchor, full: string, index: number): number {
