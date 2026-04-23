@@ -8,6 +8,7 @@ Thumbs.db
 
 # deps / build output
 coverage/
+.vite/
 
 # Rust
 src-tauri/gen/
