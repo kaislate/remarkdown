@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
+import { toasts, clearToasts } from '../../src/stores/toasts';
 
 vi.mock('../../src/lib/tauri-api', () => ({
   readDocument: vi.fn(),
@@ -110,5 +111,27 @@ describe('doc store — sidecar annotations', () => {
     });
     await loadDocument('/tmp/a.md');
     expect(get(docEpoch)).toBe(before + 1);
+  });
+});
+
+describe('doc store — error surfacing', () => {
+  beforeEach(() => { clearToasts(); });
+
+  it('surfaces a toast when readDocument throws a non-UTF-8 error', async () => {
+    vi.mocked(readDocument).mockRejectedValue({ NotUtf8: null });
+    await loadDocument('/tmp/bin.md');
+    const list = get(toasts);
+    expect(list.length).toBeGreaterThan(0);
+    expect(list[0].kind).toBe('error');
+    expect(list[0].message).toMatch(/utf-8/i);
+  });
+
+  it('surfaces a toast when readDocument throws an Io error', async () => {
+    vi.mocked(readDocument).mockRejectedValue({ Io: 'file not found' });
+    await loadDocument('/tmp/missing.md');
+    const list = get(toasts);
+    expect(list.length).toBeGreaterThan(0);
+    expect(list[0].kind).toBe('error');
+    expect(list[0].message).toMatch(/file not found/i);
   });
 });
