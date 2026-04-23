@@ -108,6 +108,11 @@ pub fn clear_recent(app: tauri::AppHandle) -> Result<(), CommandError> {
     crate::recent::clear(&app)
 }
 
+#[tauri::command]
+pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +151,18 @@ mod tests {
 
         let result = read_document(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::NotUtf8)));
+    }
+
+    #[test]
+    fn check_paths_exist_returns_per_path_flags() {
+        let dir = tempdir().unwrap();
+        let real = dir.path().join("real.md");
+        fs::write(&real, b"x").unwrap();
+        let fake = dir.path().join("fake.md");
+        let result = check_paths_exist(vec![
+            real.to_string_lossy().into_owned(),
+            fake.to_string_lossy().into_owned(),
+        ]);
+        assert_eq!(result, vec![true, false]);
     }
 }

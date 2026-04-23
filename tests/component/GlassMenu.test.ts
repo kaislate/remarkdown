@@ -16,13 +16,19 @@ vi.mock('../../src/stores/recent', async () => {
   const { writable } = await import('svelte/store');
   return {
     recordRecent: vi.fn(),
+    markMissing: vi.fn(),
     recent: writable<string[]>([]),
+    recentExistence: writable<Record<string, boolean>>({}),
   };
 });
 
+vi.mock('../../src/stores/toasts', () => ({
+  addToast: vi.fn(),
+}));
+
 import { openFileDialog } from '../../src/lib/tauri-api';
 import { loadDocument } from '../../src/stores/doc';
-import { recordRecent } from '../../src/stores/recent';
+import { recordRecent, recentExistence } from '../../src/stores/recent';
 import { annots, currentViewerRoot } from '../../src/stores/annots';
 import { closeModal } from '../../src/stores/modals';
 
@@ -114,5 +120,15 @@ describe('GlassMenu — Open Recent', () => {
     render(GlassMenu);
     await user.click(screen.getByRole('button', { name: /menu/i }));
     expect(screen.queryByText(/open recent/i)).toBeNull();
+  });
+
+  it('shows "(missing)" suffix for recent paths that do not exist', async () => {
+    const { recent, recentExistence } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/missing.md']);
+    recentExistence.set({ '/home/kai/missing.md': false });
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByText(/missing\.md \(missing\)/i)).toBeInTheDocument();
   });
 });

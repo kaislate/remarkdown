@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
-  import { recent, recordRecent } from '../stores/recent';
+  import { recent, recordRecent, recentExistence, markMissing } from '../stores/recent';
   import { orphanedAnnots } from '../stores/annots';
   import { openModal } from '../stores/modals';
+  import { addToast } from '../stores/toasts';
 
   let open = $state(false);
 
@@ -27,12 +29,16 @@
 
   async function openRecent(path: string) {
     open = false;
+    if (get(recentExistence)[path] === false) {
+      addToast({ kind: 'warning', message: `File not found: ${basename(path)}` });
+      return;
+    }
     try {
       await loadDocument(path);
       await recordRecent(path);
     } catch (e) {
-      // Error handling lands in Task 6.
-      console.warn('[remarkdown] failed to open recent:', e);
+      markMissing(path);
+      addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
     }
   }
 </script>
@@ -64,11 +70,12 @@
         {#each $recent as path (path)}
           <button
             class="item recent"
+            class:missing={$recentExistence[path] === false}
             role="menuitem"
             onclick={() => openRecent(path)}
             title={path}
           >
-            {basename(path)}
+            {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
           </button>
         {/each}
       {/if}
@@ -150,4 +157,5 @@
     white-space: nowrap;
     max-width: 240px;
   }
+  .item.missing { color: var(--fg-2); font-style: italic; }
 </style>
