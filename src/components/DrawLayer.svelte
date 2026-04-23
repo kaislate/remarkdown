@@ -108,6 +108,8 @@
 <svg
   class="draw-overlay"
   class:active={$tool.mode === 'draw'}
+  role="presentation"
+  aria-hidden="true"
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
