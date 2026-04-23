@@ -1,0 +1,137 @@
+<script lang="ts">
+  import { activeModal, closeModal } from '../stores/modals';
+  import { orphanedAnnots, removeAnnotation } from '../stores/annots';
+  import type { Annotation } from '../lib/schema';
+
+  function excerpt(a: Annotation): string {
+    if (a.type === 'drawing') return `[drawing — ${a.strokes.length} stroke(s)]`;
+    return a.anchor.text;
+  }
+
+  function blockInfo(a: Annotation): string {
+    if (a.type === 'drawing') return a.anchorBlock;
+    return a.anchor.blockHint;
+  }
+</script>
+
+{#if $activeModal?.kind === 'orphans'}
+  <div class="scrim" onclick={closeModal} role="presentation">
+    <div class="orphan-panel glass" role="dialog" aria-label="Orphaned annotations" onclick={(e) => e.stopPropagation()}>
+      <header>
+        <h2>Orphaned annotations</h2>
+        <button class="close" aria-label="Close" onclick={closeModal}>×</button>
+      </header>
+      {#if $orphanedAnnots.length === 0}
+        <p class="empty">No orphaned annotations. All your notes are attached.</p>
+      {:else}
+        <ul>
+          {#each $orphanedAnnots as a (a.id)}
+            <li>
+              <div class="meta">
+                <span class="kind">{a.type}</span>
+                <span class="block">{blockInfo(a)}</span>
+                <span class="date">{new Date(a.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div class="text">{excerpt(a)}</div>
+              <div class="actions">
+                <button onclick={() => removeAnnotation(a.id)}>Delete</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+<style>
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: grid;
+    place-items: center;
+    z-index: 300;
+    backdrop-filter: blur(2px);
+  }
+  .orphan-panel {
+    width: min(520px, 90vw);
+    max-height: 80vh;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h2 {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--fg-0);
+  }
+  .close {
+    background: transparent;
+    border: 0;
+    color: var(--fg-2);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+  }
+  .close:hover { color: var(--fg-0); }
+  .empty {
+    color: var(--fg-2);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px 0;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  li {
+    padding: 10px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .meta {
+    display: flex;
+    gap: 10px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--fg-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .text {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    color: var(--fg-1);
+  }
+  .actions { display: flex; justify-content: flex-end; }
+  .actions button {
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--fg-2);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .actions button:hover { color: #ff8080; border-color: #ff8080; }
+</style>

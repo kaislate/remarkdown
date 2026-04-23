@@ -7,6 +7,8 @@
   import GlassMenu from './components/GlassMenu.svelte';
   import ToolRail from './components/ToolRail.svelte';
   import ColorStrip from './components/ColorStrip.svelte';
+  import OrphanPanel from './components/OrphanPanel.svelte';
+  import Toasts from './components/Toasts.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
 
@@ -25,6 +27,8 @@
 <GlassMenu />
 <ToolRail />
 <ColorStrip />
+<OrphanPanel />
+<Toasts />
 
 {#if pulse > 0}
   {#key pulse}

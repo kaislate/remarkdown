@@ -2,6 +2,8 @@
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
   import { recordRecent } from '../stores/recent';
+  import { orphanedAnnots } from '../stores/annots';
+  import { openModal } from '../stores/modals';
 
   let open = $state(false);
 
@@ -33,6 +35,14 @@
     <div class="popover glass" role="menu">
       <button role="menuitem" class="item" onclick={handleOpen}>Open…</button>
       <!-- Open Recent lands in Plan 3. -->
+      <button
+        role="menuitem"
+        class="item"
+        disabled={$orphanedAnnots.length === 0}
+        onclick={() => { open = false; openModal({ kind: 'orphans' }); }}
+      >
+        Orphaned Annotations{$orphanedAnnots.length > 0 ? ` (${$orphanedAnnots.length})` : ''}
+      </button>
     </div>
   {/if}
 </div>
@@ -86,4 +96,10 @@
   .item:hover {
     background: var(--accent-soft);
   }
+  .item[disabled] {
+    color: var(--fg-2);
+    cursor: default;
+    opacity: 0.5;
+  }
+  .item[disabled]:hover { background: transparent; }
 </style>
