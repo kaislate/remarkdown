@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 1566,
     strictPort: true,
   },
   envPrefix: ['VITE_', 'TAURI_'],
