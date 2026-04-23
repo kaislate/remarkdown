@@ -1,0 +1,6 @@
+/* Named highlights — one per preset color. Order matches HIGHLIGHT_COLORS in tool.ts. */
+::highlight(rmd-hl-0) { background-color: rgba(255, 210, 90, 0.35); }
+::highlight(rmd-hl-1) { background-color: rgba(130, 217, 156, 0.35); }
+::highlight(rmd-hl-2) { background-color: rgba(255, 165, 138, 0.35); }
+::highlight(rmd-hl-3) { background-color: rgba(168, 197, 255, 0.35); }
+::highlight(rmd-hl-4) { background-color: rgba(224, 168, 255, 0.35); }

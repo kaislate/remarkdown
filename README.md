@@ -4,7 +4,7 @@ A standalone desktop app for reading markdown documents with PDF-style annotatio
 
 ## Status
 
-**Plan 1 — Reader MVP**: an opener and a viewer. No annotations yet. See `docs/superpowers/plans/` for the full roadmap and `docs/superpowers/specs/` for the v1 design spec.
+**Plan 2 — Annotation engine (v0.2.0-annotations)**: highlights, notes, freehand drawings, with atomic sidecar persistence and faithful reload. See `docs/superpowers/plans/` for the roadmap.
 
 ## Development
 

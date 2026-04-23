@@ -1,6 +1,9 @@
 import { writable } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
+import { loadSidecar } from '../lib/sidecar';
+import { docEpoch, replaceAll } from './annots';
+import type { Annotation } from '../lib/schema';
 
 export interface DocState {
   path: string;
@@ -22,6 +25,18 @@ export async function loadDocument(path: string): Promise<void> {
     baseDir: r.dir,
     toAssetUrl,
   });
+
+  let parsedAnnotations: Annotation[] = [];
+  if (r.sidecarRaw) {
+    const result = loadSidecar(r.sidecarRaw);
+    if (result.ok) {
+      parsedAnnotations = result.value.annotations;
+    } else {
+      console.warn('[remarkdown] sidecar load failed:', result.error);
+    }
+  }
+  replaceAll(parsedAnnotations);
+
   doc.set({
     path: r.path,
     dir: r.dir,
@@ -33,8 +48,11 @@ export async function loadDocument(path: string): Promise<void> {
     blocks,
     sidecarRaw: r.sidecarRaw,
   });
+  docEpoch.update((e) => e + 1);
 }
 
 export function clearDocument(): void {
   doc.set(null);
+  replaceAll([]);
+  docEpoch.update((e) => e + 1);
 }
