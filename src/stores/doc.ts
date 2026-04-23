@@ -3,6 +3,8 @@ import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
 import { docEpoch, replaceAll } from './annots';
+import { addToast } from './toasts';
+import { openModal } from './modals';
 import type { Annotation } from '../lib/schema';
 
 export interface DocState {
@@ -20,7 +22,19 @@ export interface DocState {
 export const doc = writable<DocState | null>(null);
 
 export async function loadDocument(path: string): Promise<void> {
-  const r = await readDocument(path);
+  let r;
+  try {
+    r = await readDocument(path);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'NotUtf8' in err) {
+      addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
+    } else if (err && typeof err === 'object' && 'Io' in err) {
+      addToast({ kind: 'error', message: `Could not open file: ${(err as Record<string, unknown>).Io}` });
+    } else {
+      addToast({ kind: 'error', message: `Could not open file: ${String(err)}` });
+    }
+    return;
+  }
   const { html, plaintext, blocks } = await render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
@@ -33,6 +47,7 @@ export async function loadDocument(path: string): Promise<void> {
       parsedAnnotations = result.value.annotations;
     } else {
       console.warn('[remarkdown] sidecar load failed:', result.error);
+      openModal({ kind: 'corrupt-sidecar', path: r.path });
     }
   }
   replaceAll(parsedAnnotations);

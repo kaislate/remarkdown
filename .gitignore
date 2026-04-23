@@ -16,3 +16,7 @@ src-tauri/gen/
 # IDE
 .vscode/
 .idea/
+
+# Playwright
+playwright-report/
+test-results/

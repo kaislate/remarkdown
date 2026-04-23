@@ -44,6 +44,14 @@ export async function clearRecent(): Promise<void> {
   await invoke('clear_recent');
 }
 
+export async function checkPathsExist(paths: string[]): Promise<boolean[]> {
+  return await invoke<boolean[]>('check_paths_exist', { paths });
+}
+
 export function toAssetUrl(absolutePath: string): string {
   return convertFileSrc(absolutePath);
+}
+
+export async function backupCorruptSidecar(mdPath: string): Promise<string> {
+  return await invoke<string>('backup_corrupt_sidecar', { mdPath });
 }

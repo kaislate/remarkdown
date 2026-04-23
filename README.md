@@ -4,7 +4,7 @@ A standalone desktop app for reading markdown documents with PDF-style annotatio
 
 ## Status
 
-**Plan 2 — Annotation engine (v0.2.0-annotations)**: highlights, notes, freehand drawings, with atomic sidecar persistence and faithful reload. See `docs/superpowers/plans/` for the roadmap.
+**Plan 3 — Robustness polish (v0.3.0)**: right-click delete for highlights and drawings, orphan panel, Open Recent menu with missing-file detection, full error matrix (UTF-8 / corrupt sidecar / write retry / size warning), Playwright E2E. The v1 reader is feature-complete at this tag.
 
 ## Development
 

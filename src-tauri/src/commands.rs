@@ -108,6 +108,33 @@ pub fn clear_recent(app: tauri::AppHandle) -> Result<(), CommandError> {
     crate::recent::clear(&app)
 }
 
+#[tauri::command]
+pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
+}
+
+#[tauri::command]
+pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
+    let md = PathBuf::from(md_path);
+    let sc = sidecar_path_for(&md);
+    if !sc.exists() {
+        return Err(CommandError::Io("sidecar does not exist".into()));
+    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut backup = sc.clone();
+    let backup_name = format!(
+        "{}.corrupt-{}",
+        sc.file_name().and_then(|n| n.to_str()).unwrap_or("sidecar.json"),
+        timestamp
+    );
+    backup.set_file_name(backup_name);
+    fs::rename(&sc, &backup)?;
+    Ok(backup.to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +173,32 @@ mod tests {
 
         let result = read_document(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::NotUtf8)));
+    }
+
+    #[test]
+    fn check_paths_exist_returns_per_path_flags() {
+        let dir = tempdir().unwrap();
+        let real = dir.path().join("real.md");
+        fs::write(&real, b"x").unwrap();
+        let fake = dir.path().join("fake.md");
+        let result = check_paths_exist(vec![
+            real.to_string_lossy().into_owned(),
+            fake.to_string_lossy().into_owned(),
+        ]);
+        assert_eq!(result, vec![true, false]);
+    }
+
+    #[test]
+    fn backup_corrupt_sidecar_renames_the_file() {
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        let sc = dir.path().join("a.md.remarkdown.json");
+        fs::write(&md, b"# hi\n").unwrap();
+        fs::write(&sc, b"{ corrupt").unwrap();
+
+        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap();
+        assert!(result.contains(".corrupt-"));
+        assert!(!sc.exists());
+        assert!(std::path::Path::new(&result).exists());
     }
 }

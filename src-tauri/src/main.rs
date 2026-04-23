@@ -15,6 +15,8 @@ fn main() {
             commands::push_recent,
             commands::list_recent,
             commands::clear_recent,
+            commands::check_paths_exist,
+            commands::backup_corrupt_sidecar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

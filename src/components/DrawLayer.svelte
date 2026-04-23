@@ -1,20 +1,26 @@
 <script lang="ts">
   import { ulid } from 'ulid';
+  import { get } from 'svelte/store';
   import { tool } from '../stores/tool';
   import {
     addAnnotation,
+    removeAnnotation,
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
   import type { Drawing, Stroke } from '../lib/schema';
 
   const IDLE_MS = 3000;
+  const HIT_TOLERANCE_PX = 12;
 
   type Point = [number, number];
   let drawing = $state(false);
   let currentStroke = $state<Point[]>([]);
   let pendingStrokes = $state<Stroke[]>([]);
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  let menuForId = $state<string | null>(null);
+  let menuPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
 
   function startIdle(): void {
     if (idleTimer) clearTimeout(idleTimer);
@@ -103,6 +109,57 @@
       .filter((r) => r.annotation.type === 'drawing')
       .map((r) => r.annotation as Drawing),
   );
+
+  function strokePointDistance(px: number, py: number, points: [number, number, ...number[]][]): number {
+    let min = Infinity;
+    for (const [x, y] of points) {
+      const d = Math.hypot(px - x, py - y);
+      if (d < min) min = d;
+    }
+    return min;
+  }
+
+  function onContextMenu(e: MouseEvent): void {
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement | null;
+    if (!svg) return;
+    const root = get(currentViewerRoot);
+    if (!root) return;
+    const rootRect = root.getBoundingClientRect();
+    // Only respond if the event is inside the viewer region.
+    if (e.clientX < rootRect.left || e.clientX > rootRect.right ||
+        e.clientY < rootRect.top || e.clientY > rootRect.bottom) return;
+
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    for (const d of existingDrawings) {
+      for (const s of d.strokes) {
+        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
+          e.preventDefault();
+          menuForId = d.id;
+          menuPos = { x: e.clientX, y: e.clientY };
+          return;
+        }
+      }
+    }
+  }
+
+  function closeMenu(): void { menuForId = null; }
+
+  function deleteDrawing(): void {
+    if (!menuForId) return;
+    removeAnnotation(menuForId);
+    menuForId = null;
+  }
+
+  $effect(() => {
+    document.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('click', closeMenu);
+    return () => {
+      document.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('click', closeMenu);
+    };
+  });
 </script>
 
 <svg
@@ -128,6 +185,16 @@
   {/if}
 </svg>
 
+{#if menuForId}
+  <div
+    class="drawing-menu glass"
+    role="menu"
+    style="top:{menuPos.y}px; left:{menuPos.x}px"
+  >
+    <button role="menuitem" onclick={deleteDrawing}>Delete drawing</button>
+  </div>
+{/if}
+
 <style>
   .draw-overlay {
     position: absolute;
@@ -140,4 +207,23 @@
     pointer-events: auto;
     cursor: crosshair;
   }
+  .drawing-menu {
+    position: fixed;
+    padding: 4px;
+    min-width: 160px;
+    z-index: 250;
+  }
+  .drawing-menu button {
+    background: transparent;
+    border: 0;
+    color: var(--fg-0);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    padding: 8px 10px;
+    text-align: left;
+    width: 100%;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .drawing-menu button:hover { background: var(--accent-soft); }
 </style>

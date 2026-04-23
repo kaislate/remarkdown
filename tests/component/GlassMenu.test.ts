@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import GlassMenu from '../../src/components/GlassMenu.svelte';
@@ -12,14 +12,31 @@ vi.mock('../../src/stores/doc', () => ({
   clearDocument: vi.fn(),
 }));
 
-vi.mock('../../src/stores/recent', () => ({
-  recordRecent: vi.fn(),
-  recent: { subscribe: (fn: (v: string[]) => void) => { fn([]); return () => {}; } },
+vi.mock('../../src/stores/recent', async () => {
+  const { writable } = await import('svelte/store');
+  return {
+    recordRecent: vi.fn(),
+    markMissing: vi.fn(),
+    recent: writable<string[]>([]),
+    recentExistence: writable<Record<string, boolean>>({}),
+  };
+});
+
+vi.mock('../../src/stores/toasts', () => ({
+  addToast: vi.fn(),
 }));
 
 import { openFileDialog } from '../../src/lib/tauri-api';
 import { loadDocument } from '../../src/stores/doc';
-import { recordRecent } from '../../src/stores/recent';
+import { recordRecent, recentExistence } from '../../src/stores/recent';
+import { annots, currentViewerRoot } from '../../src/stores/annots';
+import { closeModal } from '../../src/stores/modals';
+
+beforeEach(() => {
+  annots.set([]);
+  currentViewerRoot.set(null);
+  closeModal();
+});
 
 describe('GlassMenu', () => {
   it('starts closed', () => {
@@ -43,5 +60,75 @@ describe('GlassMenu', () => {
     expect(openFileDialog).toHaveBeenCalled();
     expect(loadDocument).toHaveBeenCalledWith('/tmp/x.md');
     expect(recordRecent).toHaveBeenCalledWith('/tmp/x.md');
+  });
+});
+
+describe('GlassMenu — Orphaned Annotations item', () => {
+  it('is disabled when no orphans exist', async () => {
+    annots.set([]);
+    currentViewerRoot.set(null);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    const item = screen.getByRole('menuitem', { name: /orphaned/i });
+    expect(item).toBeDisabled();
+  });
+
+  it('opens the orphan modal when clicked', async () => {
+    const { activeModal } = await import('../../src/stores/modals');
+    const { get } = await import('svelte/store');
+    annots.set([{
+      id: '01A', type: 'highlight', color: '#ffd25a',
+      anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:99' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    currentViewerRoot.set(null); // null root → everything orphaned
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /orphaned/i }));
+    expect(get(activeModal)).toEqual({ kind: 'orphans' });
+  });
+});
+
+describe('GlassMenu — Open Recent', () => {
+  it('shows recent paths when menu is open and recent is non-empty', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/a.md', '/home/kai/b.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByRole('menuitem', { name: /a\.md/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /b\.md/i })).toBeInTheDocument();
+  });
+
+  it('clicking a recent path calls loadDocument with the full path', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    const { loadDocument } = await import('../../src/stores/doc');
+    recent.set(['/home/kai/a.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /a\.md/i }));
+    expect(loadDocument).toHaveBeenCalledWith('/home/kai/a.md');
+  });
+
+  it('omits the Open Recent section when recent list is empty', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set([]);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.queryByText(/open recent/i)).toBeNull();
+  });
+
+  it('shows "(missing)" suffix for recent paths that do not exist', async () => {
+    const { recent, recentExistence } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/missing.md']);
+    recentExistence.set({ '/home/kai/missing.md': false });
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByText(/missing\.md \(missing\)/i)).toBeInTheDocument();
   });
 });
