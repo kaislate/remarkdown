@@ -14,18 +14,41 @@
   import Minimap from './components/Minimap.svelte';
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
+  import ZoomControls from './components/ZoomControls.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
+  import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
 
   let pulse = $state(0);
   savedPulse.subscribe((v) => (pulse = v));
 
   let disposeSave: (() => void) | null = null;
+
+  // Sync the CSS variable on every zoom change so the root font-size scales
+  // and all rem-based article styles (incl. the minimap clone) follow.
+  const unsubZoom = zoomLevel.subscribe((z) => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--zoom', String(z));
+    }
+  });
+
+  function onZoomKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); increaseZoom(); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); decreaseZoom(); }
+    else if (e.key === '0') { e.preventDefault(); resetZoom(); }
+  }
+
   onMount(async () => {
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
     disposeSave = installSaveWatcher();
+    window.addEventListener('keydown', onZoomKey);
   });
-  onDestroy(() => { disposeSave?.(); });
+  onDestroy(() => {
+    disposeSave?.();
+    unsubZoom();
+    if (typeof window !== 'undefined') window.removeEventListener('keydown', onZoomKey);
+  });
 </script>
 
 <Viewer />
@@ -34,6 +57,7 @@
 <GlassMenu />
 <ToolRail />
 <ColorStrip />
+<ZoomControls />
 <OrphanPanel />
 <CorruptSidecarModal />
 <ErrorBanner />

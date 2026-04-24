@@ -3,6 +3,11 @@
 :root {
   color-scheme: dark;
 
+  /* Zoom level — driven by JS via inline style on <html>. All article
+     content sizes are derived from the root font-size, so changing this
+     scales the reading text (and the minimap clone) uniformly. */
+  --zoom: 1;
+
   --bg-0: #0b0a12;
   --bg-1: #13111d;
   --bg-2: #1a1826;
@@ -25,16 +30,22 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 }
 
+html {
+  font-size: calc(17px * var(--zoom));
+}
 html, body {
   margin: 0;
   padding: 0;
   background: var(--bg-0);
   color: var(--fg-0);
   font-family: var(--font-serif);
-  font-size: 17px;
   line-height: 1.6;
   overflow: hidden;
   height: 100vh;
+}
+body {
+  /* 1rem so body inherits from root, which in turn scales with --zoom. */
+  font-size: 1rem;
 }
 
 body {
