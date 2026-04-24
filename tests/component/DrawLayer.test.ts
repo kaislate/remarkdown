@@ -18,10 +18,12 @@ function mountViewer(html: string): HTMLElement {
   return article;
 }
 
-// Helper: synthesize a pointer event.
-function pe(type: string, x: number, y: number): PointerEvent {
+// Helper: synthesize a pointer event. Defaults to left button (button = 0)
+// since DrawLayer's pointerdown handler explicitly checks for it.
+function pe(type: string, x: number, y: number, button = 0): PointerEvent {
   const e = new Event(type, { bubbles: true, cancelable: true }) as any;
   e.clientX = x; e.clientY = y; e.pointerId = 1; e.pointerType = 'mouse';
+  e.button = button;
   return e as PointerEvent;
 }
 
@@ -92,6 +94,24 @@ describe('DrawLayer', () => {
     svg.dispatchEvent(pe('pointerup', 50, 50));
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
   });
+
+  it('ignores non-left mouse buttons even in draw mode', async () => {
+    mountViewer('<p data-block-id="p:1">where to draw</p>');
+    render(DrawLayer);
+    flushSync(() => setMode('draw'));
+    const svg = document.querySelector('svg.draw-overlay')!;
+    // Right button (2) should not begin a stroke.
+    svg.dispatchEvent(pe('pointerdown', 40, 40, 2));
+    svg.dispatchEvent(pe('pointermove', 50, 50, 2));
+    svg.dispatchEvent(pe('pointerup', 50, 50, 2));
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+    // Middle button (1) likewise.
+    svg.dispatchEvent(pe('pointerdown', 40, 40, 1));
+    svg.dispatchEvent(pe('pointerup', 40, 40, 1));
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+  });
 });
 
 describe('DrawLayer — right-click delete', () => {
@@ -150,11 +170,34 @@ describe('DrawLayer — right-click delete', () => {
     });
     const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
     svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
-    const root = get(currentViewerRoot)!;
-    root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     flushSync(() => {
       document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 500, clientY: 500 }));
     });
     expect(document.querySelector('.drawing-menu')).toBeNull();
+  });
+
+  it('finds drawings in the canvas margins (outside the text-column rect)', () => {
+    // Drawing's strokes sit far right of the viewer's text column. Should
+    // still be hit by the contextmenu handler since the SVG spans the full
+    // canvas width.
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[900, 200], [910, 210]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    // SVG covers the whole canvas (e.g., 1100px wide).
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 1100, 600);
+    // Viewer text-column is the narrower middle band.
+    const root = get(currentViewerRoot)!;
+    root.getBoundingClientRect = () => new DOMRect(140, 0, 720, 600);
+    flushSync(() => {
+      document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 905, clientY: 205 }));
+    });
+    expect(document.querySelector('.drawing-menu')).not.toBeNull();
   });
 });

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { ulid } from 'ulid';
-  import { get } from 'svelte/store';
   import { tool } from '../stores/tool';
   import {
     addAnnotation,
@@ -64,6 +63,9 @@
 
   function onPointerDown(e: PointerEvent): void {
     if ($tool.mode !== 'draw') return;
+    // Left-button only. Right-click reaches the contextmenu handler for delete;
+    // middle-click is reserved for browsers/users.
+    if (e.button !== 0) return;
     const svg = e.currentTarget as SVGSVGElement;
     const rect = svg.getBoundingClientRect();
     try { (svg as unknown as Element).setPointerCapture(e.pointerId); } catch {}
@@ -125,14 +127,13 @@
   function onContextMenu(e: MouseEvent): void {
     const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement | null;
     if (!svg) return;
-    const root = get(currentViewerRoot);
-    if (!root) return;
-    const rootRect = root.getBoundingClientRect();
-    // Only respond if the event is inside the viewer region.
-    if (e.clientX < rootRect.left || e.clientX > rootRect.right ||
-        e.clientY < rootRect.top || e.clientY > rootRect.bottom) return;
-
+    // Bound the search to the SVG's full extent — drawings can sit anywhere
+    // on the canvas (including margins that aren't part of the text column),
+    // and they should still be deletable from there.
     const rect = svg.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top || e.clientY > rect.bottom) return;
+
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     for (const d of existingDrawings) {
