@@ -59,7 +59,6 @@
   {#if open}
     <div class="popover glass" role="menu">
       <button role="menuitem" class="item" onclick={handleOpen}>Open…</button>
-      <!-- Open Recent lands in Plan 3. -->
       <button
         role="menuitem"
         class="item"
@@ -67,6 +66,13 @@
         onclick={() => { open = false; openModal({ kind: 'orphans' }); }}
       >
         Orphaned Annotations{$orphanedAnnots.length > 0 ? ` (${$orphanedAnnots.length})` : ''}
+      </button>
+      <button
+        role="menuitem"
+        class="item"
+        onclick={() => { open = false; openModal({ kind: 'settings' }); }}
+      >
+        Settings…
       </button>
       {#if $recent.length > 0}
         <div class="separator" role="separator"></div>

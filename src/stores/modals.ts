@@ -3,7 +3,8 @@ import { writable } from 'svelte/store';
 export type ModalState =
   | null
   | { kind: 'orphans' }
-  | { kind: 'corrupt-sidecar'; path: string };
+  | { kind: 'corrupt-sidecar'; path: string }
+  | { kind: 'settings' };
 
 export const activeModal = writable<ModalState>(null);
 
