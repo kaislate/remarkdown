@@ -49,5 +49,12 @@
     opacity: 0.08;
     white-space: nowrap;
     user-select: none;
+    /* Fade the bottom of the letters into transparency. The mask is applied
+       in the element's local (pre-rotation) coordinate space, so a top→bottom
+       gradient here reads as left→right after the -90° CCW rotation — which
+       means the watermark is most opaque against the screen edge and fades
+       toward the inner margin / content area. */
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
   }
 </style>
