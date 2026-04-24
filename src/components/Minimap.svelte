@@ -5,8 +5,14 @@
   import { minimapShown, toggleMinimap } from '../stores/ui';
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
 
-  // Matches .viewer max-width in Viewer.svelte. The minimap scales against this.
+  // Must match Viewer.svelte's .text-frame max-width + .viewer padding.
+  // The clone is rendered at VIEWER_OUTER_WIDTH (content + horizontal padding)
+  // so its total box matches the article's, making the indicator math exact.
   const VIEWER_CONTENT_WIDTH = 720;
+  const VIEWER_PADDING_H = 48;
+  const VIEWER_PADDING_T = 96;
+  const VIEWER_PADDING_B = 160;
+  const VIEWER_OUTER_WIDTH = VIEWER_CONTENT_WIDTH + 2 * VIEWER_PADDING_H;
   const MINIMAP_WIDTH = 140;
 
   let minimapEl = $state<HTMLElement | null>(null);
@@ -32,7 +38,7 @@
       scroll.scrollTop,
       scroll.scrollHeight,
       scroll.clientHeight,
-      VIEWER_CONTENT_WIDTH,
+      VIEWER_OUTER_WIDTH,
       innerWidth,
       innerHeight,
     );
@@ -134,7 +140,7 @@
     <div class="minimap-inner">
       <div
         class="minimap-content md-rendered"
-        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px;"
+        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: content-box;"
       >
         {@html $doc.html}
       </div>
