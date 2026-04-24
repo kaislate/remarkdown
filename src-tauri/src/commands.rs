@@ -114,6 +114,16 @@ pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
 }
 
 #[tauri::command]
+pub fn load_settings(app: tauri::AppHandle) -> Result<Option<String>, CommandError> {
+    crate::settings::load_json(&app)
+}
+
+#[tauri::command]
+pub fn save_settings(app: tauri::AppHandle, json: String) -> Result<(), CommandError> {
+    crate::settings::save_json(&app, &json)
+}
+
+#[tauri::command]
 pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);

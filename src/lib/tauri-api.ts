@@ -55,3 +55,11 @@ export function toAssetUrl(absolutePath: string): string {
 export async function backupCorruptSidecar(mdPath: string): Promise<string> {
   return await invoke<string>('backup_corrupt_sidecar', { mdPath });
 }
+
+export async function loadSettingsJson(): Promise<string | null> {
+  return await invoke<string | null>('load_settings');
+}
+
+export async function saveSettingsJson(json: string): Promise<void> {
+  await invoke('save_settings', { json });
+}
