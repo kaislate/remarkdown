@@ -100,15 +100,23 @@
   /* "ark" and "own" expand from zero width — overflow hidden hides their
      letters until the box is wide enough to show them, producing a smooth
      left-to-right unfold. The cubic-bezier eases out toward the end so the
-     last few characters settle softly rather than snapping. */
-  .ark {
+     last few characters settle softly rather than snapping.
+
+     Elevated-baseline note (kept INTENTIONALLY): inline-block with
+     overflow != visible uses its bottom margin edge as the baseline (per
+     CSS 2.1 §10.8.1), which makes the inner letters sit slightly above the
+     surrounding text — a subtle superscript-like flourish. We lean into it
+     with a small explicit translateY so the effect is consistent across
+     browsers and reads as a deliberate stylization. */
+  .ark, .own {
     max-width: 0;
     overflow: hidden;
+    transform: translateY(-0.04em);
+  }
+  .ark {
     animation: unfold 0.85s 1.0s forwards cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .own {
-    max-width: 0;
-    overflow: hidden;
     animation: unfold 0.85s 1.2s forwards cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   @keyframes unfold {
