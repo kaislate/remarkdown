@@ -61,19 +61,31 @@
     font-size: 14px;
     text-align: center;
   }
+  /* Content card: the reading surface sits inside a subtle raised panel so the
+     canvas feels framed rather than floating loose on the gradient background. */
   .content {
     position: relative;
-    max-width: 720px;
+    max-width: 760px;
     width: 100%;
+    margin: 80px 32px 120px;
+    background: rgba(19, 17, 29, 0.55);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(14px) saturate(125%);
+    -webkit-backdrop-filter: blur(14px) saturate(125%);
   }
   .content .viewer {
     max-width: none;
     width: 100%;
+    padding: 64px 72px 80px;
   }
   .viewer {
     max-width: 720px;
     width: 100%;
-    padding: 96px 48px 160px;
+    padding: 64px 72px 80px;
     color: var(--fg-0);
   }
   .viewer :global(h1),
