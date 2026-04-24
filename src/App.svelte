@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import './styles/theme-dark.css';
+  import './styles/theme.css';
   import './styles/glass.css';
   import './styles/highlights.css';
   import './styles/article.css';
@@ -19,7 +19,7 @@
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
   import { refreshRecent } from './stores/recent';
-  import { refreshSettings, installSettingsAutosave } from './stores/settings';
+  import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
@@ -37,6 +37,13 @@
   const unsubZoom = zoomLevel.subscribe((z) => {
     if (typeof document !== 'undefined') {
       document.documentElement.style.setProperty('--zoom', String(z));
+    }
+  });
+
+  // Apply the theme as a data attribute on <html>; theme.css branches on it.
+  const unsubTheme = settings.subscribe((s) => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', s.theme);
     }
   });
 
@@ -72,6 +79,7 @@
     disposeSettings?.();
     unsubZoom();
     unsubTool();
+    unsubTheme();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', onZoomKey);
   });
 </script>
