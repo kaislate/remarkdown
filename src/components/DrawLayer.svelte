@@ -38,10 +38,13 @@
     const cx = n > 0 ? sx / n : 0;
     const cy = n > 0 ? sy / n : 0;
 
-    // Find the block under the centroid by walking from the point.
-    const rootRect = root.getBoundingClientRect();
+    // Find the block under the centroid by walking from the point. The SVG
+    // now spans the full canvas (wider than the text viewer), so convert the
+    // stroke-local centroid using the SVG's own bounding rect, not the viewer's.
+    const svgEl = document.querySelector<SVGSVGElement>('svg.draw-overlay');
+    const sourceRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
     let el: Element | null = null;
-    try { el = document.elementFromPoint(cx + rootRect.left, cy + rootRect.top); } catch {}
+    try { el = document.elementFromPoint(cx + sourceRect.left, cy + sourceRect.top); } catch {}
     const block = el?.closest?.<HTMLElement>('[data-block-id]') ??
       root.querySelector<HTMLElement>('[data-block-id]');
     const blockId = block?.dataset.blockId ?? 'p:1';

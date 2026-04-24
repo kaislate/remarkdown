@@ -141,7 +141,7 @@
       <div
         class="viewport-indicator"
         class:dragging
-        style="top: {indicatorTop + 8}px; height: {indicatorHeight}px;"
+        style="top: {indicatorTop}px; height: {indicatorHeight}px;"
       ></div>
     </div>
   </div>
