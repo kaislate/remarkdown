@@ -2,6 +2,7 @@
 
 mod commands;
 mod recent;
+mod settings;
 mod sidecar;
 
 fn main() {
@@ -17,6 +18,8 @@ fn main() {
             commands::clear_recent,
             commands::check_paths_exist,
             commands::backup_corrupt_sidecar,
+            commands::load_settings,
+            commands::save_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
