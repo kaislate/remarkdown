@@ -49,6 +49,11 @@
     overflow-x: hidden;
     display: flex;
     justify-content: center;
+    /* Keep flex children at their intrinsic cross-axis (height) so .content grows
+       with the text beneath. Without this, default align-items: stretch clamps
+       .content to 100vh and the DrawLayer SVG inside ends up viewport-height
+       only — meaning you can't draw on content below the first screen. */
+    align-items: flex-start;
     /* Navigation happens via the minimap (and wheel/keyboard); native scrollbar is noise. */
     scrollbar-width: none;
     -ms-overflow-style: none;
