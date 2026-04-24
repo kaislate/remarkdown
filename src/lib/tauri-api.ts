@@ -32,8 +32,8 @@ export async function writeSidecar(mdPath: string, json: string): Promise<void> 
   await invoke('write_sidecar', { mdPath, json });
 }
 
-export async function pushRecent(path: string): Promise<string[]> {
-  return await invoke<string[]>('push_recent', { path });
+export async function pushRecent(path: string, max?: number): Promise<string[]> {
+  return await invoke<string[]>('push_recent', { path, max });
 }
 
 export async function listRecent(): Promise<string[]> {

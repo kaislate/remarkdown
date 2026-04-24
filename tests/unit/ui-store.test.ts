@@ -82,8 +82,8 @@ describe('ui store — zoomLevel', () => {
     expect(get(zoomLevel)).toBe(ZOOM_LEVELS[idx + 1]);
   });
 
-  it('persists the current zoom to localStorage', () => {
+  it('does NOT persist zoom to localStorage — settings.defaultZoom is the source of truth', () => {
     zoomLevel.set(1.5);
-    expect(localStorage.getItem('rmd-zoom-level')).toBe('1.5');
+    expect(localStorage.getItem('rmd-zoom-level')).toBeNull();
   });
 });

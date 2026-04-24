@@ -94,8 +94,12 @@ pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> 
 }
 
 #[tauri::command]
-pub fn push_recent(app: tauri::AppHandle, path: String) -> Result<Vec<String>, CommandError> {
-    crate::recent::push(&app, path)
+pub fn push_recent(
+    app: tauri::AppHandle,
+    path: String,
+    max: Option<usize>,
+) -> Result<Vec<String>, CommandError> {
+    crate::recent::push(&app, path, max.unwrap_or(crate::recent::DEFAULT_MAX_RECENT))
 }
 
 #[tauri::command]

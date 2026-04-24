@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { listRecent, pushRecent, checkPathsExist } from '../lib/tauri-api';
+import { getSettings } from './settings';
 
 export const recent = writable<string[]>([]);
 export const recentExistence = writable<Record<string, boolean>>({});
@@ -24,7 +25,7 @@ export async function refreshRecent(): Promise<void> {
 }
 
 export async function recordRecent(path: string): Promise<void> {
-  const list = await pushRecent(path);
+  const list = await pushRecent(path, getSettings().maxRecent);
   recent.set(list);
   recentExistence.update((map) => ({ ...map, [path]: true }));
 }

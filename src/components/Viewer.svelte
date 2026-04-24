@@ -84,12 +84,14 @@
   /* Text column — centered on narrower windows, capped to a max left margin
      on wider ones so content doesn't drift away from the left edge as the
      window grows. The right side absorbs the remaining space (auto margin)
-     and the .scroll's right padding reserves the minimap region. */
+     and the .scroll's right padding reserves the minimap region.
+     The width comes from --article-width, set by App.svelte from
+     settings.articleWidth. Defaults to 720px before settings hydrate. */
   .text-frame {
     position: relative;
-    max-width: 720px;
+    max-width: var(--article-width, 720px);
     width: 100%;
-    margin-left: clamp(0px, calc((100% - 720px) / 2), 140px);
+    margin-left: clamp(0px, calc((100% - var(--article-width, 720px)) / 2), 140px);
     margin-right: auto;
   }
   /* Layout only. Content styling lives in src/styles/article.css via the

@@ -1,22 +1,15 @@
 import { writable } from 'svelte/store';
 
-// Persistent UI preferences.
+// Minimap visibility persists across sessions in localStorage. Zoom does NOT
+// — its starting value comes from settings.defaultZoom (set by App.svelte on
+// mount); within a session Ctrl+/- mutates it freely without persisting.
 const MINIMAP_KEY = 'rmd-minimap-shown';
-const ZOOM_KEY = 'rmd-zoom-level';
 
 function readBool(key: string, fallback: boolean): boolean {
   if (typeof localStorage === 'undefined') return fallback;
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
   return raw === 'true';
-}
-
-function readNumber(key: string, fallback: number): number {
-  if (typeof localStorage === 'undefined') return fallback;
-  const raw = localStorage.getItem(key);
-  if (raw === null) return fallback;
-  const v = Number.parseFloat(raw);
-  return Number.isFinite(v) ? v : fallback;
 }
 
 export const minimapShown = writable<boolean>(readBool(MINIMAP_KEY, true));
@@ -51,17 +44,7 @@ function snapToLevel(value: number): number {
   return best;
 }
 
-export const zoomLevel = writable<number>(snapToLevel(readNumber(ZOOM_KEY, DEFAULT_ZOOM)));
-
-if (typeof localStorage !== 'undefined') {
-  zoomLevel.subscribe((v) => {
-    try {
-      localStorage.setItem(ZOOM_KEY, String(v));
-    } catch {
-      // ignore
-    }
-  });
-}
+export const zoomLevel = writable<number>(DEFAULT_ZOOM);
 
 function step(direction: 1 | -1): void {
   zoomLevel.update((current) => {

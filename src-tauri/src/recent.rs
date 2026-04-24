@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-const MAX_RECENT: usize = 10;
+// Hard ceiling that any caller-supplied `max` is clamped against. Frontend
+// settings already validate to ≤50, but this is a defence-in-depth bound.
+const MAX_RECENT_HARD_LIMIT: usize = 100;
+// Default cap when the IPC caller doesn't supply one — matches the historical
+// hard-coded value so older callers (or non-frontend usage) still work.
+pub const DEFAULT_MAX_RECENT: usize = 10;
 
 #[derive(Serialize, Deserialize, Default)]
 struct RecentFile { paths: Vec<String> }
@@ -31,11 +36,16 @@ fn save(app: &tauri::AppHandle, r: &RecentFile) -> Result<(), crate::commands::C
     Ok(())
 }
 
-pub fn push(app: &tauri::AppHandle, path: String) -> Result<Vec<String>, crate::commands::CommandError> {
+pub fn push(
+    app: &tauri::AppHandle,
+    path: String,
+    max: usize,
+) -> Result<Vec<String>, crate::commands::CommandError> {
+    let cap = max.clamp(1, MAX_RECENT_HARD_LIMIT);
     let mut r = load(app)?;
     r.paths.retain(|p| p != &path);
     r.paths.insert(0, path);
-    r.paths.truncate(MAX_RECENT);
+    r.paths.truncate(cap);
     save(app, &r)?;
     Ok(r.paths.clone())
 }

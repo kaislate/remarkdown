@@ -5,6 +5,8 @@ vi.mock('../../src/lib/tauri-api', () => ({
   pushRecent: vi.fn(),
   listRecent: vi.fn(),
   checkPathsExist: vi.fn().mockResolvedValue([]),
+  loadSettingsJson: vi.fn(),
+  saveSettingsJson: vi.fn(),
 }));
 
 import { pushRecent, listRecent, checkPathsExist } from '../../src/lib/tauri-api';
@@ -27,10 +29,11 @@ describe('recent store', () => {
     expect(get(recentExistence)).toEqual({ '/a': true, '/b': false });
   });
 
-  it('recordRecent calls push_recent and marks path as existing', async () => {
+  it('recordRecent calls push_recent with the maxRecent setting and marks path as existing', async () => {
     vi.mocked(pushRecent).mockResolvedValue(['/new', '/a']);
     await recordRecent('/new');
-    expect(pushRecent).toHaveBeenCalledWith('/new');
+    // Default settings.maxRecent is 10.
+    expect(pushRecent).toHaveBeenCalledWith('/new', 10);
     expect(get(recent)).toEqual(['/new', '/a']);
     expect(get(recentExistence)['/new']).toBe(true);
   });
