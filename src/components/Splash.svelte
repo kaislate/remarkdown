@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
 
   // Animation timing (ms). Kept as a single source of truth.
-  const HOLD_BEFORE_REVEAL = 900;     // "Re.md" sits before transformation
+  const HOLD_BEFORE_REVEAL = 900;     // "re.md" sits before transformation
   const REVEAL_DURATION = 1500;       // dot collapses + ark/own expand
-  const HOLD_AFTER_REVEAL = 500;      // pause on "Remarkdown"
+  const HOLD_AFTER_REVEAL = 500;      // pause on "remarkdown"
   const FADE_OUT_MS = 400;
   const TOTAL_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION + HOLD_AFTER_REVEAL;
 
@@ -34,7 +34,7 @@
     aria-hidden="true"
   >
     <h1 class="logo">
-      <span class="re">Re</span><!--
+      <span class="re">re</span><!--
       --><span class="dot">.</span><!--
       --><span class="m">m</span><!--
       --><span class="ark">ark</span><!--

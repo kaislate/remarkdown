@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="remarkdown">
+  <title>remarkdown</title>
+  <defs>
+    <radialGradient id="rmd-glow-a" cx="28%" cy="32%" r="55%">
+      <stop offset="0%" stop-color="#8b7fff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#8b7fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rmd-glow-b" cx="72%" cy="68%" r="55%">
+      <stop offset="0%" stop-color="#5f9bff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#5f9bff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="320" rx="28" fill="#0b0a12"/>
+  <rect width="1200" height="320" rx="28" fill="url(#rmd-glow-a)"/>
+  <rect width="1200" height="320" rx="28" fill="url(#rmd-glow-b)"/>
+  <text
+    x="600" y="208"
+    text-anchor="middle"
+    font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="168"
+    font-weight="600"
+    letter-spacing="-3.4"
+    fill="#e8e6f2"
+  >remarkdown</text>
+</svg>

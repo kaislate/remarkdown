@@ -12,13 +12,13 @@ afterEach(() => {
 });
 
 describe('Splash', () => {
-  it('renders the splash overlay with the full Re.md → Remarkdown sequence', () => {
+  it('renders the splash overlay with the full re.md → remarkdown sequence', () => {
     render(Splash);
     expect(document.querySelector('.splash')).not.toBeNull();
     expect(document.querySelector('.splash .logo')).not.toBeNull();
     expect(document.querySelectorAll('.logo span').length).toBe(6);
-    // textContent concatenates everything we'll later morph from Re.md → Remarkdown.
-    expect(document.querySelector('.logo')!.textContent).toBe('Re.markdown');
+    // textContent concatenates everything we'll later morph from re.md → remarkdown.
+    expect(document.querySelector('.logo')!.textContent).toBe('re.markdown');
   });
 
   it('marks itself for fade-out after the full animation runtime', async () => {
