@@ -5,6 +5,7 @@
   import './styles/highlights.css';
   import './styles/article.css';
   import Viewer from './components/Viewer.svelte';
+  import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import GlassMenu from './components/GlassMenu.svelte';
   import ToolRail from './components/ToolRail.svelte';
   import ColorStrip from './components/ColorStrip.svelte';
@@ -68,6 +69,7 @@
 </script>
 
 <Viewer />
+<LeftMarginTitle />
 <Minimap />
 <TitleBar />
 <GlassMenu />
