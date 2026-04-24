@@ -158,25 +158,31 @@
 {/if}
 
 <style>
+  /* Floating: inset from all edges, fully rounded, soft shadow. */
   .minimap {
     position: fixed;
-    top: 38px;
-    right: 0;
-    bottom: 0;
+    top: 52px;
+    right: 16px;
+    bottom: 52px;
     width: var(--mm-width);
     overflow: hidden;
     z-index: 60;
     cursor: pointer;
     user-select: none;
     background: rgba(17, 15, 25, 0.55);
-    border-left: 1px solid var(--glass-border);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 12px 36px rgba(0, 0, 0, 0.35);
     backdrop-filter: blur(20px) saturate(140%);
     -webkit-backdrop-filter: blur(20px) saturate(140%);
     transform: translateX(0);
     transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .minimap.hidden {
-    transform: translateX(100%);
+    /* Slide fully off the right edge, including the 16px gutter. */
+    transform: translateX(calc(100% + 24px));
   }
   .minimap:hover {
     background: rgba(17, 15, 25, 0.7);
@@ -218,20 +224,19 @@
     background: rgba(139, 127, 255, 0.32);
   }
 
-  /* Toggle arrow on the left edge of the minimap. Stays visible when the
-     minimap is hidden so the user can expand it again. */
+  /* Toggle arrow — sits just outside the minimap's left edge when shown,
+     hugs the window's right edge when the minimap is collapsed. */
   .minimap-toggle {
     position: fixed;
     top: 50vh;
     transform: translateY(-50%);
-    right: var(--mm-width);
-    width: 18px;
-    height: 46px;
+    right: calc(var(--mm-width) + 16px + 6px); /* minimap width + gutter + small overlap */
+    width: 20px;
+    height: 48px;
     padding: 0;
     z-index: 70;
     border: 1px solid var(--glass-border);
-    border-right: 0;
-    border-radius: 10px 0 0 10px;
+    border-radius: 10px;
     background: rgba(17, 15, 25, 0.7);
     backdrop-filter: blur(18px) saturate(140%);
     -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -242,11 +247,12 @@
     line-height: 1;
     display: grid;
     place-items: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     transition: right 0.32s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s, background 0.15s;
     --mm-width: 140px;
   }
   .minimap-toggle.collapsed {
-    right: 0;
+    right: 8px;
   }
   .minimap-toggle:hover {
     color: var(--fg-0);

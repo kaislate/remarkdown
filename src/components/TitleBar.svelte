@@ -34,7 +34,12 @@
   role="presentation"
 ></div>
 
-<div class="titlebar-controls glass">
+<!-- Subtle animated aura behind the controls. Non-interactive — just a
+     visual anchor that delineates where the buttons are without framing
+     them in a hard panel. -->
+<div class="controls-aura" aria-hidden="true"></div>
+
+<div class="titlebar-controls">
   <button
     class="ctrl min"
     aria-label="Minimize"
@@ -66,11 +71,41 @@
     position: fixed;
     top: 0;
     left: 62px;    /* clear the hamburger (14 + 38 + gap) */
-    right: 168px;  /* clear the controls pill width */
+    right: 168px;  /* clear the controls area */
     height: 38px;
     z-index: 50;   /* below the hamburger (100) */
     background: transparent;
   }
+
+  /* The aura is a soft conical gradient that slowly sweeps across the
+     top-right corner. Behind the controls (z:170) but above the minimap
+     (z:60), so it reads as "here are the window controls" without being
+     a hard-edged pill. */
+  .controls-aura {
+    position: fixed;
+    top: -40px;
+    right: -40px;
+    width: 240px;
+    height: 140px;
+    pointer-events: none;
+    z-index: 170;
+    background:
+      radial-gradient(
+        ellipse 70% 60% at 75% 35%,
+        rgba(139, 127, 255, 0.10) 0%,
+        rgba(139, 127, 255, 0.05) 35%,
+        rgba(139, 127, 255, 0) 70%
+      );
+    filter: blur(6px);
+    animation: swoop 9s ease-in-out infinite;
+    transform-origin: 70% 30%;
+  }
+  @keyframes swoop {
+    0%   { transform: translate(0, 0) scale(1);        opacity: 0.85; }
+    50%  { transform: translate(-12px, 4px) scale(1.08); opacity: 1;   }
+    100% { transform: translate(0, 0) scale(1);        opacity: 0.85; }
+  }
+
   .titlebar-controls {
     position: fixed;
     top: 0;
@@ -78,21 +113,16 @@
     display: flex;
     align-items: stretch;
     height: 38px;
-    z-index: 180;  /* above the minimap (60) */
-    border: 1px solid var(--glass-border);
-    border-top: 0;
-    border-right: 0;
-    border-radius: 0 0 0 12px;
-    overflow: hidden;
-    background: rgba(17, 15, 25, 0.72);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    z-index: 180;
+    /* No pill — bare buttons over the aura and the canvas. */
+    background: transparent;
+    border: 0;
   }
   .ctrl {
     background: transparent;
     border: 0;
     color: var(--fg-1);
-    width: 48px;
+    width: 44px;
     cursor: pointer;
     display: grid;
     place-items: center;
