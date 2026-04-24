@@ -97,7 +97,7 @@
 <CorruptSidecarModal />
 <ErrorBanner />
 <Toasts />
-{#if import.meta.env.MODE !== 'e2e'}
+{#if import.meta.env.MODE !== 'e2e' && $settings.splashEnabled}
   <Splash />
 {/if}
 
