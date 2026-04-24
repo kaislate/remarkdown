@@ -161,3 +161,41 @@ describe('HighlightLayer — right-click delete', () => {
     expect(document.querySelector('.highlight-menu')).toBeNull();
   });
 });
+
+describe('HighlightLayer — eraser tool', () => {
+  it('left-click on a highlight in eraser mode deletes it without confirmation', () => {
+    const root = mountViewer('<p data-block-id="p:1">Hello the world here.</p>');
+    render(HighlightLayer);
+    annots.set([{
+      id: '01A', type: 'highlight', color: HIGHLIGHT_COLORS[0],
+      anchor: { text: 'the world', prefix: 'Hello ', suffix: ' here.', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    setMode('eraser');
+
+    const tn = root.querySelector('p')!.firstChild as Text;
+    const idx = tn.data.indexOf('the world') + 2;
+    (document as any).caretPositionFromPoint = () => ({ offsetNode: tn, offset: idx });
+
+    document.dispatchEvent(new MouseEvent('click', {
+      bubbles: true, cancelable: true, clientX: 100, clientY: 100, button: 0,
+    }));
+    expect(get(annots).filter((a) => a.type === 'highlight')).toHaveLength(0);
+  });
+
+  it('left-click outside any highlight in eraser mode does nothing', () => {
+    const root = mountViewer('<p data-block-id="p:1">no highlight here.</p>');
+    render(HighlightLayer);
+    annots.set([{
+      id: '01A', type: 'highlight', color: HIGHLIGHT_COLORS[0],
+      anchor: { text: 'highlight', prefix: 'no ', suffix: ' here', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    setMode('eraser');
+    (document as any).caretPositionFromPoint = () => null;
+    document.dispatchEvent(new MouseEvent('click', {
+      bubbles: true, cancelable: true, clientX: 5, clientY: 5, button: 0,
+    }));
+    expect(get(annots).filter((a) => a.type === 'highlight')).toHaveLength(1);
+  });
+});

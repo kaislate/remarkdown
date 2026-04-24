@@ -60,3 +60,9 @@ body {
   width: 100vw;
   position: relative;
 }
+
+/* Eraser-mode global cursor. Applied by App.svelte when tool === 'eraser'. */
+body.eraser-cursor,
+body.eraser-cursor * {
+  cursor: cell;
+}

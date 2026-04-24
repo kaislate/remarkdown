@@ -61,12 +61,12 @@
     pendingStrokes = [];
   }
 
-  function eraseAt(e: PointerEvent | MouseEvent): boolean {
+  function eraseStrokeAt(clientX: number, clientY: number): boolean {
     const svg = document.querySelector<SVGSVGElement>('svg.draw-overlay');
     if (!svg) return false;
     const rect = svg.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     for (const d of existingDrawings) {
       for (const s of d.strokes) {
         if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
@@ -82,12 +82,8 @@
     // Left-button only. Right-click reaches the contextmenu handler for delete;
     // middle-click is reserved for browsers/users.
     if (e.button !== 0) return;
-
-    if ($tool.mode === 'eraser') {
-      eraseAt(e);
-      return;
-    }
-
+    // Eraser mode: SVG is pointer-events:none — handled by the document-level
+    // capture handler below so pin clicks and highlight clicks aren't blocked.
     if ($tool.mode !== 'draw') return;
     const svg = e.currentTarget as SVGSVGElement;
     const rect = svg.getBoundingClientRect();
@@ -179,12 +175,26 @@
     menuForId = null;
   }
 
+  function onDocClickEraser(e: MouseEvent): void {
+    if ($tool.mode !== 'eraser') return;
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    // Defer to the pin's own onclick (NoteLayer handles note erasure).
+    if (target?.closest?.('.note-pin')) return;
+    if (eraseStrokeAt(e.clientX, e.clientY)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
   $effect(() => {
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('click', closeMenu);
+    document.addEventListener('click', onDocClickEraser, true);
     return () => {
       document.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('click', closeMenu);
+      document.removeEventListener('click', onDocClickEraser, true);
     };
   });
 </script>
@@ -192,7 +202,6 @@
 <svg
   class="draw-overlay"
   class:active={$tool.mode === 'draw'}
-  class:eraser={$tool.mode === 'eraser'}
   role="presentation"
   aria-hidden="true"
   onpointerdown={onPointerDown}
@@ -235,12 +244,9 @@
     pointer-events: auto;
     cursor: crosshair;
   }
-  .draw-overlay.eraser {
-    pointer-events: auto;
-    /* `cell` reads as a precise targeting cursor — appropriate for picking
-       individual strokes to delete. */
-    cursor: cell;
-  }
+  /* In eraser mode the SVG stays pointer-events: none so clicks reach pins,
+     text, and other layers. Eraser-mode stroke deletion is handled by a
+     document-level capture listener (see onDocClickEraser in the script). */
   .drawing-menu {
     position: fixed;
     padding: 4px;

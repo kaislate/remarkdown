@@ -144,6 +144,10 @@
     color: transparent;
     cursor: pointer;
     pointer-events: auto;
+    /* Sit above the DrawLayer SVG so pin clicks aren't intercepted by it.
+       (DrawLayer's stacking is at z-index: auto inside the same .content
+       stacking context; any positive z here wins.) */
+    z-index: 5;
     box-shadow: 0 2px 6px rgba(255, 202, 74, 0.5);
     transition: background 0.15s, box-shadow 0.15s;
   }

@@ -78,6 +78,25 @@
     menuForId = null;
   }
 
+  function onDocClickEraser(e: MouseEvent): void {
+    if (get(tool).mode !== 'eraser') return;
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    // Defer to NoteLayer for note pin clicks.
+    if (target?.closest?.('.note-pin')) return;
+    const cp = (document as any).caretPositionFromPoint?.(e.clientX, e.clientY);
+    if (!cp || !cp.offsetNode) return;
+    for (const r of get(resolvedAnnots)) {
+      if (r.annotation.type !== 'highlight') continue;
+      if (rangeContains(r.range, cp.offsetNode, cp.offset)) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeAnnotation(r.annotation.id);
+        return;
+      }
+    }
+  }
+
   onMount(() => {
     // Subscribe to resolved annotations synchronously so CSS.highlights updates
     // immediately when the store changes (important for test synchronicity).
@@ -112,12 +131,14 @@
     document.addEventListener('mouseup', onMouseUp);
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('click', closeMenu);
+    document.addEventListener('click', onDocClickEraser, true);
 
     return () => {
       unsubAnnots();
       document.removeEventListener('mouseup', onMouseUp);
       document.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('click', closeMenu);
+      document.removeEventListener('click', onDocClickEraser, true);
     };
   });
 </script>

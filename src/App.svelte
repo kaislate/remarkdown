@@ -18,6 +18,7 @@
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
+  import { tool } from './stores/tool';
 
   let pulse = $state(0);
   savedPulse.subscribe((v) => (pulse = v));
@@ -29,6 +30,15 @@
   const unsubZoom = zoomLevel.subscribe((z) => {
     if (typeof document !== 'undefined') {
       document.documentElement.style.setProperty('--zoom', String(z));
+    }
+  });
+
+  // Body-level cursor in eraser mode — the DrawLayer SVG is pointer-events:none
+  // in eraser mode, so its CSS cursor doesn't apply. Set the cursor on body
+  // instead so the entire canvas reads as "in eraser mode".
+  const unsubTool = tool.subscribe((t) => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('eraser-cursor', t.mode === 'eraser');
     }
   });
 
@@ -47,6 +57,7 @@
   onDestroy(() => {
     disposeSave?.();
     unsubZoom();
+    unsubTool();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', onZoomKey);
   });
 </script>

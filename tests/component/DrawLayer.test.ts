@@ -203,6 +203,12 @@ describe('DrawLayer — right-click delete', () => {
 });
 
 describe('DrawLayer — eraser tool', () => {
+  function clickAt(x: number, y: number) {
+    return new MouseEvent('click', {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+    });
+  }
+
   it('left-click near a stroke deletes it without confirmation', () => {
     mountViewer('<p data-block-id="p:1">x</p>');
     render(DrawLayer);
@@ -216,7 +222,7 @@ describe('DrawLayer — eraser tool', () => {
     });
     const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
     svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
-    svg.dispatchEvent(pe('pointerdown', 105, 105));
+    document.dispatchEvent(clickAt(105, 105));
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
   });
 
@@ -233,19 +239,44 @@ describe('DrawLayer — eraser tool', () => {
     });
     const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
     svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
-    svg.dispatchEvent(pe('pointerdown', 500, 500));
+    document.dispatchEvent(clickAt(500, 500));
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(1);
   });
 
-  it('does not begin a drawing stroke in eraser mode', async () => {
+  it('does not begin a drawing stroke in eraser mode (svg pointer-events: none)', async () => {
     mountViewer('<p data-block-id="p:1">x</p>');
     render(DrawLayer);
     flushSync(() => setMode('eraser'));
     const svg = document.querySelector('svg.draw-overlay')!;
+    // Even if a synthetic pointerdown reaches the SVG, the handler must early-return.
     svg.dispatchEvent(pe('pointerdown', 50, 50));
     svg.dispatchEvent(pe('pointermove', 60, 60));
     svg.dispatchEvent(pe('pointerup', 60, 60));
     await vi.advanceTimersByTimeAsync(3100);
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+  });
+
+  it('eraser-mode click that lands on a note pin does not also erase a coincident drawing', () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[100, 100]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+      setMode('eraser');
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    // Click whose target is a note pin (DrawLayer handler should defer).
+    const fakePin = document.createElement('button');
+    fakePin.className = 'note-pin';
+    document.body.appendChild(fakePin);
+    const evt = new MouseEvent('click', {
+      bubbles: true, cancelable: true, clientX: 100, clientY: 100, button: 0,
+    });
+    fakePin.dispatchEvent(evt);
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(1);
   });
 });
