@@ -133,7 +133,7 @@
   >
     <div class="minimap-inner">
       <div
-        class="minimap-content"
+        class="minimap-content md-rendered"
         style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px;"
       >
         {@html $doc.html}
@@ -196,17 +196,16 @@
     top: 0;
     left: 0;
     pointer-events: none;
-    color: var(--fg-1);
     will-change: transform;
   }
-  /* Strip visual noise from the scaled clone so structure reads at a glance. */
-  .minimap-content :global(a) { border-bottom: none; }
+  /* Reduce visual noise in the scaled clone but PRESERVE box sizes (padding,
+     borders) so the clone's rendered height exactly matches the main viewer's.
+     The viewport indicator's accuracy depends on this match. */
+  .minimap-content :global(a) { border-bottom-color: transparent; }
   .minimap-content :global(pre),
-  .minimap-content :global(blockquote),
   .minimap-content :global(code) {
-    background: transparent;
-    border: none;
-    padding: 0;
+    background-color: transparent;
+    border-color: transparent;
   }
   .minimap-content :global(img) { opacity: 0.45; }
   .viewport-indicator {
