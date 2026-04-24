@@ -54,6 +54,11 @@
        .content to 100vh and the DrawLayer SVG inside ends up viewport-height
        only — meaning you can't draw on content below the first screen. */
     align-items: flex-start;
+    /* Reserve space on the right for the minimap (140px wide + 16px gutter) plus
+       a comfortable buffer, so centered content doesn't overlap with it on
+       typical windows. This also shifts content left from absolute-center,
+       reducing the empty margin on the left side. */
+    padding-right: 172px;
     /* Navigation happens via the minimap (and wheel/keyboard); native scrollbar is noise. */
     scrollbar-width: none;
     -ms-overflow-style: none;
