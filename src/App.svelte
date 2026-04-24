@@ -17,6 +17,7 @@
   import ZoomControls from './components/ZoomControls.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
+  import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool } from './stores/tool';
 
@@ -24,6 +25,7 @@
   savedPulse.subscribe((v) => (pulse = v));
 
   let disposeSave: (() => void) | null = null;
+  let disposeDrop: (() => void) | null = null;
 
   // Sync the CSS variable on every zoom change so the root font-size scales
   // and all rem-based article styles (incl. the minimap clone) follow.
@@ -52,10 +54,12 @@
   onMount(async () => {
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
     disposeSave = installSaveWatcher();
+    disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
   });
   onDestroy(() => {
     disposeSave?.();
+    disposeDrop?.();
     unsubZoom();
     unsubTool();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', onZoomKey);
