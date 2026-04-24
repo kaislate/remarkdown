@@ -10,6 +10,7 @@
   import OrphanPanel from './components/OrphanPanel.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
+  import Minimap from './components/Minimap.svelte';
   import Toasts from './components/Toasts.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -26,6 +27,7 @@
 </script>
 
 <Viewer />
+<Minimap />
 <GlassMenu />
 <ToolRail />
 <ColorStrip />
