@@ -52,6 +52,10 @@
     <span class="bar"></span>
   </button>
 
+  <!-- Brand mark next to the hamburger. pointer-events:none so window
+       dragging still works through the wordmark area. -->
+  <span class="wordmark" aria-hidden="true">re<span class="dot">.</span>md</span>
+
   {#if open}
     <div class="popover glass" role="menu">
       <button role="menuitem" class="item" onclick={handleOpen}>Open…</button>
@@ -89,6 +93,9 @@
     top: 14px;
     left: 14px;
     z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .hamburger {
     width: 38px;
@@ -102,7 +109,19 @@
     border: 1px solid var(--glass-border);
     cursor: pointer;
     padding: 0;
+    flex-shrink: 0;
   }
+  .wordmark {
+    font-family: var(--font-sans);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--fg-0);
+    line-height: 1;
+    user-select: none;
+    pointer-events: none;
+  }
+  .wordmark .dot { color: var(--accent); }
   .bar {
     width: 16px;
     height: 1.5px;
