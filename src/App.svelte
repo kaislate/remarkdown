@@ -18,7 +18,8 @@
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
-  import { refreshRecent } from './stores/recent';
+  import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
+  import { loadDocument } from './stores/doc';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
@@ -96,6 +97,22 @@
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
+
+    // If the user opted in, reopen the most-recently-used file. Skip silently
+    // when there's nothing to open or the file no longer exists, so a missing
+    // file never blocks app launch.
+    if (s.openLastOnStartup) {
+      const last = get(recent)[0];
+      const exists = last ? get(recentExistence)[last] !== false : false;
+      if (last && exists) {
+        try {
+          await loadDocument(last);
+          await recordRecent(last);
+        } catch {
+          markMissing(last);
+        }
+      }
+    }
   });
   onDestroy(() => {
     disposeSave?.();
