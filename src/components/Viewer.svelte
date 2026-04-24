@@ -81,12 +81,16 @@
     width: 100%;
     min-height: 100vh;
   }
-  /* Text column — centered, positioning context for highlight/note layers. */
+  /* Text column — centered on narrower windows, capped to a max left margin
+     on wider ones so content doesn't drift away from the left edge as the
+     window grows. The right side absorbs the remaining space (auto margin)
+     and the .scroll's right padding reserves the minimap region. */
   .text-frame {
     position: relative;
     max-width: 720px;
     width: 100%;
-    margin: 0 auto;
+    margin-left: clamp(0px, calc((100% - 720px) / 2), 140px);
+    margin-right: auto;
   }
   /* Layout only. Content styling lives in src/styles/article.css via the
      `md-rendered` class so the minimap clone gets the same layout. */
