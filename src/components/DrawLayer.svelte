@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ulid } from 'ulid';
   import { tool } from '../stores/tool';
+  import { settings } from '../stores/settings';
   import {
     addAnnotation,
     removeAnnotation,
@@ -9,7 +10,9 @@
   } from '../stores/annots';
   import type { Drawing, Stroke } from '../lib/schema';
 
-  const IDLE_MS = 3000;
+  // Idle finalize duration is sourced from the settings store so the user can
+  // tune it. Read at the moment startIdle() schedules its timer — changing the
+  // setting affects the next idle cycle.
   const HIT_TOLERANCE_PX = 12;
 
   type Point = [number, number];
@@ -23,7 +26,7 @@
 
   function startIdle(): void {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(finalize, IDLE_MS);
+    idleTimer = setTimeout(finalize, $settings.drawIdleFinalizeMs);
   }
 
   function finalize(): void {
