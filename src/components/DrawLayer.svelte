@@ -61,11 +61,34 @@
     pendingStrokes = [];
   }
 
+  function eraseAt(e: PointerEvent | MouseEvent): boolean {
+    const svg = document.querySelector<SVGSVGElement>('svg.draw-overlay');
+    if (!svg) return false;
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    for (const d of existingDrawings) {
+      for (const s of d.strokes) {
+        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
+          removeAnnotation(d.id);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function onPointerDown(e: PointerEvent): void {
-    if ($tool.mode !== 'draw') return;
     // Left-button only. Right-click reaches the contextmenu handler for delete;
     // middle-click is reserved for browsers/users.
     if (e.button !== 0) return;
+
+    if ($tool.mode === 'eraser') {
+      eraseAt(e);
+      return;
+    }
+
+    if ($tool.mode !== 'draw') return;
     const svg = e.currentTarget as SVGSVGElement;
     const rect = svg.getBoundingClientRect();
     try { (svg as unknown as Element).setPointerCapture(e.pointerId); } catch {}
@@ -169,6 +192,7 @@
 <svg
   class="draw-overlay"
   class:active={$tool.mode === 'draw'}
+  class:eraser={$tool.mode === 'eraser'}
   role="presentation"
   aria-hidden="true"
   onpointerdown={onPointerDown}
@@ -210,6 +234,12 @@
   .draw-overlay.active {
     pointer-events: auto;
     cursor: crosshair;
+  }
+  .draw-overlay.eraser {
+    pointer-events: auto;
+    /* `cell` reads as a precise targeting cursor — appropriate for picking
+       individual strokes to delete. */
+    cursor: cell;
   }
   .drawing-menu {
     position: fixed;

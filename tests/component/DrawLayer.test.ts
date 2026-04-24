@@ -176,7 +176,7 @@ describe('DrawLayer — right-click delete', () => {
     expect(document.querySelector('.drawing-menu')).toBeNull();
   });
 
-  it('finds drawings in the canvas margins (outside the text-column rect)', () => {
+  it('finds drawings in the canvas margins (outside the text-column rect) — covered also by eraser tests below', () => {
     // Drawing's strokes sit far right of the viewer's text column. Should
     // still be hit by the contextmenu handler since the SVG spans the full
     // canvas width.
@@ -199,5 +199,53 @@ describe('DrawLayer — right-click delete', () => {
       document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 905, clientY: 205 }));
     });
     expect(document.querySelector('.drawing-menu')).not.toBeNull();
+  });
+});
+
+describe('DrawLayer — eraser tool', () => {
+  it('left-click near a stroke deletes it without confirmation', () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[100, 100], [110, 110]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+      setMode('eraser');
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    svg.dispatchEvent(pe('pointerdown', 105, 105));
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
+  });
+
+  it('left-click far from any stroke does nothing in eraser mode', () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => {
+      annots.set([{
+        id: '01D', type: 'drawing', anchorBlock: 'p:1',
+        strokes: [{ color: '#d6336c', width: 2, points: [[100, 100]] }],
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+      setMode('eraser');
+    });
+    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
+    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    svg.dispatchEvent(pe('pointerdown', 500, 500));
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(1);
+  });
+
+  it('does not begin a drawing stroke in eraser mode', async () => {
+    mountViewer('<p data-block-id="p:1">x</p>');
+    render(DrawLayer);
+    flushSync(() => setMode('eraser'));
+    const svg = document.querySelector('svg.draw-overlay')!;
+    svg.dispatchEvent(pe('pointerdown', 50, 50));
+    svg.dispatchEvent(pe('pointermove', 60, 60));
+    svg.dispatchEvent(pe('pointerup', 60, 60));
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(0);
   });
 });

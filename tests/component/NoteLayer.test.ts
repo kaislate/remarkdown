@@ -73,3 +73,44 @@ describe('NoteLayer', () => {
     expect(screen.getByRole('dialog', { name: /note/i })).toBeInTheDocument();
   });
 });
+
+describe('NoteLayer — eraser tool', () => {
+  it('clicking a pin in eraser mode deletes the note immediately, no popover', async () => {
+    mountViewer('<p data-block-id="p:1">hi friend</p>');
+    render(NoteLayer);
+    flushSync(() => {
+      annots.set([
+        {
+          id: '01A', type: 'note', body: 'existing',
+          anchor: { text: 'friend', prefix: 'hi ', suffix: '', blockHint: 'p:1' },
+          createdAt: 'now', updatedAt: 'now',
+        },
+      ]);
+      setMode('eraser');
+    });
+    const user = userEvent.setup();
+    const pin = document.querySelector('.note-pin') as HTMLButtonElement;
+    await user.click(pin);
+
+    expect(get(annots).filter((a) => a.type === 'note')).toHaveLength(0);
+    expect(screen.queryByRole('dialog', { name: /note/i })).toBeNull();
+  });
+
+  it('marks pins with the eraser class so the cursor reflects the mode', () => {
+    mountViewer('<p data-block-id="p:1">hi friend</p>');
+    render(NoteLayer);
+    flushSync(() => {
+      annots.set([
+        {
+          id: '01A', type: 'note', body: '',
+          anchor: { text: 'friend', prefix: 'hi ', suffix: '', blockHint: 'p:1' },
+          createdAt: 'now', updatedAt: 'now',
+        },
+      ]);
+      setMode('eraser');
+    });
+    const pin = document.querySelector('.note-pin') as HTMLButtonElement;
+    expect(pin.classList.contains('eraser')).toBe(true);
+    expect(pin.getAttribute('aria-label')).toMatch(/erase/i);
+  });
+});

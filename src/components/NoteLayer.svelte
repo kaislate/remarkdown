@@ -99,13 +99,22 @@
   });
 </script>
 
-<div class="notes-layer">
+<div class="notes-layer" class:eraser={$tool.mode === 'eraser'}>
   {#each pins as p (p.note.id)}
     <button
       class="note-pin"
+      class:eraser={$tool.mode === 'eraser'}
       style="top:{p.position.top}px; left:{p.position.left}px"
-      aria-label="Open note"
-      onclick={(e) => { e.stopPropagation(); openPinId = openPinId === p.note.id ? null : p.note.id; }}
+      aria-label={$tool.mode === 'eraser' ? 'Erase note' : 'Open note'}
+      onclick={(e) => {
+        e.stopPropagation();
+        if (get(tool).mode === 'eraser') {
+          if (openPinId === p.note.id) openPinId = null;
+          removeAnnotation(p.note.id);
+          return;
+        }
+        openPinId = openPinId === p.note.id ? null : p.note.id;
+      }}
     >●</button>
     {#if openPinId === p.note.id}
       <div class="popover-wrap" style="top:{p.position.top + 18}px; left:{p.position.left + 18}px">
@@ -136,6 +145,14 @@
     cursor: pointer;
     pointer-events: auto;
     box-shadow: 0 2px 6px rgba(255, 202, 74, 0.5);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .note-pin.eraser {
+    cursor: cell;
+  }
+  .note-pin.eraser:hover {
+    background: #ff6e6e;
+    box-shadow: 0 2px 8px rgba(255, 110, 110, 0.6);
   }
   .popover-wrap {
     position: absolute;

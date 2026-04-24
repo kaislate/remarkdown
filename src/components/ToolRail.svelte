@@ -7,6 +7,7 @@
     { mode: 'highlight', label: 'Highlight', glyph: '▬' },
     { mode: 'note', label: 'Note', glyph: '✎' },
     { mode: 'draw', label: 'Draw', glyph: '✏' },
+    { mode: 'eraser', label: 'Eraser', glyph: '⌫' },
   ];
 </script>
 

@@ -72,4 +72,4 @@ export type Annotation = z.infer<typeof AnnotationSchema>;
 export type DocumentMeta = z.infer<typeof DocumentMetaSchema>;
 export type Sidecar = z.infer<typeof SidecarSchema>;
 
-export type Tool = 'cursor' | 'highlight' | 'note' | 'draw';
+export type Tool = 'cursor' | 'highlight' | 'note' | 'draw' | 'eraser';
