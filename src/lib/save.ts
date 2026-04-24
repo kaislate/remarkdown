@@ -3,12 +3,16 @@ import { writeSidecar } from './tauri-api';
 import { serializeSidecar } from './sidecar';
 import { doc } from '../stores/doc';
 import { annots } from '../stores/annots';
+import { getSettings } from '../stores/settings';
 import type { Sidecar } from './schema';
 import { addToast } from '../stores/toasts';
 
 const SIZE_WARN_BYTES = 2 * 1024 * 1024;
 let warnedOnceForThisPath: string | null = null;
 
+// Fallback used when settings haven't loaded yet (e.g. very first save during
+// app boot, or in tests that don't initialise the settings store). Once
+// settings are hydrated, getSettings().saveDebounceMs takes over.
 export const SAVE_DEBOUNCE_MS = 500;
 
 export const savedPulse: Writable<number> = writable(0);
@@ -74,10 +78,11 @@ export async function flushSave(): Promise<void> {
 
 function scheduleSave(): void {
   if (timer) clearTimeout(timer);
+  const ms = getSettings().saveDebounceMs ?? SAVE_DEBOUNCE_MS;
   timer = setTimeout(() => {
     timer = null;
     doSave().catch((e) => console.error('[remarkdown] save failed:', e));
-  }, SAVE_DEBOUNCE_MS);
+  }, ms);
 }
 
 export function installSaveWatcher(): () => void {

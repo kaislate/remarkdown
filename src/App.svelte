@@ -24,6 +24,7 @@
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool } from './stores/tool';
+  import { get } from 'svelte/store';
 
   let pulse = $state(0);
   savedPulse.subscribe((v) => (pulse = v));
@@ -72,10 +73,18 @@
 
     // Apply settings that take effect once at startup. Article width is set
     // as a CSS variable so .text-frame's max-width follows it; default zoom
-    // seeds the zoomLevel store (within a session Ctrl+/- can override).
-    const s = $settings;
+    // seeds the zoomLevel store (within a session Ctrl+/- can override). The
+    // default highlight + ink colours seed the tool store so the next time
+    // the user picks the highlight or draw tool they start in their preferred
+    // colour rather than the historical preset[0].
+    const s = get(settings);
     document.documentElement.style.setProperty('--article-width', `${s.articleWidth}px`);
     zoomLevel.set(s.defaultZoom);
+    tool.update((t) => ({
+      ...t,
+      highlightColor: s.defaultHighlightColor,
+      drawColor: s.defaultInkColor,
+    }));
 
     // Keep --article-width in sync when the user changes it from the modal.
     const unsubWidth = settings.subscribe((next) => {
