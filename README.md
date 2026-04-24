@@ -2,13 +2,26 @@
 
 > **A desktop reader for markdown documents with PDF-style annotations** — highlight, sticky-note, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
 
-![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
+![Status: Beta](https://img.shields.io/badge/status-beta-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![License: TBD](https://img.shields.io/badge/license-TBD-lightgrey)
 
-> ⚠️ **Alpha software.** remarkdown is a personal project in active development. It works — the full v1 feature set is shipped and tested — but expect rough edges, missing polish, and occasional breakage. Not yet recommended for mission-critical reading workflows. Use on a copy of your documents first.
+> 🟢 **Beta.** The full v1 feature set is shipped, tested (213 unit/component tests + 6 Rust tests + 6 Playwright E2E scenarios, zero `svelte-check` warnings), and stable enough for daily reading. Polish is ongoing — bug reports welcome.
+
+---
+
+## ⬇️ Download
+
+Pre-built Windows installers are published with each tagged release. Grab the latest from the **[Releases page](../../releases/latest)**:
+
+- `remarkdown_<version>_x64-setup.exe` — NSIS installer (lighter, recommended)
+- `remarkdown_<version>_x64_en-US.msi` — MSI installer (for managed environments)
+
+Both produce the same app. After installing, launch **remarkdown** from the Start menu — drop a `.md` file onto the window or use the menu to open one.
+
+> Prefer to build from source or run in dev mode? See [Getting started](#-getting-started) below.
 
 ---
 
@@ -22,44 +35,51 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 
 ## 🎨 Features
 
+### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
 - **📝 Sticky notes** with inline textarea popovers, pinned to the right margin of anchored text
 - **✏️ Freehand drawings** with SVG strokes, 5 ink colors, auto-finalized after 3 seconds of idle
+- **🧹 Eraser tool** — single-click delete for any highlight, note, or drawing without confirmation
 - **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
 - **👻 Orphan panel** — when an edit moves a phrase beyond recognition, the annotation goes to an "orphaned" list instead of being lost
+
+### Reading
+- **📂 Drag-drop** any `.md` file from Explorer onto the window to open it
+- **🕘 Open Recent** menu with missing-file detection and grey-out
+- **🗺 VS Code-style minimap** in the right gutter for long-document navigation
+- **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
+- **🌓 Dark liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
+- **🎬 Animated splash** on launch (skipped in test runs)
+
+### Storage & resilience
 - **💾 Atomic sidecar writes** with debounced 500ms saves; retry with exponential backoff on write failures; synchronous flush on window close
-- **🔄 Open Recent** menu with missing-file detection and grey-out
-- **🌓 Dark liquid-glass UI** with a minimal hamburger + bottom tool rail, designed to disappear while you read
-- **🧪 Battle-tested** — 146 unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero svelte-check warnings
+- **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
+- **🧪 Battle-tested** — 213 unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero svelte-check warnings
 
 ---
 
-## 🚀 Getting started
+## 🎛 Tools
 
-### Prerequisites
+| Tool | Activation | Behavior |
+|------|-----------|----------|
+| 🎯 **Cursor** | Default | Normal text selection; copy works |
+| 🖍 **Highlight** | Tool rail | Drag-select text → highlight in current color. Right-click an existing highlight → Delete |
+| 📝 **Note** | Tool rail | Click in text → amber pin + inline popover for typing. Popover has a Delete button |
+| ✏️ **Draw** | Tool rail | Freehand stroke capture. 3s idle or tool-change finalizes. Right-click an existing drawing → Delete |
+| 🧹 **Eraser** | Tool rail | Click any annotation to delete it instantly — no confirmation |
 
-- **Node.js 20+**
-- **Rust** (stable toolchain)
-- Tauri 2 platform prerequisites: https://v2.tauri.app/start/prerequisites/
+Color strip appears above the rail when **Highlight** or **Draw** is active (5 presets each).
 
-### Run in development
+---
 
-```bash
-git clone https://github.com/kaislate/remarkdown.git
-cd remarkdown
-npm install
-npm run tauri dev
-```
+## ⌨️ Keyboard shortcuts
 
-> ⏱ First cold build compiles the Rust toolchain + Tauri dependencies — expect **3–8 minutes**. Subsequent launches are ~5 seconds.
-
-### Build a release installer
-
-```bash
-npm run tauri build
-```
-
-Produces platform-native installers in `src-tauri/target/release/bundle/`.
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl +` / `Ctrl =` | Zoom in |
+| `Ctrl -` | Zoom out |
+| `Ctrl 0` | Reset zoom |
+| `Esc` | Close popover / cancel selection |
 
 ---
 
@@ -94,35 +114,52 @@ For every markdown file `foo.md`, remarkdown writes annotations to a sibling fil
 }
 ```
 
-The file is git-friendly, human-editable, and semantically rich enough for an LLM to understand every annotation without needing the source document loaded.
+The file is git-friendly, human-editable, and semantically rich enough for an LLM to understand every annotation without the source document loaded.
 
 ---
 
-## 🎛 Tools
+## 🚀 Getting started
 
-| Tool | Activation | Behavior |
-|------|-----------|----------|
-| 🎯 **Cursor** | Default | Normal text selection; copy works |
-| 🖍 **Highlight** | Tool rail | Drag-select text → highlight in current color. Right-click an existing highlight → Delete |
-| 📝 **Note** | Tool rail | Click in text → amber pin + inline popover for typing. Popover has a Delete button |
-| ✏️ **Draw** | Tool rail | Freehand stroke capture. 3s idle or tool-change finalizes. Right-click an existing drawing → Delete |
+### Prerequisites
 
-Color strip appears above the rail when **Highlight** or **Draw** is active (5 presets each).
+- **Node.js 20+**
+- **Rust** (stable toolchain)
+- Tauri 2 platform prerequisites: https://v2.tauri.app/start/prerequisites/
+
+### Run in development
+
+```bash
+git clone https://github.com/kaislate/remarkdown.git
+cd remarkdown
+npm install
+npm run tauri dev
+```
+
+> ⏱ First cold build compiles the Rust toolchain + Tauri dependencies — expect **3–8 minutes**. Subsequent launches are ~5 seconds.
+
+### Build a release installer
+
+```bash
+npm run tauri build
+```
+
+Produces platform-native installers in `src-tauri/target/release/bundle/`:
+- `bundle/nsis/remarkdown_<version>_x64-setup.exe`
+- `bundle/msi/remarkdown_<version>_x64_en-US.msi`
 
 ---
 
 ## 🗺 Roadmap
 
-### ✅ v1 (shipped)
+### ✅ Beta (current)
 - Reader MVP with Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
-- All three annotation types with save/load round-trip
+- All four annotation types (highlight, note, drawing, eraser) with save/load round-trip
 - Anchoring with orphan detection and panel
-- Full error matrix: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2MB size warning
-- Right-click delete for highlights and drawings
-- Open Recent menu with existence validation
-- Playwright E2E coverage of the 5 spec scenarios
+- Full error matrix and resilience: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
+- Drag-and-drop file opening, Open Recent menu, minimap, zoom, frameless window, splash screen
+- Playwright E2E coverage of the spec scenarios
 
-### 🔮 v1.1+ (deferred, not started)
+### 🔮 Post-beta (deferred)
 - **Re-attach** orphaned annotations to their new locations
 - **File watcher** for external edits while reading
 - **Undo/redo** action log
@@ -133,20 +170,16 @@ Color strip appears above the rail when **Highlight** or **Draw** is active (5 p
 - **Cross-document commands** — *"summarize highlights across these N files"*
 - **Collaboration** — real-time sync / multi-user annotations
 
-See the full non-goals list in [`docs/superpowers/specs/2026-04-21-remarkdown-design.md`](docs/superpowers/specs/2026-04-21-remarkdown-design.md).
-
 ---
 
 ## 🧪 Testing
 
 ```bash
-npm test              # 146 Vitest unit + component tests
+npm test              # 213 Vitest unit + component tests
 npm run check         # svelte-check (0 errors, 0 warnings)
 npm run test:e2e      # 6 Playwright end-to-end scenarios
 cd src-tauri && cargo test   # 6 Rust tests
 ```
-
-Manual QA checklists for each shipped plan live in [`docs/QA-plan-1.md`](docs/QA-plan-1.md), [`QA-plan-2.md`](docs/QA-plan-2.md), and [`QA-plan-3.md`](docs/QA-plan-3.md).
 
 ---
 
@@ -181,29 +214,14 @@ remarkdown/
 │   ├── unit/                # Vitest unit tests
 │   ├── component/           # @testing-library/svelte component tests
 │   └── e2e/                 # Playwright end-to-end + support/
-├── docs/
-│   ├── superpowers/         # Design spec + implementation plans
-│   └── QA-plan-*.md         # Manual QA checklists per shipped plan
 └── README.md                # This file
 ```
 
 ---
 
-## 🏗 Development philosophy
-
-remarkdown was built iteratively over three self-contained plans, each producing a shippable milestone:
-
-1. **Plan 1 — Reader MVP** (`v0.1.0-reader-mvp`): scaffold + rendering pipeline + sidecar I/O infrastructure
-2. **Plan 2 — Annotation engine** (`v0.2.0-annotations`): anchoring + highlights + notes + drawings + tool rail + save/load
-3. **Plan 3 — Robustness polish** (`v0.3.0`): orphan panel + Open Recent + error matrix + Playwright E2E
-
-Each plan is in [`docs/superpowers/plans/`](docs/superpowers/plans/) as a reviewable artifact describing exactly what was built, why, and how it's tested. They're a reasonable onboarding ramp if you want to understand the codebase.
-
----
-
 ## 🤝 Contributing
 
-remarkdown is a personal project right now. If you find a bug or want a feature, please open an issue **before** opening a PR so we can talk about scope — plan documents move faster than code.
+remarkdown is a personal project right now. If you find a bug or want a feature, please open an issue **before** opening a PR so we can talk about scope.
 
 ---
 
@@ -215,7 +233,7 @@ TBD. Will settle on a license before a stable `v1.0` tag ships.
 
 <div align="center">
 
-🖍 · 📝 · ✏️
+🖍 · 📝 · ✏️ · 🧹
 
 *Read well. Mark well. Keep your thoughts where your source lives.*
 
