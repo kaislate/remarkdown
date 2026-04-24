@@ -31,6 +31,7 @@
   let disposeSave: (() => void) | null = null;
   let disposeDrop: (() => void) | null = null;
   let disposeSettings: (() => void) | null = null;
+  let disposeArticleWidth: (() => void) | null = null;
 
   // Sync the CSS variable on every zoom change so the root font-size scales
   // and all rem-based article styles (incl. the minimap clone) follow.
@@ -68,6 +69,20 @@
     // (theme, watermark, etc.) see the user's preferences instead of defaults.
     try { await refreshSettings(); } catch { /* fall back to defaults */ }
     disposeSettings = installSettingsAutosave();
+
+    // Apply settings that take effect once at startup. Article width is set
+    // as a CSS variable so .text-frame's max-width follows it; default zoom
+    // seeds the zoomLevel store (within a session Ctrl+/- can override).
+    const s = $settings;
+    document.documentElement.style.setProperty('--article-width', `${s.articleWidth}px`);
+    zoomLevel.set(s.defaultZoom);
+
+    // Keep --article-width in sync when the user changes it from the modal.
+    const unsubWidth = settings.subscribe((next) => {
+      document.documentElement.style.setProperty('--article-width', `${next.articleWidth}px`);
+    });
+    disposeArticleWidth = unsubWidth;
+
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
@@ -77,6 +92,7 @@
     disposeSave?.();
     disposeDrop?.();
     disposeSettings?.();
+    disposeArticleWidth?.();
     unsubZoom();
     unsubTool();
     unsubTheme();
