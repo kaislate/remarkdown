@@ -45,6 +45,14 @@
     overflow-x: hidden;
     display: flex;
     justify-content: center;
+    /* Navigation happens via the minimap (and wheel/keyboard); native scrollbar is noise. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   .empty {
     margin-top: 40vh;

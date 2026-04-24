@@ -11,6 +11,7 @@
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
+  import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import { refreshRecent } from './stores/recent';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -28,6 +29,7 @@
 
 <Viewer />
 <Minimap />
+<TitleBar />
 <GlassMenu />
 <ToolRail />
 <ColorStrip />
