@@ -1,5 +1,6 @@
 <script lang="ts">
   import { doc } from '../stores/doc';
+  import { settings } from '../stores/settings';
 
   function basename(path: string): string {
     const last = path.split(/[\\/]/).pop() ?? path;
@@ -7,8 +8,12 @@
   }
 </script>
 
-{#if $doc}
-  <div class="left-title" aria-hidden="true">
+{#if $doc && $settings.watermarkEnabled}
+  <div
+    class="left-title"
+    aria-hidden="true"
+    style:--watermark-opacity={String($settings.watermarkOpacity)}
+  >
     <span class="text">{basename($doc.path)}</span>
   </div>
 {/if}
@@ -46,7 +51,7 @@
     letter-spacing: -0.04em;
     line-height: 1;
     color: var(--fg-0);
-    opacity: 0.08;
+    opacity: var(--watermark-opacity, 0.08);
     white-space: nowrap;
     user-select: none;
     /* Fade the bottom of the letters into transparency. The mask is applied
