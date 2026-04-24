@@ -27,11 +27,15 @@
     </div>
   {:else}
     <div class="content">
-      <article class="viewer" bind:this={articleEl}>
-        {@html $doc.html}
-      </article>
-      <HighlightLayer />
-      <NoteLayer />
+      <div class="text-frame">
+        <article class="viewer md-rendered" bind:this={articleEl}>
+          {@html $doc.html}
+        </article>
+        <HighlightLayer />
+        <NoteLayer />
+      </div>
+      <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
+           across the full window width, not just within the text column. -->
       <DrawLayer />
     </div>
   {/if}
@@ -45,6 +49,16 @@
     overflow-x: hidden;
     display: flex;
     justify-content: center;
+    /* Keep flex children at their intrinsic cross-axis (height) so .content grows
+       with the text beneath. Without this, default align-items: stretch clamps
+       .content to 100vh and the DrawLayer SVG inside ends up viewport-height
+       only — meaning you can't draw on content below the first screen. */
+    align-items: flex-start;
+    /* Reserve space on the right for the minimap (140px wide + 16px gutter) plus
+       a comfortable buffer, so centered content doesn't overlap with it on
+       typical windows. This also shifts content left from absolute-center,
+       reducing the empty margin on the left side. */
+    padding-right: 172px;
     /* Navigation happens via the minimap (and wheel/keyboard); native scrollbar is noise. */
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -61,37 +75,23 @@
     font-size: 14px;
     text-align: center;
   }
+  /* Full-width container so the draw tool can paint anywhere on the canvas. */
   .content {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+  }
+  /* Text column — centered, positioning context for highlight/note layers. */
+  .text-frame {
     position: relative;
     max-width: 720px;
     width: 100%;
+    margin: 0 auto;
   }
-  .content .viewer {
-    max-width: none;
-    width: 100%;
-  }
+  /* Layout only. Content styling lives in src/styles/article.css via the
+     `md-rendered` class so the minimap clone gets the same layout. */
   .viewer {
-    max-width: 720px;
     width: 100%;
     padding: 96px 48px 160px;
-    color: var(--fg-0);
   }
-  .viewer :global(h1),
-  .viewer :global(h2),
-  .viewer :global(h3) {
-    font-family: var(--font-sans);
-    color: var(--fg-0);
-    letter-spacing: -0.01em;
-  }
-  .viewer :global(h1) { font-size: 2rem; margin-top: 2.2em; }
-  .viewer :global(h2) { font-size: 1.5rem; margin-top: 2em; }
-  .viewer :global(p) { margin: 1em 0; }
-  .viewer :global(a) { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
-  .viewer :global(code) { font-family: var(--font-mono); font-size: 0.92em; background: var(--bg-2); padding: 0.1em 0.3em; border-radius: 4px; }
-  .viewer :global(pre) { background: var(--bg-2); padding: 14px 16px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--glass-border); }
-  .viewer :global(pre code) { background: transparent; padding: 0; }
-  .viewer :global(blockquote) { border-left: 3px solid var(--accent); padding-left: 14px; margin-left: 0; color: var(--fg-1); }
-  .viewer :global(img) { max-width: 100%; border-radius: 6px; }
-  .viewer :global(table) { border-collapse: collapse; margin: 1em 0; }
-  .viewer :global(th), .viewer :global(td) { border: 1px solid var(--glass-border); padding: 6px 10px; }
 </style>

@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { flushSync } from 'svelte';
+import { get } from 'svelte/store';
 import Minimap from '../../src/components/Minimap.svelte';
 import { doc } from '../../src/stores/doc';
 import { viewerScroll } from '../../src/stores/viewport';
+import { minimapShown } from '../../src/stores/ui';
 
 function docState(html: string) {
   return {
@@ -23,6 +26,7 @@ beforeEach(() => {
   document.body.innerHTML = '';
   doc.set(null);
   viewerScroll.set(null);
+  minimapShown.set(true);
 });
 afterEach(() => { document.body.innerHTML = ''; });
 
@@ -30,12 +34,14 @@ describe('Minimap', () => {
   it('does not render when no doc is loaded', () => {
     render(Minimap);
     expect(document.querySelector('.minimap')).toBeNull();
+    expect(document.querySelector('.minimap-toggle')).toBeNull();
   });
 
-  it('renders the minimap container when a doc is loaded', () => {
+  it('renders the minimap container and toggle when a doc is loaded', () => {
     render(Minimap);
     flushSync(() => doc.set(docState('<p data-block-id="p:1">hello world</p>')));
     expect(document.querySelector('.minimap')).not.toBeNull();
+    expect(document.querySelector('.minimap-toggle')).not.toBeNull();
   });
 
   it('renders a scaled clone of the doc html inside the minimap', () => {
@@ -52,8 +58,35 @@ describe('Minimap', () => {
     expect(document.querySelector('.viewport-indicator')).not.toBeNull();
   });
 
-  it('clicking the minimap sets the viewer scrollTop', () => {
-    // Seed a fake scroll element with mocked layout properties.
+  it('applies the hidden class to the minimap when minimapShown is false', () => {
+    render(Minimap);
+    flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));
+    flushSync(() => minimapShown.set(false));
+    const map = document.querySelector('.minimap') as HTMLElement;
+    expect(map.classList.contains('hidden')).toBe(true);
+  });
+
+  it('applies the collapsed class to the toggle when hidden', () => {
+    render(Minimap);
+    flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));
+    flushSync(() => minimapShown.set(false));
+    const toggle = document.querySelector('.minimap-toggle') as HTMLElement;
+    expect(toggle.classList.contains('collapsed')).toBe(true);
+  });
+
+  it('clicking the toggle flips minimapShown', async () => {
+    const user = userEvent.setup();
+    render(Minimap);
+    flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));
+    expect(get(minimapShown)).toBe(true);
+    const toggle = document.querySelector('.minimap-toggle') as HTMLButtonElement;
+    await user.click(toggle);
+    expect(get(minimapShown)).toBe(false);
+    await user.click(toggle);
+    expect(get(minimapShown)).toBe(true);
+  });
+
+  it('clicking the minimap body sets the viewer scrollTop', () => {
     const scrollEl = document.createElement('div');
     Object.defineProperty(scrollEl, 'scrollHeight', { value: 2000, configurable: true });
     Object.defineProperty(scrollEl, 'clientHeight', { value: 600, configurable: true });
@@ -66,28 +99,23 @@ describe('Minimap', () => {
     document.body.appendChild(scrollEl);
 
     render(Minimap);
-    // Set doc first so the {#if} renders the minimap and bind:this captures the element,
-    // THEN set the scroll element so the subscribe runs against a non-null minimapEl.
     flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));
 
     const map = document.querySelector('.minimap') as HTMLElement;
     map.getBoundingClientRect = () =>
-      ({ top: 0, left: 0, right: 100, bottom: 800, width: 100, height: 800, x: 0, y: 0 } as DOMRect);
-    Object.defineProperty(map, 'clientWidth', { value: 100, configurable: true });
+      ({ top: 0, left: 0, right: 140, bottom: 800, width: 140, height: 800, x: 0, y: 0 } as DOMRect);
+    Object.defineProperty(map, 'clientWidth', { value: 140, configurable: true });
     Object.defineProperty(map, 'clientHeight', { value: 800, configurable: true });
 
-    // Now set the scroll element; the subscribe callback fires updateLayout against minimapEl.
     flushSync(() => viewerScroll.set(scrollEl));
 
-    // jsdom lacks PointerEvent — synthesize one via a plain Event with pointer properties.
     const evt = new Event('pointerdown', { bubbles: true, cancelable: true }) as any;
-    evt.clientX = 50;
+    evt.clientX = 70;
     evt.clientY = 100;
     evt.pointerId = 1;
     evt.pointerType = 'mouse';
     map.dispatchEvent(evt);
 
-    // scrollTop should have been written to something non-zero.
     expect(scrollTopValue).toBeGreaterThan(0);
   });
 });

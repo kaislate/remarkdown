@@ -3,6 +3,7 @@
   import './styles/theme-dark.css';
   import './styles/glass.css';
   import './styles/highlights.css';
+  import './styles/article.css';
   import Viewer from './components/Viewer.svelte';
   import GlassMenu from './components/GlassMenu.svelte';
   import ToolRail from './components/ToolRail.svelte';
