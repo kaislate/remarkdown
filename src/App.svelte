@@ -10,6 +10,7 @@
   import ToolRail from './components/ToolRail.svelte';
   import ColorStrip from './components/ColorStrip.svelte';
   import OrphanPanel from './components/OrphanPanel.svelte';
+  import SettingsModal from './components/SettingsModal.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
@@ -84,6 +85,7 @@
 <ColorStrip />
 <ZoomControls />
 <OrphanPanel />
+<SettingsModal />
 <CorruptSidecarModal />
 <ErrorBanner />
 <Toasts />
