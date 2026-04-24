@@ -1,19 +1,26 @@
 <script lang="ts">
   import { doc } from '../stores/doc';
   import { currentViewerRoot } from '../stores/annots';
+  import { viewerScroll } from '../stores/viewport';
   import HighlightLayer from './HighlightLayer.svelte';
   import NoteLayer from './NoteLayer.svelte';
   import DrawLayer from './DrawLayer.svelte';
 
   let articleEl = $state<HTMLElement | null>(null);
+  let scrollEl = $state<HTMLElement | null>(null);
 
   $effect(() => {
     if (articleEl) currentViewerRoot.set(articleEl);
     return () => currentViewerRoot.set(null);
   });
+
+  $effect(() => {
+    if (scrollEl) viewerScroll.set(scrollEl);
+    return () => viewerScroll.set(null);
+  });
 </script>
 
-<div class="scroll">
+<div class="scroll" bind:this={scrollEl}>
   {#if $doc === null}
     <div class="empty">
       <p>Open a markdown file to start reading.</p>
