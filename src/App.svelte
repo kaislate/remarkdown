@@ -12,6 +12,7 @@
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
+  import Splash from './components/Splash.svelte';
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
@@ -77,6 +78,9 @@
 <CorruptSidecarModal />
 <ErrorBanner />
 <Toasts />
+{#if import.meta.env.MODE !== 'e2e'}
+  <Splash />
+{/if}
 
 {#if pulse > 0}
   {#key pulse}
