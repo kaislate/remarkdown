@@ -4,6 +4,15 @@
 
 > **A desktop reader for markdown documents with PDF-style annotations** — highlight, sticky-note, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
 
+<div align="center">
+
+| | |
+|:---:|:---:|
+| <img src="examples/remarkdown_screenshot1.png" alt="Reading view with vertical watermark, article rendering, and minimap" width="100%"> | <img src="examples/remarkdown_screenshot2.png" alt="Settings panel showing appearance, reading, annotation, and save sections" width="100%"> |
+| <sub>**Reading view** — vertical filename watermark, syntax-highlighted article, right-gutter minimap.</sub> | <sub>**Settings panel** — 12 preferences across appearance, reading, annotation, and save behaviour.</sub> |
+
+</div>
+
 ![Status: Beta](https://img.shields.io/badge/status-beta-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
