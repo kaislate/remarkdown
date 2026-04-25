@@ -5,6 +5,7 @@
   import './styles/highlights.css';
   import './styles/article.css';
   import './styles/cursors.css';
+  import './styles/scrollbars.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';
