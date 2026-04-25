@@ -428,15 +428,13 @@
     transform: translateX(-50%) scale(1.06) rotate(-1.2deg);
   }
 
-  /* Tip 6 — zoom pill at bottom-left. Bottom offset chosen so arrow
-     head (SVG y≈64) lands at screen bottom ≈37 — roughly the vertical
-     centre of the zoom pill which occupies bottom 22..52. Arrow tail
-     sits at the top-RIGHT of its SVG (curve sweeps down-left to the
-     zoom pill), so align-items: flex-start pulls the label up so it
-     sits visually anchored to the tail. */
+  /* Tip 6 — zoom pill at bottom-left. Arrow tail sits at the top-RIGHT
+     of its SVG (curve sweeps down-left to the zoom pill), so
+     align-items: flex-start pulls the label up so it sits visually
+     anchored to the tail. */
   .tip-zoom {
-    bottom: 31px;
-    left: 160px;
+    bottom: 40px;
+    left: 148px;
     flex-direction: row;
     align-items: flex-start;
   }
@@ -452,16 +450,10 @@
 
      column-reverse so the LABEL ends up on top (clear of the zoom
      tip's label band) and the SVG sits at the BOTTOM of the tip
-     element where its head can reach the pill. With bottom:85 the
-     SVG occupies screen bottom 85..155; arrow head at SVG y=64 lands
-     at screen bottom 155-64=91 — slightly above pill centre, biting
-     into the upper half of the pill so the head sits firmly on the
-     pill rather than at its bottom edge. With left:60 the head (SVG
-     x=8) lands at screen x=68 — just right of the pill's horizontal
-     centre, into the body of the pill where it reads as a hit. */
+     element where its head can reach the pill. */
   .tip-remarks {
-    bottom: 85px;
-    left: 60px;
+    bottom: 98px;
+    left: 72px;
     flex-direction: column-reverse;
     align-items: flex-start;
     gap: 0;
