@@ -118,14 +118,27 @@
 
           <div class="row">
             <label for="setting-max-recent">Max recent files</label>
-            <input
-              id="setting-max-recent"
-              type="number"
-              min="1"
-              max="50"
-              value={$settings.maxRecent}
-              onchange={(e) => updateSettings({ maxRecent: Math.max(1, Math.min(50, Math.round(Number((e.currentTarget as HTMLInputElement).value)))) })}
-            />
+            <div class="slider-cell">
+              <input
+                id="setting-max-recent"
+                type="range"
+                min="1"
+                max="50"
+                step="1"
+                value={$settings.maxRecent}
+                oninput={(e) => updateSettings({ maxRecent: Number((e.currentTarget as HTMLInputElement).value) })}
+              />
+              <input
+                type="number"
+                class="value-input"
+                min="1"
+                max="50"
+                step="1"
+                aria-label="Max recent files"
+                value={$settings.maxRecent}
+                onchange={(e) => updateSettings({ maxRecent: Math.max(1, Math.min(50, Math.round(Number((e.currentTarget as HTMLInputElement).value)))) })}
+              />
+            </div>
           </div>
 
           <div class="row">
@@ -423,6 +436,42 @@
     width: 80px;
     min-width: 0;
     text-align: right;
+  }
+
+  /* Editable variant of the slider value badge — tabular numerals,
+     accent-coloured caret on focus. Used for sliders where typing a
+     specific number is natural (e.g. max recent files). Spinners
+     stripped so the cell stays compact. */
+  .value-input {
+    background: var(--bg-2);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--fg-2);
+    font-family: inherit;
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+    width: 56px;
+    text-align: right;
+    padding: 1px 6px;
+    appearance: textfield;
+    -webkit-appearance: textfield;
+    transition: border-color 0.12s ease, color 0.12s ease;
+    cursor: text;
+    min-width: 0;
+  }
+  .value-input::-webkit-outer-spin-button,
+  .value-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .value-input:hover {
+    color: var(--fg-1);
+  }
+  .value-input:focus-visible {
+    outline: none;
+    color: var(--fg-0);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
   .row input[type="checkbox"] {
