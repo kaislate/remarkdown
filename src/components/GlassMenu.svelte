@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { getVersion } from '@tauri-apps/api/app';
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
   import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
@@ -8,6 +10,32 @@
   import { addToast } from '../stores/toasts';
 
   let open = $state(false);
+
+  // Pre-release tag rendered next to the wordmark while the build is
+  // not yet 1.0 stable (zero-major) OR has any semver pre-release
+  // suffix (-alpha / -beta / -rc / -dev). The label flips to ALPHA
+  // / RC where appropriate so the tag accurately reflects the stage.
+  let preTagLabel = $state<string | null>(null);
+  onMount(async () => {
+    try {
+      const v = await getVersion();
+      preTagLabel = derivePreReleaseLabel(v);
+    } catch {
+      // Outside Tauri (vitest, storybook) — skip the tag.
+    }
+  });
+  function derivePreReleaseLabel(v: string): string | null {
+    const lower = v.toLowerCase();
+    if (lower.includes('-alpha')) return 'ALPHA';
+    if (lower.includes('-rc')) return 'RC';
+    if (lower.includes('-beta')) return 'BETA';
+    if (lower.includes('-dev')) return 'DEV';
+    // Zero-major versions (0.x.y) are pre-1.0 by convention — call them
+    // BETA so installed copies signal "this is not the stable release"
+    // even when no explicit suffix is present.
+    if (/^0\./.test(v)) return 'BETA';
+    return null;
+  }
 
   function toggle() { open = !open; }
 
@@ -85,6 +113,16 @@
     --><span class="seg ark">ark</span><!--
     --><span class="seg d">d</span><!--
     --><span class="seg own">own</span></span>
+
+  {#if preTagLabel}
+    <!-- Animated pre-release tag. aria-hidden so screen readers
+         don't double-read the version (the actual version string is
+         exposed via the Settings/Update modal). -->
+    <span class="pre-tag" aria-hidden="true">
+      <span class="pre-tag-text">{preTagLabel}</span>
+      <span class="pre-tag-shine" aria-hidden="true"></span>
+    </span>
+  {/if}
 
   {#if open}
     <div class="popover glass" role="menu">
@@ -268,6 +306,105 @@
     opacity: 1;
     clip-path: inset(0 0 0 0);
   }
+  /* Animated pre-release tag (BETA / ALPHA / RC / DEV) shown to the
+     right of the wordmark. Three layers of animation:
+       1. A slow accent-coloured glow pulse on the box-shadow so the
+          tag always reads as "alive" without being distracting.
+       2. A diagonal shine that sweeps across the tag every ~3.5s,
+          like a glint on a metal pin.
+       3. A subtle hue-shift on the gradient stops via animated
+          background-position so the gradient itself drifts. */
+  .pre-tag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 10px;
+    padding: 2px 7px 3px;
+    border-radius: 4px;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        110deg,
+        var(--accent) 0%,
+        #b59cff 35%,
+        var(--accent) 70%,
+        #8b7fff 100%
+      );
+    background-size: 220% 100%;
+    background-position: 0% 50%;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+    box-shadow:
+      0 1px 5px rgba(139, 127, 255, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    animation:
+      pre-tag-pulse 2.6s ease-in-out infinite,
+      pre-tag-drift 7s linear infinite;
+    /* Vertical-align with the wordmark cap-height. The wordmark is 18px
+       /1.0 line-height; the pin is ~14px tall with the padding above —
+       lift it so it centres on x-height rather than baseline. */
+    transform: translateY(-1px);
+  }
+  .pre-tag-text {
+    position: relative;
+    z-index: 2;
+  }
+  /* Diagonal shine that sweeps across the tag periodically. The 80%
+     blank tail of the keyframe is what gives the impression of "wait
+     a beat, then sweep" instead of a continuous loop. */
+  .pre-tag-shine {
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.45) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: skewX(-18deg);
+    z-index: 1;
+    animation: pre-tag-shine 3.4s ease-in-out infinite;
+  }
+  @keyframes pre-tag-pulse {
+    0%, 100% {
+      box-shadow:
+        0 1px 5px rgba(139, 127, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    50% {
+      box-shadow:
+        0 2px 12px rgba(139, 127, 255, 0.7),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+  }
+  @keyframes pre-tag-drift {
+    0%   { background-position: 0%   50%; }
+    100% { background-position: 200% 50%; }
+  }
+  @keyframes pre-tag-shine {
+    0%   { left: -60%; }
+    35%  { left: 130%; }
+    100% { left: 130%; }
+  }
+  /* Respect reduced-motion preferences — kill the pulse + shine but
+     keep the gradient + shadow so the tag is still recognisable. */
+  @media (prefers-reduced-motion: reduce) {
+    .pre-tag,
+    .pre-tag-shine {
+      animation: none;
+    }
+  }
+
   .bar {
     width: 16px;
     height: 1.5px;
