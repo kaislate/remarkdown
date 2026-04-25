@@ -198,15 +198,17 @@
     </div>
 
     <!-- Tip 8: Reader-mode button (right of the zoom controls). A sketchy
-         ring encircles the button and "Focus mode" arcs above it on a
-         curved baseline. SVG-only tip — no rectangular label. -->
+         ring encircles the button and "Focus mode" arcs to the right
+         of it on a curved baseline. SVG-only tip — no rectangular
+         label. -->
     <div class="tip tip-reader">
-      <svg class="reader-svg" viewBox="0 0 140 110" width="140" height="110" aria-hidden="true" use:drawRough={ringFocus}>
+      <svg class="reader-svg" viewBox="0 0 240 110" width="240" height="110" aria-hidden="true" use:drawRough={ringFocus}>
         <defs>
-          <!-- Convex-up arc: starts low-left, peaks high-centre, ends
-               low-right. Text along it reads naturally left-to-right
-               with a slight smile rise toward the middle. -->
-          <path id="arc-focus-mode" d="M 18,50 Q 70,18 122,50" fill="none" />
+          <!-- Soft up-and-over arc starting at the upper-right of the
+               ring, peaking above, settling out to the right. Text
+               along it reads naturally left-to-right with a hand-
+               drawn rise then gentle drop. -->
+          <path id="arc-focus-mode" d="M 108,52 Q 165,28 220,62" fill="none" />
         </defs>
         <text class="arc-text">
           <textPath href="#arc-focus-mode" startOffset="50%" text-anchor="middle">
