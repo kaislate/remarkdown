@@ -27,6 +27,9 @@
   import { loadDocument } from './stores/doc';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc } from './lib/tauri-api';
+  import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
+  import { addToast } from './stores/toasts';
+  import { openModal } from './stores/modals';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
@@ -94,6 +97,27 @@
     '4': 'draw',
     '0': 'eraser',
   };
+  // Best-effort silent update check on launch. If an update is found,
+  // surface a non-blocking toast with a "View" action that opens the
+  // UpdateModal — never auto-install or auto-open the modal.
+  async function runBackgroundUpdateCheck(): Promise<void> {
+    try {
+      const update = await checkForUpdate();
+      if (!update) return;
+      addToast({
+        kind: 'info',
+        message: `Update available: v${update.version}`,
+        action: {
+          label: 'View',
+          onClick: () => openModal({ kind: 'check-update' }),
+        },
+      });
+    } catch {
+      // Network down, manifest missing, signing problem, non-Tauri host —
+      // all silent. Manual "Check for updates…" surfaces specific errors.
+    }
+  }
+
   function onToolShortcut(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target as HTMLElement | null;
@@ -170,6 +194,13 @@
           markMissing(last);
         }
       }
+    }
+
+    // Silent background check for app updates. We deliberately don't
+    // await this — the rest of app start happens in parallel — and
+    // failures are swallowed so a flaky network never blocks launch.
+    if (s.autoCheckForUpdates) {
+      void runBackgroundUpdateCheck();
     }
   });
   onDestroy(() => {

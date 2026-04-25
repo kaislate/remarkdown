@@ -137,6 +137,16 @@
               onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
             />
           </div>
+
+          <div class="row">
+            <label for="setting-auto-update">Check for updates on launch</label>
+            <input
+              id="setting-auto-update"
+              type="checkbox"
+              checked={$settings.autoCheckForUpdates}
+              onchange={(e) => updateSettings({ autoCheckForUpdates: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
         </section>
 
         <section>
