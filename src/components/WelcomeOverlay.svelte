@@ -450,17 +450,17 @@
   /* Tip 7 — re.marks pill (just above the zoom pill at left:22, bottom:68,
      ~85px wide → centre near screen (60, 83 from bottom)).
 
-     Column layout: the LABEL sits above the arrow so its rectangle
-     doesn't fight for the same vertical band as the zoom tip's label.
-     The SVG sits below the label with its head at lower-left pointing
-     down at the pill. With left:52 the head (SVG x=8) lands at screen
-     x≈60 — the pill's horizontal centre. With bottom:77 the head
-     (SVG y=64 in a 70-tall SVG) lands at screen bottom ≈83 — the
-     pill's vertical centre. */
+     column-reverse so the LABEL ends up on top (clear of the zoom
+     tip's label band) and the SVG sits at the BOTTOM of the tip
+     element where its head can reach the pill. With bottom:77 the
+     SVG occupies screen bottom 77..147; arrow head at SVG y=64 lands
+     at screen bottom 147-64=83 — the pill's vertical centre. With
+     left:52 the head (SVG x=8) lands at screen x=60 — the pill's
+     horizontal centre. */
   .tip-remarks {
     bottom: 77px;
     left: 52px;
-    flex-direction: column;
+    flex-direction: column-reverse;
     align-items: flex-start;
     gap: 0;
   }
