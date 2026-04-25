@@ -6,7 +6,11 @@
   // Animation timing (ms). Kept as a single source of truth.
   const HOLD_BEFORE_REVEAL = 900;     // "re.md" sits before transformation
   const REVEAL_DURATION = 1500;       // dot collapses + ark/own expand
-  const HOLD_AFTER_REVEAL = 500;      // pause on "remarkdown"
+  // The BETA pin fades in at the end of REVEAL_DURATION over ~550ms,
+  // so HOLD_AFTER_REVEAL needs to be >= pin fade-in + a beat of stable
+  // display, otherwise the pin is barely visible before the splash
+  // starts fading. 1800ms gives ~1.25s of fully-visible pin time.
+  const HOLD_AFTER_REVEAL = 1800;     // pause on "remarkdown" + BETA pin
   const FADE_OUT_MS = 400;
   const TOTAL_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION + HOLD_AFTER_REVEAL;
 
