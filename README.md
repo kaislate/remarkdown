@@ -8,10 +8,10 @@
 
 | | |
 |:---:|:---:|
-| <img src="examples/remarkdown_050beta_screenshot1.png" alt="Reading view with vertical filename watermark, syntax-highlighted article, and right-gutter minimap" width="100%"> | <img src="examples/remarkdown_050beta_screenshot2.png" alt="Hand-drawn welcome tutorial overlay with arrows pointing at the chrome elements" width="100%"> |
-| <sub>**Reading view** — vertical watermark, syntax-highlighted article, right-gutter minimap, animated BETA pin under the wordmark.</sub> | <sub>**Welcome tutorial** — hand-drawn arrows label every chrome element on first launch.</sub> |
-| <img src="examples/remarkdown_050beta_screenshot3.png" alt="re.marks side panel showing sentence context for each annotation" width="100%"> | <img src="examples/remarkdown_050beta_screenshot4.png" alt="Settings panel showing the full preference list" width="100%"> |
-| <sub>**re.marks panel** — every annotation with its surrounding sentence context, click to jump.</sub> | <sub>**Settings panel** — 18 preferences across appearance, reading, annotation, and updates.</sub> |
+| <img src="examples/remarkdown_050beta_screenshot1.png" alt="Reading view with vertical filename watermark, syntax-highlighted article, and right-gutter minimap" width="100%"> | <img src="examples/remarkdown_050beta_screenshot2.png" alt="Long document with the minimap showing the document outline, functional task-list checkboxes, and a syntax-highlighted Rust code block" width="100%"> |
+| <sub>**Reading view** — vertical watermark, syntax-highlighted article, right-gutter minimap, animated BETA pin under the wordmark.</sub> | <sub>**Navigation, checkboxes & code** — drag in the right-gutter minimap to jump anywhere in long documents; task-list `- [ ]` items render as live checkboxes; fenced code blocks pick up real per-language Shiki theming (Rust shown here).</sub> |
+| <img src="examples/remarkdown_050beta_screenshot3.png" alt="Article with multiple highlight colors, a re.mark popover open to the right of an anchored word, and freehand drawing strokes overlaid on the text" width="100%"> | <img src="examples/remarkdown_050beta_screenshot4.png" alt="Settings panel showing the full preference list" width="100%"> |
+| <sub>**Annotate freely** — highlight passages in 5 preset colors, drop re.marks anchored to a single word with inline popovers, and doodle on top of the text with the freehand draw tool.</sub> | <sub>**Settings panel** — 18 preferences across appearance, reading, annotation, and updates.</sub> |
 
 </div>
 

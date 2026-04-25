@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>remarkdown — beta launch banner</title>
+<style>
+  /* Brand tokens cribbed from src/styles/theme.css */
+  :root {
+    --bg-0: #0d0d10;
+    --fg-0: #f1f1f3;
+    --accent: #8b7fff;
+    --glow-1: rgba(139, 127, 255, 0.10);
+    --glow-2: rgba(207, 159, 255, 0.07);
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  }
+
+  /* Banner canvas — sized to the recording viewport. */
+  html, body {
+    margin: 0;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+    background: var(--bg-0);
+    font-family: var(--font-sans);
+    color: var(--fg-0);
+  }
+  .stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 28% 32%, var(--glow-1), transparent 55%),
+      radial-gradient(circle at 72% 68%, var(--glow-2), transparent 55%),
+      var(--bg-0);
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .logo {
+    margin: 0;
+    font-size: 132px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    white-space: nowrap;
+    animation: logoIn 0.6s 0.1s ease-out backwards;
+  }
+  @keyframes logoIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .logo span {
+    display: inline-block;
+    vertical-align: baseline;
+  }
+  .dot {
+    color: var(--accent);
+    animation: dotOut 0.55s 0.9s forwards cubic-bezier(0.5, 0, 0.7, 0.4);
+    transform-origin: center;
+  }
+  @keyframes dotOut {
+    0%   { opacity: 1; max-width: 0.45em; transform: translateY(0)   scale(1);   }
+    100% { opacity: 0; max-width: 0;       transform: translateY(0.4em) scale(0.6); }
+  }
+  .ark, .own {
+    max-width: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  .ark { animation: unfold 0.85s 1.0s forwards cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .own { animation: unfold 0.85s 1.2s forwards cubic-bezier(0.2, 0.7, 0.2, 1); }
+  @keyframes unfold {
+    0%   { max-width: 0;     opacity: 0.4; clip-path: inset(0 100% 0 0); }
+    100% { max-width: 4.5ch; opacity: 1;   clip-path: inset(0 0 0 0);    }
+  }
+
+  /* Pre-release pin — same visual language as the in-app version,
+     scaled up for banner sizes. Three layered animations + a one-shot
+     fade-in. */
+  .pre-tag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 22px 8px;
+    border-radius: 9px;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        110deg,
+        var(--accent) 0%,
+        #b59cff 35%,
+        var(--accent) 70%,
+        #8b7fff 100%
+      );
+    background-size: 220% 100%;
+    background-position: 0% 50%;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow:
+      0 3px 18px rgba(139, 127, 255, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    opacity: 0;
+    animation:
+      pre-tag-in 0.55s 1.7s ease-out both,
+      pre-tag-pulse 2.6s 2.25s ease-in-out infinite,
+      pre-tag-drift 7s 2.25s linear infinite;
+  }
+  .pre-tag-text { position: relative; z-index: 2; }
+  .pre-tag-shine {
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      rgba(255, 255, 255, 0)   0%,
+      rgba(255, 255, 255, 0.5) 50%,
+      rgba(255, 255, 255, 0)   100%
+    );
+    transform: skewX(-18deg);
+    z-index: 1;
+    animation: pre-tag-shine 3.4s 2.9s ease-in-out infinite;
+  }
+  @keyframes pre-tag-in {
+    0%   { opacity: 0; transform: translateY(8px) scale(0.9); }
+    100% { opacity: 1; transform: translateY(0)   scale(1);   }
+  }
+  @keyframes pre-tag-pulse {
+    0%, 100% {
+      box-shadow:
+        0 3px 18px rgba(139, 127, 255, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    50% {
+      box-shadow:
+        0 5px 28px rgba(139, 127, 255, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+  }
+  @keyframes pre-tag-drift {
+    0%   { background-position: 0%   50%; }
+    100% { background-position: 200% 50%; }
+  }
+  @keyframes pre-tag-shine {
+    0%   { left: -60%; }
+    35%  { left: 130%; }
+    100% { left: 130%; }
+  }
+
+  /* Fades in after the BETA pin lands so the tagline reads as the
+     final beat of the banner. */
+  .tagline {
+    margin-top: 6px;
+    font-size: 22px;
+    color: rgba(241, 241, 243, 0.72);
+    letter-spacing: 0.02em;
+    opacity: 0;
+    animation: tagline-in 0.6s 2.6s ease-out both;
+  }
+  @keyframes tagline-in {
+    0%   { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 0.72; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="stack" id="stack">
+      <h1 class="logo">
+        <span class="re">re</span><!--
+        --><span class="dot">.</span><!--
+        --><span class="m">m</span><!--
+        --><span class="ark">ark</span><!--
+        --><span class="d">d</span><!--
+        --><span class="own">own</span>
+      </h1>
+
+      <span class="pre-tag">
+        <span class="pre-tag-text">BETA</span>
+        <span class="pre-tag-shine"></span>
+      </span>
+
+      <div class="tagline">A desktop reader for markdown documents — with PDF-style annotations.</div>
+    </div>
+  </div>
+  <script>
+    // Loop the splash sequence by cloning + replacing the animated
+    // children every LOOP_MS. Each replacement is a fresh insertion
+    // so the CSS animations (with their absolute delays) restart
+    // from t=0. We avoid page reloads — those would flash white in
+    // the recording.
+    //
+    // Timeline inside one cycle:
+    //   0.0s   "re.md" fades in
+    //   0.9s   dot starts to fade
+    //   1.0s   "ark" begins unfolding
+    //   1.2s   "own" begins unfolding
+    //   1.7s   BETA pin begins fading in
+    //   2.6s   tagline begins fading in
+    //   3.2s   everything settled
+    //   3.2-6.5s   stable hold (BETA pin pulses + shine sweeps)
+    //   6.5s   loop reset → next cycle
+    const LOOP_MS = 6500;
+    let stack = document.getElementById('stack');
+
+    function resetAnimations() {
+      // Clone the entire stack so every animated element restarts.
+      // Re-bind `stack` to the fresh node so the next reset operates
+      // on the live element, not the now-detached old one.
+      const fresh = stack.cloneNode(true);
+      stack.replaceWith(fresh);
+      stack = fresh;
+    }
+
+    // Wait one full cycle, then reset on every interval thereafter.
+    setInterval(resetAnimations, LOOP_MS);
+  </script>
+</body>
+</html>
