@@ -111,7 +111,9 @@
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowTools}></svg>
     </div>
 
-    <!-- Tip 5: Title bar drag area (top-center) -->
+    <!-- Tip 5: Title bar drag area (top-center). Column layout so the
+         label sits BELOW the arrow; the arrow's head points up at the
+         centre of the title bar. -->
     <div class="tip tip-titlebar">
       <svg class="arrow" viewBox="0 0 30 60" width="30" height="60" aria-hidden="true" use:drawRough={arrowTitlebar}></svg>
       <div class="label">Hold to drag the window from here</div>
@@ -242,19 +244,22 @@
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
 
-  /* Tip 1 — points at the hamburger (top-left). The arrow rises up and
-     to the left toward the menu button at (~33, 33). */
+  /* Tip 1 — points at the hamburger (top-left). The arrow's tail sits
+     at the bottom-right of its SVG (the curve sweeps up-left to the
+     hamburger), so align-items: flex-end pulls the label down so it
+     sits visually anchored to the tail of the arrow. */
   .tip-hamburger {
     top: 70px;
     left: 70px;
     flex-direction: row;
+    align-items: flex-end;
   }
 
-  /* Tip 2 — sits below and to the right of Tip 1, no arrow (the file
-     icon serves as its own visual anchor). */
+  /* Tip 2 — sits below and to the right of Tip 1's anchored label, in
+     the empty space to the right of where the watermark would be. */
   .tip-drag {
-    top: 150px;
-    left: 170px;
+    top: 200px;
+    left: 250px;
     flex-direction: row;
     align-items: center;
   }
@@ -290,36 +295,42 @@
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
 
-  /* Tip 4 — annotation tools at bottom-right. Bubble + arrow above-left
-     of the tool pill (which sits at right:22, bottom:22 ~190px wide). */
+  /* Tip 4 — annotation tools at bottom-right. Arrow tail sits at the
+     top-LEFT of its SVG (curve sweeps down-right to the tool rail), so
+     align-items: flex-start pulls the label up so it sits visually
+     anchored to the tail. */
   .tip-tools {
     bottom: 76px;
     right: 220px;
     flex-direction: row;
-    align-items: flex-end;
+    align-items: flex-start;
   }
 
-  /* Tip 5 — title bar drag region. Bubble below the title bar centre,
-     arrow points up. transform-origin compensates for the centring
-     translateX so the hover scale anchors at the bubble's true centre. */
+  /* Tip 5 — title bar drag region. Stacked column: arrow on top
+     (pointing UP at the title bar centre), label below it, both
+     horizontally centred within the tip. transform-origin compensates
+     for the centring translateX so the hover scale anchors true. */
   .tip-titlebar {
-    top: 60px;
+    top: 50px;
     left: 50%;
     transform: translateX(-50%);
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
+    gap: 4px;
   }
   .tip-titlebar:hover {
     transform: translateX(-50%) scale(1.06) rotate(-1.2deg);
   }
 
-  /* Tip 6 — zoom pill at bottom-left (bottom:22, left:22, ~120px wide).
-     Bubble above-right of the pill, arrow points down-left. */
+  /* Tip 6 — zoom pill at bottom-left. Arrow tail sits at the top-RIGHT
+     of its SVG (curve sweeps down-left to the zoom pill), so
+     align-items: flex-start pulls the label up so it sits visually
+     anchored to the tail. */
   .tip-zoom {
     bottom: 76px;
     left: 160px;
     flex-direction: row;
-    align-items: flex-end;
+    align-items: flex-start;
   }
 
   /* Dismiss button — re-enables pointer-events so the user can click it.
