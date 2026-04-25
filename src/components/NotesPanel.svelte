@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolvedAnnots } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
-  import NotePencil from 'phosphor-svelte/lib/NotePencil';
+  import { doc } from '../stores/doc';
   import type { Note } from '../lib/schema';
 
   let open = $state(false);
@@ -58,42 +58,53 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-{#if notes.length > 0}
+{#if $doc !== null}
   <div class="notes-pill-wrap">
     {#if open}
-      <div class="popup glass" role="dialog" aria-label="Notes">
+      <div class="popup glass" role="dialog" aria-label="re.marks">
         <header>
-          <h3>Notes ({notes.length})</h3>
+          <h3>re<span class="brand-dot">.</span>marks{notes.length > 0 ? ` (${notes.length})` : ''}</h3>
         </header>
-        <ul>
-          {#each notes as n (n.note.id)}
-            <li>
-              <button class="note-row" onclick={() => jumpTo(n.range)}>
-                <span class="dot" aria-hidden="true"></span>
-                <div class="text">
-                  <div class="quote">{excerpt(n.note.anchor.text)}</div>
-                  {#if n.note.body}
-                    <div class="body">{excerpt(n.note.body, 80)}</div>
-                  {:else}
-                    <div class="body empty">(empty note)</div>
-                  {/if}
-                </div>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {#if notes.length === 0}
+          <p class="empty-state">
+            No notes yet. Pick the note tool (or press <kbd>3</kbd>),
+            then click somewhere in the text.
+          </p>
+        {:else}
+          <ul>
+            {#each notes as n (n.note.id)}
+              <li>
+                <button class="note-row" onclick={() => jumpTo(n.range)}>
+                  <span class="dot" aria-hidden="true"></span>
+                  <div class="text">
+                    <div class="quote">{excerpt(n.note.anchor.text)}</div>
+                    {#if n.note.body}
+                      <div class="body">{excerpt(n.note.body, 80)}</div>
+                    {:else}
+                      <div class="body empty">(empty note)</div>
+                    {/if}
+                  </div>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </div>
     {/if}
 
     <button
       class="pill glass glass-pill"
-      aria-label={open ? 'Close notes panel' : `Open notes panel (${notes.length})`}
+      aria-label={open
+        ? 'Close re.marks panel'
+        : `Open re.marks panel (${notes.length} ${notes.length === 1 ? 'note' : 'notes'})`}
       aria-expanded={open}
-      title="Notes ({notes.length})"
+      title={`re.marks (${notes.length})`}
       onclick={() => (open = !open)}
     >
-      <NotePencil size={16} weight="regular" />
-      <span class="count">{notes.length}</span>
+      <span class="wordmark">re<span class="brand-dot">.</span>marks</span>
+      {#if notes.length > 0}
+        <span class="count">{notes.length}</span>
+      {/if}
     </button>
   </div>
 {/if}
@@ -115,15 +126,12 @@
   .pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px 6px 10px;
+    gap: 8px;
+    padding: 6px 14px;
     height: 30px;
     background: var(--glass-fill);
     border: 1px solid var(--glass-border);
     color: var(--fg-1);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
     cursor: pointer;
     transition: color 0.15s ease, background 0.15s ease;
   }
@@ -135,7 +143,24 @@
     color: var(--fg-0);
     background: var(--accent-soft);
   }
+  /* "re.marks" wordmark — same typography + accent dot as the re.md
+     mark next to the hamburger, just shorter. Consistent brand
+     vocabulary for "the place your annotations live". */
+  .wordmark {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: inherit;
+  }
+  .brand-dot {
+    color: var(--accent);
+  }
   .count {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--accent);
   }
@@ -159,11 +184,31 @@
   h3 {
     margin: 0;
     font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--fg-1);
+  }
+  /* The brand-dot in the popup header matches the dot in the pill so
+     the popup reads as a continuation of the wordmark. */
+  h3 .brand-dot {
+    color: var(--accent);
+  }
+  .empty-state {
+    margin: 4px 8px 8px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
     color: var(--fg-2);
+  }
+  .empty-state kbd {
+    background: var(--bg-2);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-1);
   }
   ul {
     list-style: none;

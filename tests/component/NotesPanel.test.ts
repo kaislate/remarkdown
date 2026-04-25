@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 
 import { annots, currentViewerRoot } from '../../src/stores/annots';
 import { viewerScroll } from '../../src/stores/viewport';
+import { doc } from '../../src/stores/doc';
 import NotesPanel from '../../src/components/NotesPanel.svelte';
 import type { Annotation } from '../../src/lib/schema';
 
@@ -23,6 +24,18 @@ beforeEach(() => {
   annots.set([]);
   currentViewerRoot.set(null);
   viewerScroll.set(null);
+  // The pill renders whenever a doc is loaded; tests need to opt in.
+  doc.set({
+    path: '/tmp/x.md',
+    dir: '/tmp',
+    sha256: 'x',
+    bytes: 0,
+    markdown: '',
+    html: '',
+    plaintext: '',
+    blocks: [],
+    sidecarRaw: null,
+  });
   document.body.innerHTML = '';
 });
 
@@ -48,10 +61,29 @@ function setupViewer(blocks: Array<{ id: string; text: string }>): HTMLElement {
 }
 
 describe('NotesPanel', () => {
-  it('renders nothing when there are no notes', () => {
+  it('renders nothing when no document is loaded', () => {
+    doc.set(null);
     setupViewer([{ id: 'p:1', text: 'Some text' }]);
     render(NotesPanel);
     expect(document.querySelector('.notes-pill-wrap')).toBeNull();
+  });
+
+  it('renders the pill even when there are zero notes (so the affordance is discoverable)', () => {
+    setupViewer([{ id: 'p:1', text: 'Some text' }]);
+    render(NotesPanel);
+    expect(document.querySelector('.pill')).not.toBeNull();
+    // No count badge when there are no notes
+    expect(document.querySelector('.count')).toBeNull();
+  });
+
+  it('opens an empty-state popup when there are no notes', async () => {
+    setupViewer([{ id: 'p:1', text: 'Some text' }]);
+    render(NotesPanel);
+    await tick();
+    const user = userEvent.setup();
+    await user.click(document.querySelector('.pill') as HTMLElement);
+    expect(document.querySelector('.empty-state')).not.toBeNull();
+    expect(document.querySelector('.empty-state')!.textContent).toContain('No notes yet');
   });
 
   it('renders the pill with the note count when notes exist', async () => {
