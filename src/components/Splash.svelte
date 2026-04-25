@@ -6,17 +6,17 @@
   // Animation timing (ms). Kept as a single source of truth.
   const HOLD_BEFORE_REVEAL = 900;     // "re.md" sits before transformation
   const REVEAL_DURATION = 1500;       // dot collapses + ark/own expand
-  // The BETA pin fades in at the end of REVEAL_DURATION over ~550ms,
-  // so HOLD_AFTER_REVEAL needs to be >= pin fade-in + a beat of stable
-  // display, otherwise the pin is barely visible before the splash
-  // starts fading. 1800ms gives ~1.25s of fully-visible pin time.
-  const HOLD_AFTER_REVEAL = 1800;     // pause on "remarkdown" + BETA pin
+  const HOLD_AFTER_REVEAL = 1500;     // pause on "remarkdown" + BETA pin
   const FADE_OUT_MS = 400;
   const TOTAL_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION + HOLD_AFTER_REVEAL;
 
-  // The BETA pin only appears once the wordmark has fully unfolded into
-  // "remarkdown" — fading in just under the freshly-revealed logo.
-  const PRE_TAG_DELAY_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION;
+  // The BETA pin starts fading in WHILE the unfold is still finishing —
+  // not after — so it lands underneath the wordmark just as the
+  // wordmark settles, and gets the maximum stable display time before
+  // the splash fades out. The 'own' segment finishes its unfold at
+  // 1.2s + 0.85s = 2050ms; pulling the pin to 1700ms means it's fully
+  // visible (1700 + 550 = 2250ms) right as the wordmark completes.
+  const PRE_TAG_DELAY_MS = 1700;
 
   let visible = $state(true);
   let fading = $state(false);
