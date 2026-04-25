@@ -3,7 +3,7 @@
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
   import { recent, recordRecent, recentExistence, markMissing } from '../stores/recent';
-  import { orphanedAnnots } from '../stores/annots';
+  import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
 
@@ -73,6 +73,14 @@
         onclick={() => { open = false; openModal({ kind: 'settings' }); }}
       >
         Settings…
+      </button>
+      <button
+        role="menuitem"
+        class="item danger"
+        disabled={$annots.length === 0}
+        onclick={() => { open = false; openModal({ kind: 'confirm-clear-annots' }); }}
+      >
+        Clear all annotations…{$annots.length > 0 ? ` (${$annots.length})` : ''}
       </button>
       {#if $recent.length > 0}
         <div class="separator" role="separator"></div>
@@ -163,6 +171,13 @@
     opacity: 0.5;
   }
   .item[disabled]:hover { background: transparent; }
+  /* Destructive items (Clear all annotations) hint at their consequence
+     by warming the text on hover — same pattern as the Delete button in
+     the orphan panel. */
+  .item.danger:not([disabled]):hover {
+    background: rgba(192, 57, 43, 0.18);
+    color: #ffb0a8;
+  }
   .separator {
     height: 1px;
     background: var(--glass-border);

@@ -4,7 +4,8 @@ export type ModalState =
   | null
   | { kind: 'orphans' }
   | { kind: 'corrupt-sidecar'; path: string }
-  | { kind: 'settings' };
+  | { kind: 'settings' }
+  | { kind: 'confirm-clear-annots' };
 
 export const activeModal = writable<ModalState>(null);
 
