@@ -2,10 +2,79 @@
   import { isWelcomeDocOpen } from '../stores/welcome';
   import { settings, updateSettings } from '../stores/settings';
   import FileArrowDown from 'phosphor-svelte/lib/FileArrowDown';
+  import rough from 'roughjs';
+  import type { Options } from 'roughjs/bin/core';
 
   function dismiss() {
     updateSettings({ welcomeTutorialDismissed: true });
   }
+
+  // Each arrow is described as a sequence of paths. roughjs renders each
+  // one with hand-drawn jitter, multiple slightly-offset strokes, and the
+  // characteristic ink-laid-down feel that pure SVG filters can't quite
+  // reproduce. The action below mounts them on the bound <svg> at the
+  // moment that element appears in the DOM.
+  type RoughPath = { d: string; fill?: string; strokeWidth?: number };
+
+  const ROUGH_DEFAULTS: Options = {
+    stroke: 'currentColor',
+    strokeWidth: 3,
+    roughness: 2.4,
+    bowing: 2,
+    seed: 42,
+  };
+
+  function drawRough(svg: SVGSVGElement, paths: RoughPath[]) {
+    const rc = rough.svg(svg);
+    const elements = paths.map((p) => {
+      const opts: Options = {
+        ...ROUGH_DEFAULTS,
+        strokeWidth: p.strokeWidth ?? ROUGH_DEFAULTS.strokeWidth,
+      };
+      if (p.fill) {
+        opts.fill = p.fill;
+        opts.fillStyle = 'solid';
+      }
+      const el = rc.path(p.d, opts);
+      svg.appendChild(el);
+      return el;
+    });
+    return {
+      destroy() {
+        elements.forEach((el) => el.remove());
+      },
+    };
+  }
+
+  // Path data for each arrow + its arrowhead. Arrowheads are filled with
+  // currentColor so they read as the arrow's tip rather than just an
+  // outlined triangle. Each arrow gets a unique `seed` via path index +
+  // base seed so neighbouring arrows don't look like clones.
+  const arrowHamburger: RoughPath[] = [
+    { d: 'M 70,60 Q 40,30 18,12', strokeWidth: 3 },
+    { d: 'M 8,6 L 24,8 L 18,22 Z', fill: 'currentColor', strokeWidth: 1.5 },
+  ];
+  const arrowTools: RoughPath[] = [
+    { d: 'M 10,10 Q 40,40 62,58', strokeWidth: 3 },
+    { d: 'M 72,64 L 56,62 L 62,48 Z', fill: 'currentColor', strokeWidth: 1.5 },
+  ];
+  const arrowTitlebar: RoughPath[] = [
+    { d: 'M 15,55 L 15,16', strokeWidth: 3 },
+    { d: 'M 15,4 L 24,18 L 6,18 Z', fill: 'currentColor', strokeWidth: 1.5 },
+  ];
+  const arrowZoom: RoughPath[] = [
+    { d: 'M 70,10 Q 40,40 18,58', strokeWidth: 3 },
+    { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
+  ];
+  // Bracket spine + arms — drawn as three short strokes rather than one
+  // continuous path so each segment gets its own jitter and reads as
+  // separate pen strokes laid down in sequence (which is how a person
+  // would actually draw a bracket of this shape).
+  const bracketPaths: RoughPath[] = [
+    { d: 'M 20,2 L 6,2', strokeWidth: 2.5 },           // top arm
+    { d: 'M 6,2 L 6,198', strokeWidth: 2.5 },          // spine
+    { d: 'M 6,198 L 20,198', strokeWidth: 2.5 },       // bottom arm
+  ];
 </script>
 
 {#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed}
@@ -16,33 +85,9 @@
   <div class="backdrop" aria-hidden="true"></div>
 
   <div class="overlay" aria-label="Welcome tutorial">
-    <!-- Shared SVG filter for the hand-drawn arrow stroke effect. The
-         feTurbulence generates fractal noise; feDisplacementMap pushes each
-         point of the source path along the X/Y axes by the noise field —
-         producing a wobble that looks like ink being laid down by a
-         slightly unsteady hand. The filter ID is referenced by every
-         arrow path's filter attribute. -->
-    <svg width="0" height="0" aria-hidden="true" style="position:fixed; pointer-events:none">
-      <defs>
-        <filter id="rough-arrow" x="-10%" y="-10%" width="120%" height="120%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7"/>
-          <feDisplacementMap in="SourceGraphic" scale="3.5"/>
-        </filter>
-        <filter id="rough-arrow-strong" x="-10%" y="-10%" width="120%" height="120%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="11"/>
-          <feDisplacementMap in="SourceGraphic" scale="2.5"/>
-        </filter>
-      </defs>
-    </svg>
-
     <!-- Tip 1: Hamburger menu -->
     <div class="tip tip-hamburger">
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <g filter="url(#rough-arrow)">
-          <path d="M 70,60 Q 40,30 18,12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 8,6 L 24,8 L 18,22 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
-        </g>
-      </svg>
+      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowHamburger}></svg>
       <div class="label">Open <code>.md</code> files and settings here</div>
     </div>
 
@@ -57,35 +102,18 @@
     <!-- Tip 3: Minimap bracket -->
     <div class="bracket-row" aria-hidden="true">
       <div class="bracket-label">Navigate long documents here</div>
-      <svg class="bracket" viewBox="0 0 24 200" preserveAspectRatio="none" aria-hidden="true">
-        <g filter="url(#rough-arrow-strong)">
-          <!-- Spine on the LEFT side (x=6) with arms extending RIGHT
-               toward the minimap (x=20). Visually like `[` — the
-               bracket's opening faces the minimap, embracing it. -->
-          <path d="M 20,2 L 6,2 L 6,198 L 20,198" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-        </g>
-      </svg>
+      <svg class="bracket" viewBox="0 0 24 200" preserveAspectRatio="none" aria-hidden="true" use:drawRough={bracketPaths}></svg>
     </div>
 
     <!-- Tip 4: Annotation tools (bottom-right) -->
     <div class="tip tip-tools">
       <div class="label">Add annotations using these tools</div>
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <g filter="url(#rough-arrow)">
-          <path d="M 10,10 Q 40,40 62,58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 72,64 L 56,62 L 62,48 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
-        </g>
-      </svg>
+      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowTools}></svg>
     </div>
 
     <!-- Tip 5: Title bar drag area (top-center) -->
     <div class="tip tip-titlebar">
-      <svg class="arrow" viewBox="0 0 30 60" width="30" height="60" aria-hidden="true">
-        <g filter="url(#rough-arrow)">
-          <path d="M 15,55 L 15,16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 15,4 L 24,18 L 6,18 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
-        </g>
-      </svg>
+      <svg class="arrow" viewBox="0 0 30 60" width="30" height="60" aria-hidden="true" use:drawRough={arrowTitlebar}></svg>
       <div class="label">Hold to drag the window from here</div>
     </div>
 
@@ -93,12 +121,7 @@
          DOWN-LEFT at the zoom pill; the label sits to the right of the
          arrow as the visual continuation of the trail. -->
     <div class="tip tip-zoom">
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <g filter="url(#rough-arrow)">
-          <path d="M 70,10 Q 40,40 18,58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 8,64 L 14,48 L 24,58 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
-        </g>
-      </svg>
+      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowZoom}></svg>
       <div class="label">Resize your view here</div>
     </div>
 
@@ -163,21 +186,24 @@
     transform: scale(1.04);
   }
 
-  /* Script-style font for tutorial copy. The font stack prefers a system
-     handwriting font on each platform, falling through to the generic
-     `cursive` family. Inline <code> elements are excluded — see below. */
+  /* Handwritten font stack for tutorial copy. Prefers a system print-
+     handwriting font on each platform; falls through to popular Google-
+     fonts handwritten faces in case the user has them locally; finally
+     to Comic Sans / generic cursive. Inline <code> elements are
+     re-overridden back to monospace below. */
   .label,
   .bracket-label,
   .dismiss-tutorial {
     font-family:
-      'Segoe Script',
+      'Segoe Print',
+      'Patrick Hand',
+      'Architects Daughter',
+      'Kalam',
+      'Indie Flower',
+      'Comic Sans MS',
       'Bradley Hand',
       'Marker Felt',
-      'Caveat',
-      'Patrick Hand',
-      'Comic Sans MS',
       cursive;
-    /* Script fonts run small at the same px size as sans, so bump up. */
     font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.01em;
@@ -194,7 +220,7 @@
     line-height: 1.4;
   }
   /* Re-style inline <code> back to monospace so things like ".md" stay
-     in the canonical mono treatment despite the script-font surroundings. */
+     in the canonical mono treatment despite the handwritten surroundings. */
   .label code {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -298,8 +324,8 @@
 
   /* Dismiss button — re-enables pointer-events so the user can click it.
      Bottom-centre keeps it away from the watermark, the zoom pill, and
-     the annotation tools. Same script-font treatment as the labels for
-     visual consistency with the tutorial language. */
+     the annotation tools. Same handwritten-font treatment as the labels
+     for visual consistency with the tutorial language. */
   .dismiss-tutorial {
     position: fixed;
     bottom: 18px;
