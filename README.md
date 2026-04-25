@@ -2,8 +2,6 @@
   <img src="assets/logo-remarkdown.svg" alt="remarkdown" width="600">
 </div>
 
-# remarkdown
-
 > **A desktop reader for markdown documents with PDF-style annotations** — highlight, sticky-note, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
 
 ![Status: Beta](https://img.shields.io/badge/status-beta-2ea44f)
