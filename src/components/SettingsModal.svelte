@@ -237,6 +237,14 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    /* Override the lightweight .glass fill so the panel reads cleanly
+       against whatever is behind it. The scrim already darkens the canvas;
+       this pushes the panel itself to near-opaque so labels and values
+       don't blend with article content showing through. */
+    background:
+      linear-gradient(var(--bg-1), var(--bg-1)),
+      var(--glass-fill);
+    background-blend-mode: normal;
   }
   header {
     display: flex;
