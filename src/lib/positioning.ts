@@ -1,18 +1,16 @@
 export interface PinPosition { top: number; left: number; }
 
-// Footnote-marker positioning. The pin's anchor point is the immediate
-// end of the highlighted text — the same place a printed book would
-// drop a footnote reference. Two small fixed-pixel nudges keep it from
-// sitting flush against the last character. The pin's SIZE is set in
-// em (see NoteLayer.svelte) so the marker scales with text zoom; the
-// position offsets stay in px because they only matter at a single-px
-// scale regardless of zoom.
-const PIN_TOP_OFFSET = 1;
+// Subscript-marker positioning. The pin's anchor point is the BOTTOM
+// of the anchored text's line — like a subscript reference rather than
+// a superscript one. CSS in NoteLayer.svelte pulls the pin up by half
+// its em-sized height so the dot centres on the baseline and straddles
+// the descender / inter-line leading area. Both the pin size and the
+// vertical offset scale with text zoom because they're in em.
 const PIN_LEFT_OFFSET = 2;
 
 export function pinPosition(rootRect: DOMRect, rangeRect: DOMRect): PinPosition {
   return {
-    top: rangeRect.top - rootRect.top + PIN_TOP_OFFSET,
+    top: rangeRect.bottom - rootRect.top,
     left: rangeRect.right - rootRect.left + PIN_LEFT_OFFSET,
   };
 }

@@ -302,12 +302,18 @@
   }
   .note-pin {
     position: absolute;
-    /* Footnote-style marker. Sized in em so the dot scales naturally
+    /* Subscript-style marker. Sized in em so the dot scales naturally
        with text zoom; coloured with the brand accent purple so it
        reads as the same identity dot from the re.md logo + splash
-       animation rather than a generic yellow pin. */
+       animation rather than a generic yellow pin.
+       margin-top pulls the pin up by ~half its height so it centres
+       on the baseline rather than dropping fully below the line —
+       like the subscript position of a footnote reference but on the
+       LOWER half of the text. The em unit keeps this aligned at any
+       zoom level. */
     width: 0.7em;
     height: 0.7em;
+    margin-top: -0.55em;
     border-radius: 999px;
     background: var(--accent);
     border: 0;

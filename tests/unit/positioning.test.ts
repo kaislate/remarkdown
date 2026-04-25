@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { pinPosition } from '../../src/lib/positioning';
 
 describe('pinPosition', () => {
-  it('places the pin at the end of the anchored text + a small offset', () => {
+  it('places the pin at the BOTTOM of the anchored line (subscript-style)', () => {
     const fakeRootRect = { top: 10, left: 20, width: 700, height: 1000, right: 720, bottom: 1010, x: 20, y: 10 } as DOMRect;
     const fakeRangeRect = { top: 50, left: 100, width: 40, height: 20, right: 140, bottom: 70, x: 100, y: 50 } as DOMRect;
     const result = pinPosition(fakeRootRect, fakeRangeRect);
-    // top: 50 - 10 + 1 (offset) = 41
-    expect(result.top).toBe(41);
-    // left: 140 - 20 + 2 (offset) = 122
+    // top: range.bottom (70) - root.top (10) = 60
+    expect(result.top).toBe(60);
+    // left: range.right (140) - root.left (20) + 2 (offset) = 122
     expect(result.left).toBe(122);
   });
 
@@ -21,10 +21,11 @@ describe('pinPosition', () => {
     );
   });
 
-  it('top is independent of root left/width — only relative top matters', () => {
-    const a = { top: 50, left: 100, width: 40, height: 20, right: 140, bottom: 70, x: 100, y: 50 } as DOMRect;
-    const root1 = { top: 10, left: 0, width: 800, height: 1000, right: 800, bottom: 1010, x: 0, y: 10 } as DOMRect;
-    const root2 = { top: 10, left: 200, width: 500, height: 1000, right: 700, bottom: 1010, x: 200, y: 10 } as DOMRect;
-    expect(pinPosition(root1, a).top).toBe(pinPosition(root2, a).top);
+  it('top reflects the range bottom — taller lines push the pin further down', () => {
+    const fakeRootRect = { top: 0, left: 0, width: 700, height: 1000, right: 700, bottom: 1000, x: 0, y: 0 } as DOMRect;
+    const tightLine = { top: 50, left: 100, width: 40, height: 20, right: 140, bottom: 70, x: 100, y: 50 } as DOMRect;
+    const tallLine = { top: 50, left: 100, width: 40, height: 40, right: 140, bottom: 90, x: 100, y: 50 } as DOMRect;
+    expect(pinPosition(fakeRootRect, tightLine).top).toBe(70);
+    expect(pinPosition(fakeRootRect, tallLine).top).toBe(90);
   });
 });
