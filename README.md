@@ -12,7 +12,7 @@
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![License: TBD](https://img.shields.io/badge/license-TBD-lightgrey)
 
-> 🟢 **Beta.** The full v1 feature set is shipped, tested (213 unit/component tests + 6 Rust tests + 6 Playwright E2E scenarios, zero `svelte-check` warnings), and stable enough for daily reading. Polish is ongoing — bug reports welcome.
+> 🟢 **Beta.** The full v1 feature set is shipped, tested (246 unit/component tests + 6 Rust tests + 6 Playwright E2E scenarios, zero `svelte-check` warnings), and stable enough for daily reading. Polish is ongoing — bug reports welcome.
 
 ---
 
@@ -52,13 +52,22 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 - **🕘 Open Recent** menu with missing-file detection and grey-out
 - **🗺 VS Code-style minimap** in the right gutter for long-document navigation
 - **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
-- **🌓 Dark liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
+- **🌓 Dark or light liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
+- **🪞 Vertical filename watermark** in the left margin (extreme size, low opacity, fades toward the article column)
 - **🎬 Animated splash** on launch (skipped in test runs)
 
+### Settings
+- **⚙️ Settings panel** (hamburger → Settings…) persists 12 user preferences to `settings.json` in the OS app-data dir
+- **Appearance** — dark/light theme, splash on/off, watermark on/off, watermark opacity
+- **Reading** — default zoom, article column width, max recent files, reopen-last-file on launch
+- **Annotation** — default highlight color, default ink color, drawing idle-finalize duration
+- **Save behaviour** — sidecar write debounce
+- All settings apply live; "Reset to defaults" restores everything in one click
+
 ### Storage & resilience
-- **💾 Atomic sidecar writes** with debounced 500ms saves; retry with exponential backoff on write failures; synchronous flush on window close
+- **💾 Atomic sidecar writes** with configurable debounced saves; retry with exponential backoff on write failures; synchronous flush on window close
 - **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- **🧪 Battle-tested** — 213 unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero svelte-check warnings
+- **🧪 Battle-tested** — 246 unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero svelte-check warnings
 
 ---
 
@@ -161,13 +170,15 @@ Produces platform-native installers in `src-tauri/target/release/bundle/`:
 - Anchoring with orphan detection and panel
 - Full error matrix and resilience: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
 - Drag-and-drop file opening, Open Recent menu, minimap, zoom, frameless window, splash screen
+- Settings panel with persistent preferences (12 settings across appearance, reading, annotation, save behaviour)
+- Dark and light themes
+- Vertical filename watermark in the left margin
 - Playwright E2E coverage of the spec scenarios
 
 ### 🔮 Post-beta (deferred)
 - **Re-attach** orphaned annotations to their new locations
 - **File watcher** for external edits while reading
 - **Undo/redo** action log
-- **Light theme** (architecture supports it via CSS variables)
 - **Per-doc asset protocol scope** tightening (security hardening)
 - **Mermaid** diagrams, Obsidian-style callouts, wiki-links
 - **PDF/HTML export** with baked-in annotations
@@ -179,7 +190,7 @@ Produces platform-native installers in `src-tauri/target/release/bundle/`:
 ## 🧪 Testing
 
 ```bash
-npm test              # 213 Vitest unit + component tests
+npm test              # 246 Vitest unit + component tests
 npm run check         # svelte-check (0 errors, 0 warnings)
 npm run test:e2e      # 6 Playwright end-to-end scenarios
 cd src-tauri && cargo test   # 6 Rust tests
@@ -211,7 +222,7 @@ remarkdown/
 │   ├── lib/                 # Pure TS modules (anchoring, renderer, save, schema, …)
 │   ├── components/          # Svelte components (Viewer, ToolRail, layers, modals, …)
 │   ├── stores/              # Reactive state (doc, annots, tool, toasts, modals, …)
-│   └── styles/              # Dark theme + glass mixins + CSS highlight rules
+│   └── styles/              # Theme tokens (dark + light) + glass mixins + CSS highlight rules
 ├── src-tauri/               # Rust host
 │   └── src/                 # Invoke commands, atomic sidecar writes, recent-files persistence
 ├── tests/
