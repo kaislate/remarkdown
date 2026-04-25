@@ -23,6 +23,10 @@
 
   async function onResizePointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
+    // preventDefault stops the browser from starting a text selection
+    // before startResizeDragging grabs the pointer at the OS level.
+    e.preventDefault();
+    e.stopPropagation();
     await safeCall(() => getCurrentWindow().startResizeDragging('SouthEast'));
   }
 
@@ -71,8 +75,10 @@
   </button>
 </div>
 
-<!-- Bottom-right resize grip: three diagonal lines indicating that the
-     corner is grabbable. pointerdown delegates to the OS via Tauri's
+<!-- Bottom-right resize grip. The container is a generous 36×36 hit
+     zone (so the user doesn't have to land on a tiny target) but the
+     visible glyph stays as three short diagonal strokes anchored in
+     the lower-right 16px. pointerdown delegates to the OS via Tauri's
      startResizeDragging so the user gets a native resize feel. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
@@ -82,7 +88,7 @@
   title="Drag to resize"
   onpointerdown={onResizePointerDown}
 >
-  <svg viewBox="0 0 16 16" aria-hidden="true">
+  <svg viewBox="0 0 16 16" aria-hidden="true" class="grip-glyph">
     <line x1="15" y1="3"  x2="3"  y2="15" />
     <line x1="15" y1="7"  x2="7"  y2="15" />
     <line x1="15" y1="11" x2="11" y2="15" />
@@ -164,38 +170,55 @@
     color: #fff;
   }
 
-  /* Resize grip — small triangular zone in the bottom-right corner. The
-     three diagonal strokes are the universal "this corner is grabbable"
-     signifier; pointerdown delegates to the OS via startResizeDragging.
-     z-index sits above minimap (60) but below modals. */
+  /* Resize grip — generous 36×36 hit zone in the bottom-right corner so
+     the user doesn't have to be precise. The glyph (three diagonals)
+     stays small (16×16) and anchored bottom-right; the rest of the box
+     is invisible-but-grabbable. user-select:none + a transparent
+     background block text selection from starting under the grip
+     before startResizeDragging takes over at the OS level. z-index
+     sits above minimap (60) but below modals. */
   .resize-grip {
     position: fixed;
     right: 0;
     bottom: 0;
-    width: 18px;
-    height: 18px;
+    width: 36px;
+    height: 36px;
     z-index: 70;
     cursor: nwse-resize;
     color: var(--fg-2);
-    opacity: 0.45;
-    transition: opacity 0.15s ease, color 0.15s ease;
-    /* Pad the visible glyph in slightly so the strokes don't touch the
-       absolute window edge — keeps the indicator readable on light themes
-       where the edge can blend with the chrome aura. */
-    padding: 2px;
-    box-sizing: border-box;
+    transition: color 0.15s ease;
+    /* A transparent (but non-empty) background ensures the div is the
+       hit-target across its whole bounding box, not just where the SVG
+       paints. Without this, a click between strokes would fall through
+       to text below and start a selection. */
+    background: rgba(0, 0, 0, 0);
+    user-select: none;
+    -webkit-user-select: none;
+    /* Touch action: none stops the browser from scrolling/zooming on
+       touch drags so the resize gesture wins. */
+    touch-action: none;
   }
   .resize-grip:hover {
-    opacity: 0.95;
     color: var(--accent);
   }
-  .resize-grip svg {
-    width: 100%;
-    height: 100%;
+  .grip-glyph {
+    /* The glyph is a 16×16 indicator pinned to the bottom-right corner
+       of the 36×36 hit zone. pointer-events:none hands all events to
+       the parent div so there are no gaps in the hit area. */
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 16px;
+    height: 16px;
     display: block;
-    overflow: visible;
+    pointer-events: none;
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
   }
-  .resize-grip line {
+  .resize-grip:hover .grip-glyph {
+    opacity: 1;
+  }
+  .grip-glyph line {
     stroke: currentColor;
     stroke-width: 1.5;
     stroke-linecap: round;
