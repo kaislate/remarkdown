@@ -9,6 +9,19 @@
     updateSettings({ welcomeTutorialDismissed: true });
   }
 
+  // Toggle a body class while the tutorial is active so global CSS can
+  // suppress text selection on the canvas behind the overlay. Without
+  // this, dragging anywhere on the welcome doc selects article text and
+  // disrupts the read-the-tutorial flow.
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    const active = $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed;
+    document.body.classList.toggle('tutorial-active', active);
+    return () => {
+      document.body.classList.remove('tutorial-active');
+    };
+  });
+
   // Each arrow is described as a sequence of paths. roughjs renders each
   // one with hand-drawn jitter, multiple slightly-offset strokes, and the
   // characteristic ink-laid-down feel that pure SVG filters can't quite
@@ -155,6 +168,15 @@
 {/if}
 
 <style>
+  /* Suppress text selection on the entire app while the tutorial overlay
+     is active. Applied globally because the article content lives in
+     other Svelte component scopes. */
+  :global(body.tutorial-active),
+  :global(body.tutorial-active *) {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
   .overlay {
     position: fixed;
     inset: 0;
