@@ -21,22 +21,68 @@
     try { await fn(); } catch { /* outside Tauri */ }
   }
 
-  async function onDragPointerDown(e: PointerEvent) {
-    if (e.button !== 0) return;
-    await safeCall(() => getCurrentWindow().startDragging());
-  }
+  // Movement threshold (in CSS pixels, squared for distance compare) before
+  // a pointerdown is treated as the start of a drag. Calling
+  // startDragging/startResizeDragging on the first pointerdown hands input
+  // over to the OS and consumes the click sequence that the browser needs
+  // to fire 'dblclick'. By waiting for actual movement we keep dblclick
+  // working for taps that release without moving.
+  const DRAG_THRESHOLD_SQ = 4 * 4;
 
-  async function onResizePointerDown(e: PointerEvent) {
+  // Generic "click-or-drag" handler: arms on pointerdown, fires `start` once
+  // the pointer travels past the threshold. If the pointer is released
+  // before crossing the threshold the browser sees a normal click and
+  // dblclick still fires as expected.
+  function armClickOrDrag(e: PointerEvent, start: () => Promise<unknown> | unknown) {
     if (e.button !== 0) return;
-    // Pass through double-clicks so the dblclick handler can fire
-    // (a startResizeDragging call on the FIRST click of a double-click
-    // would consume the gesture and the dblclick would never arrive).
-    if (e.detail >= 2) return;
-    // preventDefault stops the browser from starting a text selection
-    // before startResizeDragging grabs the pointer at the OS level.
+    const target = e.currentTarget as HTMLElement | null;
+    if (!target) return;
     e.preventDefault();
     e.stopPropagation();
-    await safeCall(() => getCurrentWindow().startResizeDragging('SouthEast'));
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let armed = true;
+
+    const onMove = (m: PointerEvent) => {
+      if (!armed) return;
+      const dx = m.clientX - startX;
+      const dy = m.clientY - startY;
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_SQ) return;
+      armed = false;
+      cleanup();
+      void Promise.resolve().then(start).catch(() => { /* outside Tauri */ });
+    };
+    const onUp = () => {
+      armed = false;
+      cleanup();
+    };
+    const cleanup = () => {
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+      if (target.hasPointerCapture?.(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+    };
+
+    try { target.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
+  }
+
+  function onDragPointerDown(e: PointerEvent) {
+    armClickOrDrag(e, () => getCurrentWindow().startDragging());
+  }
+
+  function onTitleBarDoubleClick(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    void safeCall(() => getCurrentWindow().toggleMaximize());
+  }
+
+  function onResizePointerDown(e: PointerEvent) {
+    armClickOrDrag(e, () => getCurrentWindow().startResizeDragging('SouthEast'));
   }
 
   async function onResizeDoubleClick(e: MouseEvent) {
@@ -57,6 +103,7 @@
   class="titlebar-drag"
   data-tauri-drag-region
   onpointerdown={onDragPointerDown}
+  ondblclick={onTitleBarDoubleClick}
   role="presentation"
 ></div>
 
