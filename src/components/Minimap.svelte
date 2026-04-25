@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { viewerScroll } from '../stores/viewport';
   import { minimapShown, toggleMinimap } from '../stores/ui';
@@ -111,6 +112,16 @@
       setTimeout(updateLayout, 300);
     });
 
+    // Reader mode hides the minimap via display:none, which makes
+    // clientWidth/Height collapse to 0 and freezes our layout state.
+    // When reader mode exits, the element has dimensions again — fire
+    // updateLayout() across two animation frames so the recompute lands
+    // after the browser has finished re-applying display:block.
+    const unsubReader = readerMode.subscribe((on) => {
+      if (on) return;
+      requestAnimationFrame(() => requestAnimationFrame(updateLayout));
+    });
+
     window.addEventListener('resize', updateLayout);
 
     return () => {
@@ -119,6 +130,7 @@
       unsubDoc();
       unsubShown();
       unsubScroll();
+      unsubReader();
     };
   });
 </script>
