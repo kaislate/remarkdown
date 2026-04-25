@@ -49,27 +49,41 @@
     }
   }
 
-  // Two ranges overlap iff each range starts before the other ends. We
-  // use compareBoundaryPoints which returns the position of the source
-  // range's boundary relative to this range's boundary (-1 before, 0
-  // equal, 1 after). Touching but non-overlapping ranges return 0 and
-  // are treated as non-overlapping.
+  // compareBoundaryPoints returns the position of THIS range's boundary
+  // relative to the SOURCE range's boundary:
+  //   −1: this's boundary is BEFORE source's boundary
+  //    0: equal
+  //    1: this's boundary is AFTER source's boundary
+  // The four `how` values pick which boundary on each side:
+  //   START_TO_START: this.start vs source.start
+  //   START_TO_END:   this.end   vs source.start
+  //   END_TO_END:     this.end   vs source.end
+  //   END_TO_START:   this.start vs source.end
+
+  // Two ranges overlap iff a.end > b.start AND a.start < b.end.
+  // Touching boundaries (a.end == b.start) return 0 and are treated as
+  // non-overlapping.
   function rangesOverlap(a: Range, b: Range): boolean {
     try {
-      const bStartBeforeAEnd = a.compareBoundaryPoints(Range.START_TO_END, b);
-      const bEndAfterAStart = a.compareBoundaryPoints(Range.END_TO_START, b);
-      return bStartBeforeAEnd < 0 && bEndAfterAStart > 0;
+      // a.end vs b.start: > 0 means a.end after b.start
+      const aEndAfterBStart = a.compareBoundaryPoints(Range.START_TO_END, b);
+      // a.start vs b.end: < 0 means a.start before b.end
+      const aStartBeforeBEnd = a.compareBoundaryPoints(Range.END_TO_START, b);
+      return aEndAfterBStart > 0 && aStartBeforeBEnd < 0;
     } catch {
       return false;
     }
   }
 
   // True iff `outer` fully contains `inner` (touching boundaries OK).
+  // outer.start <= inner.start AND outer.end >= inner.end.
   function rangeContainsRange(outer: Range, inner: Range): boolean {
     try {
-      const innerStartAtOrAfterOuterStart = outer.compareBoundaryPoints(Range.START_TO_START, inner) >= 0;
-      const innerEndAtOrBeforeOuterEnd = outer.compareBoundaryPoints(Range.END_TO_END, inner) <= 0;
-      return innerStartAtOrAfterOuterStart && innerEndAtOrBeforeOuterEnd;
+      // outer.start vs inner.start: <= 0 means outer.start at or before inner.start
+      const outerStartAtOrBeforeInnerStart = outer.compareBoundaryPoints(Range.START_TO_START, inner) <= 0;
+      // outer.end vs inner.end: >= 0 means outer.end at or after inner.end
+      const outerEndAtOrAfterInnerEnd = outer.compareBoundaryPoints(Range.END_TO_END, inner) >= 0;
+      return outerStartAtOrBeforeInnerStart && outerEndAtOrAfterInnerEnd;
     } catch {
       return false;
     }
@@ -79,13 +93,15 @@
   // same-colour highlights into a single annotation.
   function unionRanges(a: Range, b: Range): Range | null {
     try {
+      // a.start vs b.start: > 0 means a.start AFTER b.start (b's start is earlier).
       const startCompare = a.compareBoundaryPoints(Range.START_TO_START, b);
-      const useB_start = startCompare === -1; // b.start is BEFORE a.start
+      const useB_start = startCompare > 0;
       const startContainer = useB_start ? b.startContainer : a.startContainer;
       const startOffset = useB_start ? b.startOffset : a.startOffset;
 
+      // a.end vs b.end: < 0 means a.end BEFORE b.end (b's end is later).
       const endCompare = a.compareBoundaryPoints(Range.END_TO_END, b);
-      const useB_end = endCompare === 1; // b.end is AFTER a.end
+      const useB_end = endCompare < 0;
       const endContainer = useB_end ? b.endContainer : a.endContainer;
       const endOffset = useB_end ? b.endOffset : a.endOffset;
 
