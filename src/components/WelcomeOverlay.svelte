@@ -204,11 +204,12 @@
     <div class="tip tip-reader">
       <svg class="reader-svg" viewBox="0 0 240 110" width="240" height="110" aria-hidden="true" use:drawRough={ringFocus}>
         <defs>
-          <!-- Soft up-and-over arc starting at the upper-right of the
-               ring, peaking above, settling out to the right. Text
-               along it reads naturally left-to-right with a hand-
-               drawn rise then gentle drop. -->
-          <path id="arc-focus-mode" d="M 108,52 Q 165,28 220,62" fill="none" />
+          <!-- Soft up-and-over arc starting just outside the ring's
+               upper-right edge, peaking close above, settling back
+               down a short distance to the right. Tight enough that
+               the text reads as a label belonging to the button
+               rather than floating away from it. -->
+          <path id="arc-focus-mode" d="M 100,53 Q 142,30 184,58" fill="none" />
         </defs>
         <text class="arc-text">
           <textPath href="#arc-focus-mode" startOffset="50%" text-anchor="middle">
