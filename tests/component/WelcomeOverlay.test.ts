@@ -11,12 +11,14 @@ vi.mock('../../src/lib/tauri-api', () => ({
 import { doc } from '../../src/stores/doc';
 import { welcomeDocPath } from '../../src/stores/welcome';
 import { settings, resetSettings } from '../../src/stores/settings';
+import { resetTutorialState } from '../../src/stores/tutorial';
 import WelcomeOverlay from '../../src/components/WelcomeOverlay.svelte';
 
 beforeEach(() => {
   doc.set(null);
   welcomeDocPath.set(null);
   resetSettings();
+  resetTutorialState();
   document.body.innerHTML = '';
 });
 

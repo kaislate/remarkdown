@@ -1,25 +1,24 @@
 <script lang="ts">
-  import { isWelcomeDocOpen } from '../stores/welcome';
-  import { settings, updateSettings } from '../stores/settings';
+  import {
+    tutorialOverlayVisible,
+    dismissTutorialForSession,
+    dismissTutorialForever,
+  } from '../stores/tutorial';
   import FileArrowDown from 'phosphor-svelte/lib/FileArrowDown';
   import rough from 'roughjs';
   import type { Options } from 'roughjs/bin/core';
 
-  // Two-tier dismiss:
-  //   sessionDismissed (local state) — hides the tutorial for THIS run
-  //     only. Next launch the user sees it again.
-  //   welcomeTutorialDismissed (persisted setting) — hides forever
-  //     until the user re-enables it from Settings.
-  let sessionDismissed = $state(false);
+  // Visibility lives in src/stores/tutorial.ts so the global '?' key
+  // handler in App.svelte can toggle it. The two dismiss buttons here
+  // call the store helpers, which set the relevant flags (session vs
+  // persisted) and clear the force-shown flag at the same time.
 
   function dismissForSession() {
-    sessionDismissed = true;
+    dismissTutorialForSession();
   }
 
   function dismissForever() {
-    updateSettings({ welcomeTutorialDismissed: true });
-    sessionDismissed = true; // collapse immediately so the user sees
-                              // the same instant feedback either way
+    dismissTutorialForever();
   }
 
   // Toggle a body class while the tutorial is active so global CSS can
@@ -28,11 +27,7 @@
   // disrupts the read-the-tutorial flow.
   $effect(() => {
     if (typeof document === 'undefined') return;
-    const active =
-      $isWelcomeDocOpen &&
-      !$settings.welcomeTutorialDismissed &&
-      !sessionDismissed;
-    document.body.classList.toggle('tutorial-active', active);
+    document.body.classList.toggle('tutorial-active', $tutorialOverlayVisible);
     return () => {
       document.body.classList.remove('tutorial-active');
     };
@@ -123,7 +118,7 @@
   ];
 </script>
 
-{#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed && !sessionDismissed}
+{#if $tutorialOverlayVisible}
   <!-- Backdrop is a sibling (NOT a child) of the overlay so the minimap
        (z:85) can stack above the backdrop (z:80) but below the overlay's
        tips (z:90). pointer-events:none keeps every chrome element

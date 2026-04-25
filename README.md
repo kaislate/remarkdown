@@ -121,7 +121,8 @@ Color strip appears above the rail when **Highlight** or **Draw** is active (5 p
 | `Ctrl +` / `Ctrl =` | Zoom in |
 | `Ctrl -` | Zoom out |
 | `Ctrl 0` | Reset zoom |
-| `Esc` | Close popover / cancel selection |
+| `Esc` | Close popover / cancel selection / exit reader mode |
+| `?` | Show or hide the welcome tutorial overlay |
 | `1` / `2` / `3` / `4` / `5` | Switch to Cursor / Highlight / re.mark / Draw / Eraser |
 | Double-click title bar | Toggle maximize |
 | Double-click bottom-right corner | Reset window to 1100×780 |

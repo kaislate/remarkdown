@@ -40,6 +40,7 @@
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool, setMode } from './stores/tool';
   import { readerMode, exitReaderMode } from './stores/reader-mode';
+  import { toggleTutorial } from './stores/tutorial';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -101,6 +102,24 @@
     if (e.key !== 'Escape') return;
     if (!get(readerMode)) return;
     exitReaderMode();
+  }
+
+  // '?' toggles the welcome tutorial overlay. Skipped while focus is
+  // on a text field so typing '?' inside a re.mark popover writes the
+  // character instead of opening the tutorial. ctrl/meta/alt pass
+  // through (Ctrl+? is unbound but reserved for future use).
+  function onTutorialKey(e: KeyboardEvent) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== '?') return;
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    e.preventDefault();
+    toggleTutorial();
   }
 
   function onZoomKey(e: KeyboardEvent) {
@@ -190,6 +209,7 @@
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onToolShortcut);
     window.addEventListener('keydown', onReaderModeEsc);
+    window.addEventListener('keydown', onTutorialKey);
 
     // Startup-document precedence:
     //   1. If welcome is enabled (default), materialise it under app_data_dir
@@ -240,6 +260,7 @@
       window.removeEventListener('keydown', onZoomKey);
       window.removeEventListener('keydown', onToolShortcut);
       window.removeEventListener('keydown', onReaderModeEsc);
+      window.removeEventListener('keydown', onTutorialKey);
     }
   });
 </script>
