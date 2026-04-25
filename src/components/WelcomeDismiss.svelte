@@ -8,46 +8,53 @@
 </script>
 
 {#if $isWelcomeDocOpen}
-  <!-- svelte-ignore a11y_label_has_associated_control -->
-  <label class="dismiss glass glass-pill" title="Stop loading welcome.md every time the app starts">
-    <input
-      type="checkbox"
-      checked={$settings.dontShowWelcomeOnLaunch}
-      onchange={toggle}
-    />
-    <span>Don't show welcome.md on launch</span>
-  </label>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="dismiss"
+    class:applied={$settings.dontShowWelcomeOnLaunch}
+    onclick={toggle}
+    role="button"
+    tabindex="0"
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+    title="Click to toggle whether welcome.md opens on every launch"
+  >
+    <div>Don't show welcome.md</div>
+    <div>on launch</div>
+  </div>
 {/if}
 
 <style>
-  /* Floats just above the ZoomControls rail (bottom: 22px, ~38px tall).
-     22 + 38 + 8 gap = 68px from bottom. Same left offset as the zoom
-     pill so the two read as a stacked column. */
+  /* Plain two-line accent-coloured text. No pill, no checkbox — the
+     surrounding UI (an open welcome doc + a clickable two-line link sitting
+     above the zoom controls) is enough to communicate intent. Sits at
+     bottom: 68px / left: 22px so it stacks cleanly above the ZoomControls
+     pill (bottom: 22px, ~38px tall + an 8px gap). */
   .dismiss {
     position: fixed;
     bottom: 68px;
     left: 22px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px 6px 10px;
     z-index: 100;
     font-family: var(--font-sans);
     font-size: 12px;
-    color: var(--fg-2);
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--accent);
     cursor: pointer;
     user-select: none;
-    transition: color 0.15s ease;
+    transition: opacity 0.15s ease, color 0.15s ease;
   }
-  .dismiss:hover { color: var(--fg-1); }
-  .dismiss input[type="checkbox"] {
-    width: 13px;
-    height: 13px;
-    margin: 0;
-    accent-color: var(--accent);
-    cursor: pointer;
+  .dismiss:hover { filter: brightness(1.15); }
+  .dismiss:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 4px;
   }
-  .dismiss span {
-    line-height: 1;
+  /* When the setting is on (the welcome will not show again), dim the
+     hint so the affordance reads as "already applied — click to revert"
+     without disappearing entirely. */
+  .dismiss.applied {
+    opacity: 0.45;
+    text-decoration: line-through;
   }
 </style>

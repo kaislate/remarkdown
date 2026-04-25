@@ -59,29 +59,42 @@ describe('WelcomeDismiss', () => {
     expect(document.querySelector('.dismiss')).toBeNull();
   });
 
-  it('renders when the welcome document is open', () => {
+  it('renders the two-line label when the welcome document is open', () => {
     setWelcomeDocOpen();
     render(WelcomeDismiss);
     const el = document.querySelector('.dismiss');
     expect(el).not.toBeNull();
-    expect(el!.textContent).toContain("Don't show welcome.md on launch");
+    const lines = el!.querySelectorAll('div');
+    expect(lines.length).toBe(2);
+    expect(lines[0].textContent).toBe("Don't show welcome.md");
+    expect(lines[1].textContent).toBe('on launch');
   });
 
-  it('checkbox reflects the current dontShowWelcomeOnLaunch setting', () => {
+  it('contains no checkbox', () => {
+    setWelcomeDocOpen();
+    render(WelcomeDismiss);
+    expect(document.querySelector('.dismiss input')).toBeNull();
+  });
+
+  it('does not have the .applied class when the setting is off', () => {
+    setWelcomeDocOpen();
+    render(WelcomeDismiss);
+    expect(document.querySelector('.dismiss')!.classList.contains('applied')).toBe(false);
+  });
+
+  it('gets the .applied class when the setting is on', () => {
     setWelcomeDocOpen();
     settings.update((s) => ({ ...s, dontShowWelcomeOnLaunch: true }));
     render(WelcomeDismiss);
-    const cb = document.querySelector('.dismiss input[type="checkbox"]') as HTMLInputElement;
-    expect(cb.checked).toBe(true);
+    expect(document.querySelector('.dismiss')!.classList.contains('applied')).toBe(true);
   });
 
-  it('clicking the checkbox toggles the setting on', async () => {
+  it('clicking the label toggles the setting on', async () => {
     setWelcomeDocOpen();
     render(WelcomeDismiss);
     expect(get(settings).dontShowWelcomeOnLaunch).toBe(false);
-    const cb = document.querySelector('.dismiss input[type="checkbox"]') as HTMLInputElement;
     const user = userEvent.setup();
-    await user.click(cb);
+    await user.click(document.querySelector('.dismiss') as HTMLElement);
     expect(get(settings).dontShowWelcomeOnLaunch).toBe(true);
   });
 
@@ -89,9 +102,20 @@ describe('WelcomeDismiss', () => {
     setWelcomeDocOpen();
     settings.update((s) => ({ ...s, dontShowWelcomeOnLaunch: true }));
     render(WelcomeDismiss);
-    const cb = document.querySelector('.dismiss input[type="checkbox"]') as HTMLInputElement;
     const user = userEvent.setup();
-    await user.click(cb);
+    await user.click(document.querySelector('.dismiss') as HTMLElement);
+    expect(get(settings).dontShowWelcomeOnLaunch).toBe(false);
+  });
+
+  it('Enter / Space keys also toggle the setting', async () => {
+    setWelcomeDocOpen();
+    render(WelcomeDismiss);
+    const el = document.querySelector('.dismiss') as HTMLElement;
+    el.focus();
+    const user = userEvent.setup();
+    await user.keyboard('{Enter}');
+    expect(get(settings).dontShowWelcomeOnLaunch).toBe(true);
+    await user.keyboard(' ');
     expect(get(settings).dontShowWelcomeOnLaunch).toBe(false);
   });
 });
