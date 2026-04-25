@@ -8,18 +8,26 @@
 
 | | |
 |:---:|:---:|
-| <img src="examples/remarkdown_screenshot1.png" alt="Reading view with vertical watermark, article rendering, and minimap" width="100%"> | <img src="examples/remarkdown_screenshot2.png" alt="Settings panel showing appearance, reading, annotation, and save sections" width="100%"> |
-| <sub>**Reading view** — vertical filename watermark, syntax-highlighted article, right-gutter minimap.</sub> | <sub>**Settings panel** — 12 preferences across appearance, reading, annotation, and save behaviour.</sub> |
+| <img src="examples/remarkdown_050beta_screenshot1.png" alt="Reading view with vertical filename watermark, syntax-highlighted article, and right-gutter minimap" width="100%"> | <img src="examples/remarkdown_050beta_screenshot2.png" alt="Hand-drawn welcome tutorial overlay with arrows pointing at the chrome elements" width="100%"> |
+| <sub>**Reading view** — vertical watermark, syntax-highlighted article, right-gutter minimap, animated BETA pin under the wordmark.</sub> | <sub>**Welcome tutorial** — hand-drawn arrows label every chrome element on first launch.</sub> |
+| <img src="examples/remarkdown_050beta_screenshot3.png" alt="re.marks side panel showing sentence context for each annotation" width="100%"> | <img src="examples/remarkdown_050beta_screenshot4.png" alt="Settings panel showing the full preference list" width="100%"> |
+| <sub>**re.marks panel** — every annotation with its surrounding sentence context, click to jump.</sub> | <sub>**Settings panel** — 18 preferences across appearance, reading, annotation, and updates.</sub> |
 
 </div>
 
-![Status: Beta](https://img.shields.io/badge/status-beta-2ea44f)
+![Status: Beta](https://img.shields.io/badge/status-0.5.0--beta-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![License: TBD](https://img.shields.io/badge/license-TBD-lightgrey)
 
-> 🟢 **Beta.** The full v1 feature set is shipped, tested (246 unit/component tests + 6 Rust tests + 6 Playwright E2E scenarios, zero `svelte-check` warnings), and stable enough for daily reading. Polish is ongoing — bug reports welcome.
+---
+
+## 🎉 0.5.0 Beta — Public Beta Launch
+
+**remarkdown 0.5.0-beta is the first public beta.** It ships every v1 reader + annotation feature, the full error-recovery matrix, a hand-drawn welcome tutorial, the new **re.marks side panel**, and — for the first time — **in-app auto-update** so future betas land without you having to manually reinstall. Stable enough for daily reading; bug reports very welcome.
+
+> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull this beta on its own. **Download the 0.5.0-beta installer from the [Releases page](../../releases/latest) and run it once** — every release after this one will arrive automatically via the in-app updater.
 
 ---
 
@@ -27,12 +35,10 @@
 
 Pre-built Windows installers are published with each tagged release. Grab the latest from the **[Releases page](../../releases/latest)**:
 
-- `remarkdown_<version>_x64-setup.exe` — NSIS installer (lighter, recommended)
-- `remarkdown_<version>_x64_en-US.msi` — MSI installer (for managed environments)
+- `remarkdown_<version>_x64-setup.exe` — NSIS installer (recommended)
+- *MSI installers return for stable releases — beta builds are NSIS-only because Windows MSI's version field doesn't accept alphanumeric pre-release tags like `-beta`.*
 
-Both produce the same app. After installing, launch **remarkdown** from the Start menu — drop a `.md` file onto the window or use the menu to open one.
-
-> Prefer to build from source or run in dev mode? See [Getting started](#-getting-started) below.
+Already installed? Open **Hamburger menu → Check for updates…** to grab the next release without leaving the app.
 
 ---
 
@@ -48,7 +54,8 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 
 ### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
-- **📝 re.marks** (sticky-note style) with inline textarea popovers, pinned to the right margin of anchored text
+- **📝 re.marks** (sticky-note style) anchored to the right margin of the chosen word, with click-off-to-close popovers and punctuation-aware word boundary detection
+- **📋 re.marks side panel** — pop-up pill above the zoom controls opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop). Click an entry to jump.
 - **✏️ Freehand drawings** with SVG strokes, 5 ink colors, auto-finalized after 3 seconds of idle
 - **🧹 Eraser tool** — single-click delete for any highlight, re.mark, or drawing without confirmation
 - **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
@@ -61,20 +68,35 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 - **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
 - **🌓 Dark or light liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
 - **🪞 Vertical filename watermark** in the left margin (extreme size, low opacity, fades toward the article column)
-- **🎬 Animated splash** on launch (skipped in test runs)
+
+### First-run experience
+- **👋 Welcome document** opens automatically the first time you launch (toggleable hint in the corner to skip future launches)
+- **📍 Hand-drawn tutorial overlay** — six arrows + a bracket point at every piece of chrome the first time you see the welcome doc; dismiss for the session or hide forever
+- **🎬 Animated splash** with a re.md → remarkdown morph and an animated BETA pin
+
+### Window chrome
+- **🖱 Hamburger hover morph** — the wordmark animates from `re.md` → `remarkdown` whenever you hover the menu button (same choreography as the splash)
+- **🔧 Bottom-right resize grip** — drag to resize, **double-click to reset to the default 1100×780**; double-click the title bar to toggle maximize
+- **🏷 Animated BETA pin** under the wordmark and on the splash, with glow-pulse + gradient drift + diagonal shine; auto-hides at 1.0+ stable
+
+### Auto-update
+- **⬆️ In-app updater** with manual "Check for updates…" in the hamburger menu and an optional auto-check on launch (Settings → off by default for paranoid users)
+- **🔐 Ed25519-signed installers** — every update verifies its signature against the public key baked into the app before installing; tampered installers are refused
+- **📦 GitHub Releases as the distribution channel** — manifest at `/releases/latest/download/latest.json` is what your installed copy polls
 
 ### Settings
-- **⚙️ Settings panel** (hamburger → Settings…) persists 12 user preferences to `settings.json` in the OS app-data dir
+- **⚙️ Settings panel** (hamburger → Settings…) persists 18 user preferences to `settings.json` in the OS app-data dir
 - **Appearance** — dark/light theme, splash on/off, watermark on/off, watermark opacity
-- **Reading** — default zoom, article column width, max recent files, reopen-last-file on launch
-- **Annotation** — default highlight color, default ink color, drawing idle-finalize duration
+- **Reading** — default zoom, article column width, max recent files (slider + typeable badge), reopen-last-file on launch, hide annotation chrome, show welcome on launch, show tutorial overlay
+- **Annotation** — default highlight color, default ink color, drawing idle-finalize duration, re.marks sentence-context count + paragraph-stop
 - **Save behaviour** — sidecar write debounce
+- **Updates** — auto-check on launch on/off
 - All settings apply live; "Reset to defaults" restores everything in one click
 
 ### Storage & resilience
 - **💾 Atomic sidecar writes** with configurable debounced saves; retry with exponential backoff on write failures; synchronous flush on window close
 - **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- **🧪 Battle-tested** — 246 unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero svelte-check warnings
+- **🧪 Battle-tested** — 320+ Vitest unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero `svelte-check` warnings
 
 ---
 
@@ -84,7 +106,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 |------|-----------|----------|
 | 🎯 **Cursor** | Default | Normal text selection; copy works |
 | 🖍 **Highlight** | Tool rail | Drag-select text → highlight in current color. Right-click an existing highlight → Delete |
-| 📝 **re.mark** | Tool rail | Click in text → accent pin + inline popover for typing. Popover has a Delete button |
+| 📝 **re.mark** | Tool rail | Click a word → accent pin pinned to that word's end with an inline popover. Click the **re.marks** pill above the zoom controls to browse every annotation with surrounding sentence context. |
 | ✏️ **Draw** | Tool rail | Freehand stroke capture. 3s idle or tool-change finalizes. Right-click an existing drawing → Delete |
 | 🧹 **Eraser** | Tool rail | Click any annotation to delete it instantly — no confirmation |
 
@@ -100,6 +122,9 @@ Color strip appears above the rail when **Highlight** or **Draw** is active (5 p
 | `Ctrl -` | Zoom out |
 | `Ctrl 0` | Reset zoom |
 | `Esc` | Close popover / cancel selection |
+| `1` / `2` / `3` / `4` / `5` | Switch to Cursor / Highlight / re.mark / Draw / Eraser |
+| Double-click title bar | Toggle maximize |
+| Double-click bottom-right corner | Reset window to 1100×780 |
 
 ---
 
@@ -163,24 +188,27 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Produces platform-native installers in `src-tauri/target/release/bundle/`:
-- `bundle/nsis/remarkdown_<version>_x64-setup.exe`
-- `bundle/msi/remarkdown_<version>_x64_en-US.msi`
+Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cutting a release with the in-app updater enabled requires the Ed25519 signing key — see [RELEASING.md](RELEASING.md) for the full process.
 
 ---
 
 ## 🗺 Roadmap
 
-### ✅ Beta (current)
+### ✅ 0.5.0 Beta (current)
 - Reader MVP with Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
 - All four annotation types (highlight, re.mark, drawing, eraser) with save/load round-trip
+- **re.marks side panel** with configurable sentence-context (1-5 sentences, paragraph-stop)
 - Anchoring with orphan detection and panel
 - Full error matrix and resilience: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
 - Drag-and-drop file opening, Open Recent menu, minimap, zoom, frameless window, splash screen
-- Settings panel with persistent preferences (12 settings across appearance, reading, annotation, save behaviour)
+- 18-setting Settings panel with persistent preferences and live apply
 - Dark and light themes
 - Vertical filename watermark in the left margin
+- **Hand-drawn welcome tutorial** overlay with rough.js arrows, dismissible per-session or forever
+- **In-app auto-update** with manual + auto-check, Ed25519-signed installers
+- **Animated BETA pin** + hamburger hover morph + bottom-right resize grip with double-click reset
 - Playwright E2E coverage of the spec scenarios
+- 320+ Vitest tests, 6 Rust tests, 0 svelte-check warnings
 
 ### 🔮 Post-beta (deferred)
 - **Re-attach** orphaned annotations to their new locations
@@ -190,6 +218,7 @@ Produces platform-native installers in `src-tauri/target/release/bundle/`:
 - **Mermaid** diagrams, Obsidian-style callouts, wiki-links
 - **PDF/HTML export** with baked-in annotations
 - **Cross-document commands** — *"summarize highlights across these N files"*
+- **Pre-release channel** — opt-in to receive next-version betas via the auto-updater
 - **Collaboration** — real-time sync / multi-user annotations
 
 ---
@@ -197,7 +226,7 @@ Produces platform-native installers in `src-tauri/target/release/bundle/`:
 ## 🧪 Testing
 
 ```bash
-npm test              # 246 Vitest unit + component tests
+npm test              # 320+ Vitest unit + component tests
 npm run check         # svelte-check (0 errors, 0 warnings)
 npm run test:e2e      # 6 Playwright end-to-end scenarios
 cd src-tauri && cargo test   # 6 Rust tests
@@ -210,11 +239,13 @@ cd src-tauri && cargo test   # 6 Rust tests
 | Layer | Choice | Reason |
 |-------|--------|--------|
 | Shell | **Tauri 2.x** | ~5–10 MB installer, native file dialogs, Rust host, auto-updating WebView2 on Windows |
+| Updater | **tauri-plugin-updater** + minisign Ed25519 | Signed installer verification against an in-app pubkey |
 | UI framework | **Svelte 5** (runes) + Vite | Compiled away, small runtime, clean reactive primitives |
 | Markdown | **markdown-it** + footnote + task-lists + KaTeX | Mature, plugin-rich, easy to extend |
 | Syntax highlight | **Shiki** 1.x (WASM, github-dark) | Real VS Code themes, dark-friendly |
 | Math | **KaTeX** via `@vscode/markdown-it-katex` | Fast, no server |
 | Anchoring | W3C-style **text-quote selector** | Robust to edits, graceful orphaning |
+| Hand-drawn UI | **rough.js** | Sketchy/jittery vector strokes for the tutorial arrows |
 | Validation | **Zod** | Runtime-validated loads, typed TS output |
 | Highlights rendering | **CSS Custom Highlight API** | No DOM mutation, browser-native overlap handling |
 | Tests | **Vitest** + `@testing-library/svelte` + **Playwright** | Unit / component / e2e |
@@ -231,11 +262,14 @@ remarkdown/
 │   ├── stores/              # Reactive state (doc, annots, tool, toasts, modals, …)
 │   └── styles/              # Theme tokens (dark + light) + glass mixins + CSS highlight rules
 ├── src-tauri/               # Rust host
+│   ├── capabilities/        # Tauri capability allowlists
 │   └── src/                 # Invoke commands, atomic sidecar writes, recent-files persistence
+├── scripts/                 # Build helpers (latest.json manifest generator)
 ├── tests/
 │   ├── unit/                # Vitest unit tests
 │   ├── component/           # @testing-library/svelte component tests
 │   └── e2e/                 # Playwright end-to-end + support/
+├── RELEASING.md             # End-to-end release/sign/publish process
 └── README.md                # This file
 ```
 

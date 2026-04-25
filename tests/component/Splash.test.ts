@@ -25,15 +25,15 @@ describe('Splash', () => {
     render(Splash);
     expect(document.querySelector('.splash')).not.toBeNull();
     expect(document.querySelector('.splash')!.classList.contains('fading')).toBe(false);
-    // HOLD_BEFORE_REVEAL (900) + REVEAL_DURATION (1500) + HOLD_AFTER_REVEAL (500) = 2900
-    await vi.advanceTimersByTimeAsync(3000);
+    // HOLD_BEFORE_REVEAL (900) + REVEAL_DURATION (1500) + HOLD_AFTER_REVEAL (1500) = 3900
+    await vi.advanceTimersByTimeAsync(4000);
     expect(document.querySelector('.splash')!.classList.contains('fading')).toBe(true);
   });
 
   it('unmounts itself after the fade-out completes', async () => {
     render(Splash);
-    // Start of fade
-    await vi.advanceTimersByTimeAsync(2900);
+    // Start of fade — splash flips to fading at 3900ms
+    await vi.advanceTimersByTimeAsync(3900);
     expect(document.querySelector('.splash')!.classList.contains('fading')).toBe(true);
     // Fade-out duration is 400ms
     await vi.advanceTimersByTimeAsync(450);

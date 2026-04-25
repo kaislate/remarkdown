@@ -34,5 +34,11 @@ docs/PROJECT-STATE.md
 # copy in the project tree.
 *.key
 *.key.pub
+*.password
 .env
 .env.local
+
+# Generated updater manifest — built per-release by scripts/build-manifest.mjs
+# and uploaded as a GitHub release asset. Re-built every release; not
+# checked in.
+latest.json

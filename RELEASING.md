@@ -31,34 +31,59 @@ Update the version number in three files (they must match):
 
 ### 2. Build with signing enabled
 
-The build needs the private key path so it can produce signed `.sig`
-files alongside each installer.
+The build needs the private key so it can produce signed `.sig` files
+alongside each installer. Tauri 2 reads it from `TAURI_SIGNING_PRIVATE_KEY`,
+which accepts EITHER a path to the key file OR the key contents directly.
 
 ```bash
-# Bash / zsh
-export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/remarkdown-updater.key"
+# Bash / zsh / Git Bash
+export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/remarkdown-updater.key"
 npm run tauri build
 ```
 
 ```powershell
 # PowerShell
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$HOME\.tauri\remarkdown-updater.key"
+$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\remarkdown-updater.key"
 npm run tauri build
 ```
 
 If the key has a password, also set `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
-After ~3-8 minutes (cold) you'll have:
+> **Note:** older Tauri 1.x docs (and an earlier draft of this file) used
+> `TAURI_SIGNING_PRIVATE_KEY_PATH`. That variant still works in some CLI
+> versions, but `TAURI_SIGNING_PRIVATE_KEY` is the canonical Tauri 2 name
+> — if a build complains "A public key has been found, but no private
+> key", you've hit the wrong variable.
+
+After ~3-8 minutes (cold) you'll have a signed installer in
+`src-tauri/target/release/bundle/nsis/`:
 
 ```
-src-tauri/target/release/bundle/
-├── nsis/
-│   ├── remarkdown_0.5.0_x64-setup.exe
-│   └── remarkdown_0.5.0_x64-setup.exe.sig
-└── msi/
-    ├── remarkdown_0.5.0_x64_en-US.msi
-    └── remarkdown_0.5.0_x64_en-US.msi.sig
+remarkdown_<version>_x64-setup.exe
+remarkdown_<version>_x64-setup.exe.sig
 ```
+
+### 2a. Pre-release builds — NSIS-only
+
+Stable releases (e.g. `0.5.0`, `1.0.0`) bundle BOTH NSIS and MSI by
+default. Pre-release versions with an alphanumeric semver suffix
+(`0.5.0-beta`, `0.5.0-rc1`, …) cannot be MSI-bundled because Windows
+MSI's `ProductVersion` field only accepts numeric prerelease
+identifiers ≤ 65535.
+
+For pre-releases, edit `src-tauri/tauri.conf.json` and set:
+
+```jsonc
+"bundle": {
+  "active": true,
+  "targets": ["nsis"],   // was: "all"
+  ...
+}
+```
+
+…and revert to `"all"` for the next stable. The current `tauri.conf.json`
+in this repo already targets NSIS-only because it was last cut for the
+`0.5.0-beta` release.
 
 ### 3. Generate the updater manifest
 
@@ -97,12 +122,27 @@ git push origin main v0.5.0
 
 ### 5. Create the GitHub release
 
+For STABLE releases (NSIS + MSI):
 ```bash
 gh release create v0.5.0 \
   --title "remarkdown 0.5.0" \
   --notes "Release notes here" \
   src-tauri/target/release/bundle/nsis/remarkdown_0.5.0_x64-setup.exe \
+  src-tauri/target/release/bundle/nsis/remarkdown_0.5.0_x64-setup.exe.sig \
   src-tauri/target/release/bundle/msi/remarkdown_0.5.0_x64_en-US.msi \
+  src-tauri/target/release/bundle/msi/remarkdown_0.5.0_x64_en-US.msi.sig \
+  latest.json
+```
+
+For PRE-RELEASE builds (NSIS-only, attach `--prerelease` so GitHub's
+`/latest/` redirect skips it and stable users don't auto-update to a beta):
+```bash
+gh release create v0.5.0-beta \
+  --prerelease \
+  --title "remarkdown 0.5.0-beta" \
+  --notes "Release notes here" \
+  src-tauri/target/release/bundle/nsis/remarkdown_0.5.0-beta_x64-setup.exe \
+  src-tauri/target/release/bundle/nsis/remarkdown_0.5.0-beta_x64-setup.exe.sig \
   latest.json
 ```
 
@@ -110,7 +150,8 @@ The `latest.json` file **must** be attached to the release for the
 in-app updater to find it. The endpoint baked into the binary is
 `https://github.com/kaislate/remarkdown/releases/latest/download/latest.json`,
 which GitHub redirects to the most recent published (non-prerelease)
-release's asset of that name.
+release's asset of that name. Pre-releases (`--prerelease`) are skipped
+by that redirect, so installed copies running stable won't see them.
 
 ### 6. Verify
 
