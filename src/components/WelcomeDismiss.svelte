@@ -27,12 +27,13 @@
 <style>
   /* Plain two-line accent-coloured text. No pill, no checkbox — the
      surrounding UI (an open welcome doc + a clickable two-line link sitting
-     above the zoom controls) is enough to communicate intent. Sits at
-     bottom: 68px / left: 22px so it stacks cleanly above the ZoomControls
-     pill (bottom: 22px, ~38px tall + an 8px gap). */
+     above the zoom controls) is enough to communicate intent.
+     Stacks ABOVE the NotesPanel pill so they don't collide when the
+     welcome doc has any notes attached: ZoomControls at 22 + NotesPanel
+     at 68 + this at 116. */
   .dismiss {
     position: fixed;
-    bottom: 68px;
+    bottom: 116px;
     left: 22px;
     z-index: 100;
     font-family: var(--font-sans);

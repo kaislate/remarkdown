@@ -23,6 +23,7 @@
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
+  import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
   import { loadDocument } from './stores/doc';
@@ -230,6 +231,7 @@
   <ColorStrip />
 {/if}
 <ZoomControls />
+<NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />
 <SettingsModal />
