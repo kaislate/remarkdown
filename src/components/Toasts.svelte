@@ -6,6 +6,12 @@
   {#each $toasts as t (t.id)}
     <div class="toast {t.kind} glass" role="status">
       <span class="msg">{t.message}</span>
+      {#if t.action}
+        <button
+          class="action"
+          onclick={() => { t.action!.onClick(); dismissToast(t.id); }}
+        >{t.action.label}</button>
+      {/if}
       <button class="dismiss" aria-label="Dismiss" onclick={() => dismissToast(t.id)}>×</button>
     </div>
   {/each}
@@ -48,6 +54,19 @@
     line-height: 1;
   }
   .dismiss:hover { color: var(--fg-0); }
+  .action {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 0;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .action:hover { filter: brightness(1.15); }
   @keyframes slideIn {
     from { opacity: 0; transform: translateX(12px); }
     to   { opacity: 1; transform: translateX(0); }

@@ -3,10 +3,16 @@ import { ulid } from 'ulid';
 
 export type ToastKind = 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
   createdAt: number;
 }
 
@@ -18,7 +24,11 @@ const AUTO_DISMISS_MS: Partial<Record<ToastKind, number>> = {
 
 export const toasts = writable<Toast[]>([]);
 
-export function addToast(t: { kind: ToastKind; message: string }): string {
+export function addToast(t: {
+  kind: ToastKind;
+  message: string;
+  action?: ToastAction;
+}): string {
   const id = ulid();
   const toast: Toast = { ...t, id, createdAt: Date.now() };
   toasts.update((list) => [...list, toast]);
