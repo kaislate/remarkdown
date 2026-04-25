@@ -21,6 +21,11 @@
     await safeCall(() => getCurrentWindow().startDragging());
   }
 
+  async function onResizePointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    await safeCall(() => getCurrentWindow().startResizeDragging('SouthEast'));
+  }
+
   const minimize = () => safeCall(() => getCurrentWindow().minimize());
   const toggleMaximize = () => safeCall(() => getCurrentWindow().toggleMaximize());
   const close = () => safeCall(() => getCurrentWindow().close());
@@ -64,6 +69,24 @@
   >
     <span aria-hidden="true">&#x00D7;</span>
   </button>
+</div>
+
+<!-- Bottom-right resize grip: three diagonal lines indicating that the
+     corner is grabbable. pointerdown delegates to the OS via Tauri's
+     startResizeDragging so the user gets a native resize feel. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="resize-grip"
+  role="presentation"
+  aria-hidden="true"
+  title="Drag to resize"
+  onpointerdown={onResizePointerDown}
+>
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <line x1="15" y1="3"  x2="3"  y2="15" />
+    <line x1="15" y1="7"  x2="7"  y2="15" />
+    <line x1="15" y1="11" x2="11" y2="15" />
+  </svg>
 </div>
 
 <style>
@@ -139,5 +162,42 @@
   .ctrl.close:hover {
     background: #e74c3c;
     color: #fff;
+  }
+
+  /* Resize grip — small triangular zone in the bottom-right corner. The
+     three diagonal strokes are the universal "this corner is grabbable"
+     signifier; pointerdown delegates to the OS via startResizeDragging.
+     z-index sits above minimap (60) but below modals. */
+  .resize-grip {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    height: 18px;
+    z-index: 70;
+    cursor: nwse-resize;
+    color: var(--fg-2);
+    opacity: 0.45;
+    transition: opacity 0.15s ease, color 0.15s ease;
+    /* Pad the visible glyph in slightly so the strokes don't touch the
+       absolute window edge — keeps the indicator readable on light themes
+       where the edge can blend with the chrome aura. */
+    padding: 2px;
+    box-sizing: border-box;
+  }
+  .resize-grip:hover {
+    opacity: 0.95;
+    color: var(--accent);
+  }
+  .resize-grip svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+  .resize-grip line {
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
   }
 </style>
