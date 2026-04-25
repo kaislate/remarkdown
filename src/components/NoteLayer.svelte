@@ -101,6 +101,57 @@
     return () => window.removeEventListener('resize', onResize);
   });
 
+  // Word-boundary expansion that follows non-whitespace characters
+  // ACROSS text-node boundaries within the block. The previous in-node
+  // walk stopped at the first node boundary, so trailing punctuation
+  // sitting in an adjacent text node (e.g. <em>evening</em>! — the "!"
+  // is in the <p>'s text node, not the <em>'s) was excluded from the
+  // anchor and the pin landed before the punctuation rather than after.
+  function expandToWordBoundary(
+    block: HTMLElement,
+    node: Text,
+    offset: number,
+  ): { startNode: Text; startOffset: number; endNode: Text; endOffset: number } {
+    const nodes: Text[] = [];
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let n = walker.nextNode();
+    while (n) { nodes.push(n as Text); n = walker.nextNode(); }
+    const idx = nodes.indexOf(node);
+    if (idx < 0) return { startNode: node, startOffset: offset, endNode: node, endOffset: offset };
+
+    // Walk END forward through this node and into successors.
+    let endNode = node;
+    let endOffset = offset;
+    for (let i = idx; i < nodes.length; i++) {
+      const cur = nodes[i];
+      let o = i === idx ? endOffset : 0;
+      while (o < cur.data.length && /\S/.test(cur.data[o])) o += 1;
+      endNode = cur;
+      endOffset = o;
+      if (o < cur.data.length) break; // hit whitespace, done
+      // At end of cur — only continue if next node starts with non-ws.
+      const next = nodes[i + 1];
+      if (!next || next.data.length === 0 || /\s/.test(next.data[0])) break;
+    }
+
+    // Walk START backward through this node and into predecessors.
+    let startNode = node;
+    let startOffset = offset;
+    for (let i = idx; i >= 0; i--) {
+      const cur = nodes[i];
+      let o = i === idx ? startOffset : cur.data.length;
+      while (o > 0 && /\S/.test(cur.data[o - 1])) o -= 1;
+      startNode = cur;
+      startOffset = o;
+      if (o > 0) break; // hit whitespace, done
+      // At start of cur — only continue if prev node ends with non-ws.
+      const prev = nodes[i - 1];
+      if (!prev || prev.data.length === 0 || /\s/.test(prev.data[prev.data.length - 1])) break;
+    }
+
+    return { startNode, startOffset, endNode, endOffset };
+  }
+
   function createNoteAt(target: HTMLElement, clientX: number, clientY: number): void {
     const root = get(currentViewerRoot);
     if (!root) return;
@@ -110,17 +161,27 @@
     let range: Range | null = null;
     const cp = (document as any).caretPositionFromPoint?.(clientX, clientY);
     if (cp && cp.offsetNode && cp.offsetNode.nodeType === Node.TEXT_NODE) {
-      const tn = cp.offsetNode as Text;
-      const off = cp.offset as number;
-      const data = tn.data;
-      let start = off;
-      let end = off;
-      while (start > 0 && /\S/.test(data[start - 1])) start -= 1;
-      while (end < data.length && /\S/.test(data[end])) end += 1;
-      if (start === end) { start = 0; end = Math.min(data.length, 8); }
-      range = document.createRange();
-      range.setStart(tn, start);
-      range.setEnd(tn, end);
+      const { startNode, startOffset, endNode, endOffset } = expandToWordBoundary(
+        block,
+        cp.offsetNode as Text,
+        cp.offset as number,
+      );
+      // If we ended up at a degenerate (collapsed) range — clicked on
+      // pure whitespace, e.g. — fall back to the first 8 chars of the
+      // current node so the anchor still has something to bind to.
+      if (
+        startNode === endNode &&
+        startOffset === endOffset
+      ) {
+        const tn = cp.offsetNode as Text;
+        range = document.createRange();
+        range.setStart(tn, 0);
+        range.setEnd(tn, Math.min(tn.data.length, 8));
+      } else {
+        range = document.createRange();
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
+      }
     } else {
       const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
       const tn = walker.nextNode() as Text | null;
@@ -170,22 +231,30 @@
 
     if (!cp || !cp.offsetNode || cp.offsetNode.nodeType !== Node.TEXT_NODE) return false;
 
-    // Verify the text node is inside the article root.
+    // Verify the text node is inside the article root and find the
+    // containing block so the word-boundary walk has a scope.
     let n: Node | null = cp.offsetNode;
     while (n && n !== root) n = n.parentNode;
     if (n !== root) return false;
+    const block = (cp.offsetNode as Node).parentElement?.closest<HTMLElement>('[data-block-id]');
+    if (!block) return false;
 
-    const tn = cp.offsetNode as Text;
-    const off = cp.offset as number;
-    const data = tn.data;
-    let start = off;
-    let end = off;
-    while (start > 0 && /\S/.test(data[start - 1])) start -= 1;
-    while (end < data.length && /\S/.test(data[end])) end += 1;
-    if (start === end) { start = 0; end = Math.min(data.length, 8); }
-    const range = document.createRange();
-    range.setStart(tn, start);
-    range.setEnd(tn, end);
+    const { startNode, startOffset, endNode, endOffset } = expandToWordBoundary(
+      block,
+      cp.offsetNode as Text,
+      cp.offset as number,
+    );
+    let range: Range;
+    if (startNode === endNode && startOffset === endOffset) {
+      const tn = cp.offsetNode as Text;
+      range = document.createRange();
+      range.setStart(tn, 0);
+      range.setEnd(tn, Math.min(tn.data.length, 8));
+    } else {
+      range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+    }
 
     const newAnchor = createAnchor(range, root);
     if (!newAnchor) return false;
