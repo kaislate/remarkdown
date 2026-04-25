@@ -314,7 +314,9 @@
     display: flex;
     flex-direction: column;
     gap: 18px;
-    padding-right: 4px;
+    /* Push the scrollbar further away from the controls so the thumb
+       doesn't visually crowd values + sliders on the right edge. */
+    padding-right: 16px;
   }
   section {
     display: flex;
