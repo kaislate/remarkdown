@@ -22,9 +22,10 @@ playwright-report/
 test-results/
 
 # Internal development docs — kept local only, never pushed to GitHub.
-docs/superpowers/
-docs/QA-plan-*.md
-docs/PROJECT-STATE.md
+# Specs, plans, QA notes, project-state snapshots, and end-of-session
+# thoughts documents all live under docs/ for local reference only.
+# RELEASING.md and any other docs intended to ship live at the repo root.
+docs/
 
 # Annotation sidecars from manual QA on local files — never pushed.
 *.remarkdown.json
