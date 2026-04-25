@@ -311,19 +311,22 @@
   }
 
   function onClickViewer(e: MouseEvent): void {
-    if (get(tool).mode !== 'note') return;
     const target = e.target as HTMLElement;
-    const root = get(currentViewerRoot);
-    if (!root?.contains(target)) return;
-    if ((target as HTMLElement).closest?.('.note-pin, .popover, .popover-wrap')) return;
-    // If a popover is currently open, an off-click should close it
-    // rather than spawn a new note. Once it's closed, the user can click
-    // again to create a new note — this avoids the surprise of getting
-    // a second note every time you tap away to dismiss the first.
-    if (openPinId !== null) {
+    // Close any open re.mark popover the moment the user clicks
+    // anywhere outside it — including on chrome (hamburger, tool rail,
+    // etc.), the article column, the empty space around the article,
+    // or the canvas. This consumes the click so it doesn't ALSO spawn
+    // a new re.mark when the click happened to be in note mode.
+    const insidePopoverOrPin = target?.closest?.('.note-pin, .popover, .popover-wrap');
+    if (openPinId !== null && !insidePopoverOrPin) {
       openPinId = null;
       return;
     }
+
+    if (get(tool).mode !== 'note') return;
+    const root = get(currentViewerRoot);
+    if (!root?.contains(target)) return;
+    if (insidePopoverOrPin) return;
     createNoteAt(target, e.clientX, e.clientY);
   }
 

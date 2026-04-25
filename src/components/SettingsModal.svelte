@@ -370,17 +370,67 @@
     cursor: default;
   }
 
-  .row select, .row input[type="number"] {
-    background: var(--glass-fill);
+  /* Custom-styled form controls so the panel reads as one cohesive
+     glass surface rather than a mix of OS chrome and our own.
+     `appearance: none` strips the native dropdown arrow / spinners;
+     we draw a custom chevron via background-image (encoded SVG) on
+     selects so the trigger still says "this opens a menu". */
+  .row select,
+  .row input[type="number"] {
+    background: linear-gradient(var(--bg-2), var(--bg-2)), var(--glass-fill);
     border: 1px solid var(--glass-border);
     color: var(--fg-0);
-    padding: 4px 8px;
+    padding: 5px 10px;
     border-radius: 6px;
     font-family: inherit;
     font-size: inherit;
     min-width: 120px;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
   }
-  .row input[type="number"] { width: 70px; min-width: 0; text-align: right; }
+  .row select:hover,
+  .row input[type="number"]:hover {
+    border-color: var(--accent-soft);
+  }
+  .row select:focus-visible,
+  .row input[type="number"]:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .row select {
+    /* Custom chevron — encoded SVG of a downward chevron in fg-2.
+       Light theme uses a darker tint via the data-theme override below. */
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7790' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"),
+      linear-gradient(var(--bg-2), var(--bg-2)),
+      var(--glass-fill);
+    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-position: right 10px center, center, center;
+    background-size: 12px, auto, auto;
+    padding-right: 30px;
+  }
+  :global(:root[data-theme='light']) .row select {
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8696' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"),
+      linear-gradient(var(--bg-2), var(--bg-2)),
+      var(--glass-fill);
+  }
+  /* The dropdown OPTIONS list itself is rendered by the OS; the best
+     we can do is hint the colour-scheme so dark/light themes apply
+     the platform's matching menu chrome. color-scheme is already set
+     globally in theme.css, so options pick it up automatically. */
+  .row select option {
+    background: var(--bg-1);
+    color: var(--fg-0);
+  }
+  .row input[type="number"] {
+    width: 80px;
+    min-width: 0;
+    text-align: right;
+  }
 
   .row input[type="checkbox"] {
     width: 16px;
