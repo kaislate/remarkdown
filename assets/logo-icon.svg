@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>remarkdown app icon</title>
+  <defs>
+    <radialGradient id="icon-glow-a" cx="28%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#8b7fff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#8b7fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="icon-glow-b" cx="72%" cy="68%" r="65%">
+      <stop offset="0%" stop-color="#5f9bff" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#5f9bff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark rounded square. 128px corner radius reads as a normal app-icon
+       rounding on Windows without being so soft the icon loses identity at
+       small sizes. -->
+  <rect width="1024" height="1024" rx="128" fill="#0b0a12"/>
+  <rect width="1024" height="1024" rx="128" fill="url(#icon-glow-a)"/>
+  <rect width="1024" height="1024" rx="128" fill="url(#icon-glow-b)"/>
+
+  <!-- "re.md" wordmark — sized to fill most of the canvas width so the mark
+       remains identifiable at 32x32 and above. The accent-coloured dot
+       carries the brand identity from the splash and the README marks. -->
+  <text
+    x="512" y="640"
+    text-anchor="middle"
+    font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="380"
+    font-weight="700"
+    letter-spacing="-12"
+  ><tspan fill="#e8e6f2">re</tspan><tspan fill="#8b7fff">.</tspan><tspan fill="#e8e6f2">md</tspan></text>
+</svg>
