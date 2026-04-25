@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { getVersion } from '@tauri-apps/api/app';
+  import { derivePreReleaseLabel } from '../lib/prerelease';
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
   import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
@@ -11,10 +12,9 @@
 
   let open = $state(false);
 
-  // Pre-release tag rendered next to the wordmark while the build is
-  // not yet 1.0 stable (zero-major) OR has any semver pre-release
-  // suffix (-alpha / -beta / -rc / -dev). The label flips to ALPHA
-  // / RC where appropriate so the tag accurately reflects the stage.
+  // Pre-release tag rendered under the wordmark while the build is not
+  // yet 1.0 stable (zero-major) OR has any semver pre-release suffix
+  // (-alpha / -beta / -rc / -dev).
   let preTagLabel = $state<string | null>(null);
   onMount(async () => {
     try {
@@ -24,18 +24,6 @@
       // Outside Tauri (vitest, storybook) — skip the tag.
     }
   });
-  function derivePreReleaseLabel(v: string): string | null {
-    const lower = v.toLowerCase();
-    if (lower.includes('-alpha')) return 'ALPHA';
-    if (lower.includes('-rc')) return 'RC';
-    if (lower.includes('-beta')) return 'BETA';
-    if (lower.includes('-dev')) return 'DEV';
-    // Zero-major versions (0.x.y) are pre-1.0 by convention — call them
-    // BETA so installed copies signal "this is not the stable release"
-    // even when no explicit suffix is present.
-    if (/^0\./.test(v)) return 'BETA';
-    return null;
-  }
 
   function toggle() { open = !open; }
 
@@ -315,11 +303,17 @@
        3. A subtle hue-shift on the gradient stops via animated
           background-position so the gradient itself drifts. */
   .pre-tag {
-    position: relative;
+    /* Sits as an absolutely-positioned pin under the wordmark so the
+       hamburger:hover ~ .wordmark sibling-combinator selectors stay
+       intact (wrapping the wordmark in a column flex container would
+       break that chain). top:30 lands the pin in the gap between the
+       wordmark text and the popover top edge at top:46. */
+    position: absolute;
+    top: 30px;
+    left: 50px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 10px;
     padding: 2px 7px 3px;
     border-radius: 4px;
     overflow: hidden;
@@ -347,10 +341,6 @@
     animation:
       pre-tag-pulse 2.6s ease-in-out infinite,
       pre-tag-drift 7s linear infinite;
-    /* Vertical-align with the wordmark cap-height. The wordmark is 18px
-       /1.0 line-height; the pin is ~14px tall with the padding above —
-       lift it so it centres on x-height rather than baseline. */
-    transform: translateY(-1px);
   }
   .pre-tag-text {
     position: relative;

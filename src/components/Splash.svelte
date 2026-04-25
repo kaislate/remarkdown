@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
+  import { derivePreReleaseLabel } from '../lib/prerelease';
 
   // Animation timing (ms). Kept as a single source of truth.
   const HOLD_BEFORE_REVEAL = 900;     // "re.md" sits before transformation
@@ -8,8 +10,13 @@
   const FADE_OUT_MS = 400;
   const TOTAL_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION + HOLD_AFTER_REVEAL;
 
+  // The BETA pin only appears once the wordmark has fully unfolded into
+  // "remarkdown" — fading in just under the freshly-revealed logo.
+  const PRE_TAG_DELAY_MS = HOLD_BEFORE_REVEAL + REVEAL_DURATION;
+
   let visible = $state(true);
   let fading = $state(false);
+  let preTagLabel = $state<string | null>(null);
 
   function dismiss() {
     if (fading) return;
@@ -18,8 +25,20 @@
   }
 
   onMount(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await getVersion();
+        if (!cancelled) preTagLabel = derivePreReleaseLabel(v);
+      } catch {
+        // Outside Tauri (vitest, storybook) — no tag.
+      }
+    })();
     const t = setTimeout(dismiss, TOTAL_MS);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   });
 </script>
 
@@ -33,14 +52,29 @@
     role="presentation"
     aria-hidden="true"
   >
-    <h1 class="logo">
-      <span class="re">re</span><!--
-      --><span class="dot">.</span><!--
-      --><span class="m">m</span><!--
-      --><span class="ark">ark</span><!--
-      --><span class="d">d</span><!--
-      --><span class="own">own</span>
-    </h1>
+    <div class="splash-stack">
+      <h1 class="logo">
+        <span class="re">re</span><!--
+        --><span class="dot">.</span><!--
+        --><span class="m">m</span><!--
+        --><span class="ark">ark</span><!--
+        --><span class="d">d</span><!--
+        --><span class="own">own</span>
+      </h1>
+
+      {#if preTagLabel}
+        <!-- Animated pre-release pin. Fades in after the wordmark
+             finishes unfolding so it doesn't compete with the morph. -->
+        <span
+          class="pre-tag"
+          style:animation-delay="{PRE_TAG_DELAY_MS}ms"
+          aria-hidden="true"
+        >
+          <span class="pre-tag-text">{preTagLabel}</span>
+          <span class="pre-tag-shine" aria-hidden="true"></span>
+        </span>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -62,6 +96,17 @@
   .splash.fading {
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* Vertical stack so the BETA pin sits centred under the wordmark
+     instead of overlapping it inside the splash grid cell. The gap is
+     intentionally generous so the pin reads as related to but not
+     attached to the logo. */
+  .splash-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
   }
 
   .logo {
@@ -119,5 +164,102 @@
   @keyframes unfold {
     0%   { max-width: 0;     opacity: 0.4; clip-path: inset(0 100% 0 0); }
     100% { max-width: 4.5ch; opacity: 1;   clip-path: inset(0 0 0 0);    }
+  }
+
+  /* Pre-release pin — same visual language as the in-app GlassMenu
+     pin, scaled up to read at splash sizes. Three stacked animations:
+     a single fade-in (one-shot, gated by an inline animation-delay),
+     plus the perpetual glow pulse + drift + shine that the GlassMenu
+     pin uses. */
+  .pre-tag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 13px 5px;
+    border-radius: 6px;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        110deg,
+        var(--accent) 0%,
+        #b59cff 35%,
+        var(--accent) 70%,
+        #8b7fff 100%
+      );
+    background-size: 220% 100%;
+    background-position: 0% 50%;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow:
+      0 2px 12px rgba(139, 127, 255, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    /* Fade-in starts hidden; animation-fill-mode: backwards keeps the
+       opacity:0 state during the inline-set delay so the pin doesn't
+       flash before its cue. */
+    opacity: 0;
+    animation:
+      pre-tag-in 0.55s ease-out forwards,
+      pre-tag-pulse 2.6s 0.55s ease-in-out infinite,
+      pre-tag-drift 7s 0.55s linear infinite;
+    animation-fill-mode: backwards, none, none;
+  }
+  .pre-tag-text {
+    position: relative;
+    z-index: 2;
+  }
+  .pre-tag-shine {
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.5) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: skewX(-18deg);
+    z-index: 1;
+    animation: pre-tag-shine 3.4s 1.2s ease-in-out infinite;
+  }
+  @keyframes pre-tag-in {
+    0%   { opacity: 0; transform: translateY(8px) scale(0.9); }
+    100% { opacity: 1; transform: translateY(0)   scale(1);   }
+  }
+  @keyframes pre-tag-pulse {
+    0%, 100% {
+      box-shadow:
+        0 2px 12px rgba(139, 127, 255, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    50% {
+      box-shadow:
+        0 4px 22px rgba(139, 127, 255, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+  }
+  @keyframes pre-tag-drift {
+    0%   { background-position: 0%   50%; }
+    100% { background-position: 200% 50%; }
+  }
+  @keyframes pre-tag-shine {
+    0%   { left: -60%; }
+    35%  { left: 130%; }
+    100% { left: 130%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pre-tag,
+    .pre-tag-shine {
+      animation: none;
+      opacity: 1;
+    }
   }
 </style>
