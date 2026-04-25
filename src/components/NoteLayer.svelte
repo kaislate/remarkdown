@@ -2,6 +2,7 @@
   import { get } from 'svelte/store';
   import { ulid } from 'ulid';
   import { tool } from '../stores/tool';
+  import { zoomLevel } from '../stores/ui';
   import {
     addAnnotation,
     updateAnnotation,
@@ -42,7 +43,7 @@
 
   // Recompute pin positions whenever resolved notes change.
   const pins = $derived.by(() => {
-    void resizeTick; // re-evaluate on window resize
+    void resizeTick; // re-evaluate on window resize OR zoom change
     const root = $currentViewerRoot;
     if (!root) return [];
     const rootRect = root.getBoundingClientRect();
@@ -99,6 +100,23 @@
     const onResize = () => { resizeTick += 1; };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  });
+
+  // Zoom changes scale the article via the --zoom CSS variable (set by
+  // App.svelte's zoomLevel subscriber). The new variable has to flow
+  // through layout before getBoundingClientRect on the anchored ranges
+  // returns fresh values — defer to the next animation frame to make
+  // sure layout has settled, then bump resizeTick to recompute pins.
+  $effect(() => {
+    void $zoomLevel;
+    if (typeof requestAnimationFrame === 'undefined') {
+      resizeTick += 1;
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      resizeTick += 1;
+    });
+    return () => cancelAnimationFrame(id);
   });
 
   // Word-boundary expansion that follows non-whitespace characters
