@@ -7,6 +7,7 @@
   import './styles/cursors.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
+  import WelcomeOverlay from './components/WelcomeOverlay.svelte';
   import GlassMenu from './components/GlassMenu.svelte';
   import ToolRail from './components/ToolRail.svelte';
   import ColorStrip from './components/ColorStrip.svelte';
@@ -156,6 +157,7 @@
 
 <Viewer />
 <LeftMarginTitle />
+<WelcomeOverlay />
 <Minimap />
 <TitleBar />
 <GlassMenu />

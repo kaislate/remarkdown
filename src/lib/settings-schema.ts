@@ -25,6 +25,7 @@ export const SettingsSchema = z.object({
   maxRecent: z.number().int().min(1).max(50),
   openLastOnStartup: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
+  welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
 
   // Annotation
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxRecent: 10,
   openLastOnStartup: false,
   dontShowWelcomeOnLaunch: false,
+  welcomeTutorialDismissed: false,
   hideAnnotationControls: false,
   defaultHighlightColor: HIGHLIGHT_COLORS[0],
   defaultInkColor: DRAW_COLORS[0],
