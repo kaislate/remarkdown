@@ -96,6 +96,13 @@
       </button>
       <button
         role="menuitem"
+        class="item"
+        onclick={() => { open = false; openModal({ kind: 'check-update' }); }}
+      >
+        Check for updates…
+      </button>
+      <button
+        role="menuitem"
         class="item danger"
         disabled={$annots.length === 0}
         onclick={() => { open = false; openModal({ kind: 'confirm-clear-annots' }); }}
