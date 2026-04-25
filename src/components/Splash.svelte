@@ -97,21 +97,18 @@
     100% { opacity: 0; max-width: 0;      transform: translateY(0.4em) scale(0.6); }
   }
 
-  /* "ark" and "own" expand from zero width — overflow hidden hides their
-     letters until the box is wide enough to show them, producing a smooth
-     left-to-right unfold. The cubic-bezier eases out toward the end so the
-     last few characters settle softly rather than snapping.
-
-     Elevated-baseline note (kept INTENTIONALLY): inline-block with
-     overflow != visible uses its bottom margin edge as the baseline (per
-     CSS 2.1 §10.8.1), which makes the inner letters sit slightly above the
-     surrounding text — a subtle superscript-like flourish. We lean into it
-     with a small explicit translateY so the effect is consistent across
-     browsers and reads as a deliberate stylization. */
+  /* "ark" and "own" expand from zero width — `max-width` drives the layout
+     so surrounding letters slide together, and `clip-path` hides the
+     overflowing letters until the box is wide enough to reveal them. Using
+     clip-path instead of `overflow: hidden` is deliberate: overflow !=
+     visible on an inline-block makes its baseline the bottom margin edge
+     (CSS 2.1 §10.8.1), which would raise the inner text into a
+     superscript-like position relative to the surrounding letters. With
+     overflow staying visible the inline-block's baseline is the natural
+     text baseline and "remarkdown" reads as a single horizontal line. */
   .ark, .own {
     max-width: 0;
-    overflow: hidden;
-    transform: translateY(-0.04em);
+    clip-path: inset(0 100% 0 0);
   }
   .ark {
     animation: unfold 0.85s 1.0s forwards cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -120,7 +117,7 @@
     animation: unfold 0.85s 1.2s forwards cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   @keyframes unfold {
-    0%   { max-width: 0;     opacity: 0.4; }
-    100% { max-width: 4.5ch; opacity: 1;   }
+    0%   { max-width: 0;     opacity: 0.4; clip-path: inset(0 100% 0 0); }
+    100% { max-width: 4.5ch; opacity: 1;   clip-path: inset(0 0 0 0);    }
   }
 </style>
