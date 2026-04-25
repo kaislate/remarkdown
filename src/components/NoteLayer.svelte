@@ -16,6 +16,17 @@
 
   let openPinId = $state<string | null>(null);
 
+  // Drag state for moving pins. dragPinId is the note being dragged;
+  // dragStart is the pointer's screen position when the press began;
+  // dragOffset accumulates the pointer's displacement during the drag.
+  let dragPinId = $state<string | null>(null);
+  let dragStart: { x: number; y: number } | null = null;
+  let dragOffset = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Threshold (in CSS px) the pointer must move before a press is treated
+  // as a drag rather than a click. Below this, releasing returns to the
+  // standard "toggle popover" behaviour.
+  const DRAG_THRESHOLD_PX = 4;
+
   // Used to keep clamped popover positions current when the window resizes
   // — bumping this forces the $derived block below to re-run.
   let resizeTick = $state(0);
@@ -136,12 +147,114 @@
     openPinId = note.id;
   }
 
+  // Resolve a new anchor for the dropped pin location, then update the
+  // note's anchor in place. If the drop target isn't text inside the
+  // article (e.g. user dropped over chrome or the gutter), the note's
+  // anchor stays put — the visual pin snaps back to its original spot.
+  function reAnchorNote(pinId: string, clientX: number, clientY: number): boolean {
+    const root = get(currentViewerRoot);
+    if (!root) return false;
+
+    // Temporarily hide pin elements so caretPositionFromPoint can see the
+    // text underneath — otherwise the caret query returns the pin itself.
+    const pinEls = Array.from(document.querySelectorAll<HTMLElement>('.note-pin'));
+    const visibilities = pinEls.map((el) => el.style.visibility);
+    pinEls.forEach((el) => { el.style.visibility = 'hidden'; });
+
+    let cp: any;
+    try {
+      cp = (document as any).caretPositionFromPoint?.(clientX, clientY);
+    } finally {
+      pinEls.forEach((el, i) => { el.style.visibility = visibilities[i]; });
+    }
+
+    if (!cp || !cp.offsetNode || cp.offsetNode.nodeType !== Node.TEXT_NODE) return false;
+
+    // Verify the text node is inside the article root.
+    let n: Node | null = cp.offsetNode;
+    while (n && n !== root) n = n.parentNode;
+    if (n !== root) return false;
+
+    const tn = cp.offsetNode as Text;
+    const off = cp.offset as number;
+    const data = tn.data;
+    let start = off;
+    let end = off;
+    while (start > 0 && /\S/.test(data[start - 1])) start -= 1;
+    while (end < data.length && /\S/.test(data[end])) end += 1;
+    if (start === end) { start = 0; end = Math.min(data.length, 8); }
+    const range = document.createRange();
+    range.setStart(tn, start);
+    range.setEnd(tn, end);
+
+    const newAnchor = createAnchor(range, root);
+    if (!newAnchor) return false;
+
+    updateAnnotation(pinId, (a) => {
+      if (a.type !== 'note') return a;
+      return { ...a, anchor: newAnchor };
+    });
+    return true;
+  }
+
+  function onPinPointerDown(e: PointerEvent, pinId: string) {
+    if (e.button !== 0) return;
+    if (get(tool).mode === 'eraser') return; // Eraser handled by onclick.
+    e.stopPropagation();
+    dragPinId = pinId;
+    dragStart = { x: e.clientX, y: e.clientY };
+    dragOffset = { x: 0, y: 0 };
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+  }
+
+  function onPinPointerMove(e: PointerEvent) {
+    if (!dragPinId || !dragStart) return;
+    dragOffset = {
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
+    };
+  }
+
+  function onPinPointerUp(e: PointerEvent, pinId: string) {
+    if (dragPinId !== pinId) return;
+    const moved = Math.hypot(dragOffset.x, dragOffset.y) > DRAG_THRESHOLD_PX;
+    if (moved) {
+      reAnchorNote(pinId, e.clientX, e.clientY);
+    } else {
+      // Treat as a click — toggle popover open/closed.
+      openPinId = openPinId === pinId ? null : pinId;
+    }
+    dragPinId = null;
+    dragStart = null;
+    dragOffset = { x: 0, y: 0 };
+  }
+
+  function onPinClick(e: MouseEvent, pinId: string) {
+    // Eraser mode is the only path that needs onclick — drag-vs-click for
+    // every other mode is decided in onPinPointerUp. We still
+    // stopPropagation here to keep the document-level note-creation
+    // handler from spawning a new note from this same click.
+    e.stopPropagation();
+    if (get(tool).mode === 'eraser') {
+      if (openPinId === pinId) openPinId = null;
+      removeAnnotation(pinId);
+    }
+  }
+
   function onClickViewer(e: MouseEvent): void {
     if (get(tool).mode !== 'note') return;
     const target = e.target as HTMLElement;
     const root = get(currentViewerRoot);
     if (!root?.contains(target)) return;
-    if ((target as HTMLElement).closest?.('.note-pin, .popover')) return;
+    if ((target as HTMLElement).closest?.('.note-pin, .popover, .popover-wrap')) return;
+    // If a popover is currently open, an off-click should close it
+    // rather than spawn a new note. Once it's closed, the user can click
+    // again to create a new note — this avoids the surprise of getting
+    // a second note every time you tap away to dismiss the first.
+    if (openPinId !== null) {
+      openPinId = null;
+      return;
+    }
     createNoteAt(target, e.clientX, e.clientY);
   }
 
@@ -156,17 +269,18 @@
     <button
       class="note-pin"
       class:eraser={$tool.mode === 'eraser'}
-      style="top:{p.position.top}px; left:{p.position.left}px"
-      aria-label={$tool.mode === 'eraser' ? 'Erase note' : 'Open note'}
-      onclick={(e) => {
-        e.stopPropagation();
-        if (get(tool).mode === 'eraser') {
-          if (openPinId === p.note.id) openPinId = null;
-          removeAnnotation(p.note.id);
-          return;
-        }
-        openPinId = openPinId === p.note.id ? null : p.note.id;
-      }}
+      class:dragging={dragPinId === p.note.id}
+      style="
+        top:{p.position.top}px;
+        left:{p.position.left}px;
+        {dragPinId === p.note.id ? `transform: translate(${dragOffset.x}px, ${dragOffset.y}px);` : ''}
+      "
+      aria-label={$tool.mode === 'eraser' ? 'Erase note' : 'Open or drag note'}
+      data-id={p.note.id}
+      onpointerdown={(e) => onPinPointerDown(e, p.note.id)}
+      onpointermove={onPinPointerMove}
+      onpointerup={(e) => onPinPointerUp(e, p.note.id)}
+      onclick={(e) => onPinClick(e, p.note.id)}
     >●</button>
     {#if openPinId === p.note.id}
       <div class="popover-wrap" style="top:{p.popover.top}px; left:{p.popover.left}px">
@@ -194,14 +308,25 @@
     background: #ffca4a;
     border: 1.5px solid rgba(0,0,0,0.15);
     color: transparent;
-    cursor: pointer;
+    cursor: grab;
     pointer-events: auto;
     /* Sit above the DrawLayer SVG so pin clicks aren't intercepted by it.
        (DrawLayer's stacking is at z-index: auto inside the same .content
        stacking context; any positive z here wins.) */
     z-index: 5;
     box-shadow: 0 2px 6px rgba(255, 202, 74, 0.5);
-    transition: background 0.15s, box-shadow 0.15s;
+    transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+  }
+  .note-pin:active {
+    cursor: grabbing;
+  }
+  .note-pin.dragging {
+    cursor: grabbing;
+    opacity: 0.75;
+    box-shadow: 0 4px 14px rgba(255, 202, 74, 0.7);
+    /* Suspend transitions during drag so the pin tracks the cursor 1:1
+       without smoothing artifacts. */
+    transition: opacity 0.15s, box-shadow 0.15s;
   }
   .note-pin.eraser {
     cursor: cell;
