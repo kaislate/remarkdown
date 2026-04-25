@@ -90,8 +90,5 @@ body {
   position: relative;
 }
 
-/* Eraser-mode global cursor. Applied by App.svelte when tool === 'eraser'. */
-body.eraser-cursor,
-body.eraser-cursor * {
-  cursor: cell;
-}
+/* Per-tool global cursors live in styles/cursors.css; applied by
+   App.svelte which sets body.cursor-mode-<tool> from the tool store. */

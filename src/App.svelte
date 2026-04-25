@@ -4,6 +4,7 @@
   import './styles/glass.css';
   import './styles/highlights.css';
   import './styles/article.css';
+  import './styles/cursors.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import GlassMenu from './components/GlassMenu.svelte';
@@ -53,12 +54,22 @@
     }
   });
 
-  // Body-level cursor in eraser mode — the DrawLayer SVG is pointer-events:none
-  // in eraser mode, so its CSS cursor doesn't apply. Set the cursor on body
-  // instead so the entire canvas reads as "in eraser mode".
+  // Body-level cursor per active tool. cursors.css branches on these
+  // classes; only one is applied at a time so we clear the rest first.
+  // (DrawLayer's SVG is pointer-events:none in eraser mode and the layer
+  // doesn't cover the whole canvas, so applying the cursor on body is the
+  // only way to make every surface read as "in tool X".)
+  const TOOL_CURSOR_CLASSES = [
+    'cursor-mode-cursor',
+    'cursor-mode-highlight',
+    'cursor-mode-note',
+    'cursor-mode-draw',
+    'cursor-mode-eraser',
+  ];
   const unsubTool = tool.subscribe((t) => {
     if (typeof document !== 'undefined') {
-      document.body.classList.toggle('eraser-cursor', t.mode === 'eraser');
+      document.body.classList.remove(...TOOL_CURSOR_CLASSES);
+      document.body.classList.add(`cursor-mode-${t.mode}`);
     }
   });
 

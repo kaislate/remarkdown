@@ -16,8 +16,22 @@
 
   let openPinId = $state<string | null>(null);
 
+  // Used to keep clamped popover positions current when the window resizes
+  // — bumping this forces the $derived block below to re-run.
+  let resizeTick = $state(0);
+
+  // Approximate maximum dimensions of NotePopover.svelte. Used to clamp the
+  // popover within the viewport so the Delete button can't disappear off
+  // the right edge on narrow windows. A tighter measurement (via a bind
+  // ref + getBoundingClientRect) would be exact, but the popover's chrome
+  // is stable enough that hard-coded bounds work.
+  const POPOVER_W = 280;
+  const POPOVER_H = 180;
+  const VIEWPORT_MARGIN = 8;
+
   // Recompute pin positions whenever resolved notes change.
   const pins = $derived.by(() => {
+    void resizeTick; // re-evaluate on window resize
     const root = $currentViewerRoot;
     if (!root) return [];
     const rootRect = root.getBoundingClientRect();
@@ -34,8 +48,46 @@
         return {
           note: r.annotation as Note,
           position: pinPosition(rootRect, rangeRect),
+          popover: clampedPopoverPos(rootRect, pinPosition(rootRect, rangeRect)),
         };
       });
+  });
+
+  // Compute the popover's viewport-fixed position from the pin's
+  // root-relative position. Default offset is below-and-right of the pin
+  // (matching the previous behaviour); when that would push the popover
+  // past the viewport's right edge we flip it to the LEFT of the pin
+  // instead, then clamp to the visible area as a last resort.
+  function clampedPopoverPos(rootRect: DOMRect, pin: { top: number; left: number }) {
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+
+    const pinViewportLeft = rootRect.left + pin.left;
+    const pinViewportTop = rootRect.top + pin.top;
+
+    let left = pinViewportLeft + 18;
+    let top = pinViewportTop + 18;
+
+    const maxLeft = w - POPOVER_W - VIEWPORT_MARGIN;
+    if (left > maxLeft) {
+      // Try positioning to the LEFT of the pin first (popover's right
+      // edge sits a few px left of the pin).
+      const flippedLeft = pinViewportLeft - POPOVER_W - 6;
+      left = flippedLeft >= VIEWPORT_MARGIN ? flippedLeft : maxLeft;
+    }
+    left = Math.max(VIEWPORT_MARGIN, left);
+
+    const maxTop = h - POPOVER_H - VIEWPORT_MARGIN;
+    if (top > maxTop) top = Math.max(VIEWPORT_MARGIN, maxTop);
+
+    return { top, left };
+  }
+
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => { resizeTick += 1; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   });
 
   function createNoteAt(target: HTMLElement, clientX: number, clientY: number): void {
@@ -117,7 +169,7 @@
       }}
     >●</button>
     {#if openPinId === p.note.id}
-      <div class="popover-wrap" style="top:{p.position.top + 18}px; left:{p.position.left + 18}px">
+      <div class="popover-wrap" style="top:{p.popover.top}px; left:{p.popover.left}px">
         <NotePopover
           body={p.note.body}
           onUpdate={(next) => updateAnnotation(p.note.id, (a) => ({ ...(a as Note), body: next }))}
@@ -158,8 +210,11 @@
     background: #ff6e6e;
     box-shadow: 0 2px 8px rgba(255, 110, 110, 0.6);
   }
+  /* Popover uses fixed positioning so the clamped-to-viewport coordinates
+     in clampedPopoverPos() are applied directly without further offset
+     from a positioned ancestor. */
   .popover-wrap {
-    position: absolute;
+    position: fixed;
     z-index: 200;
     pointer-events: auto;
   }
