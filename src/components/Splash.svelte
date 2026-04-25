@@ -204,15 +204,15 @@
     box-shadow:
       0 2px 12px rgba(139, 127, 255, 0.5),
       inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    /* Fade-in starts hidden; animation-fill-mode: backwards keeps the
-       opacity:0 state during the inline-set delay so the pin doesn't
-       flash before its cue. */
+    /* Fade-in starts hidden; the static opacity:0 holds the pin
+       invisible during the inline animation-delay, then pre-tag-in
+       (fill-mode: both) fades to opacity:1 and KEEPS that end-state
+       while the pulse / drift / shine continue to play. */
     opacity: 0;
     animation:
-      pre-tag-in 0.55s ease-out forwards,
+      pre-tag-in 0.55s ease-out both,
       pre-tag-pulse 2.6s 0.55s ease-in-out infinite,
       pre-tag-drift 7s 0.55s linear infinite;
-    animation-fill-mode: backwards, none, none;
   }
   .pre-tag-text {
     position: relative;
