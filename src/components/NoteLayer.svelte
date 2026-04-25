@@ -302,23 +302,30 @@
   }
   .note-pin {
     position: absolute;
-    /* Smaller pin (was 18px) so the marker reads as marginalia rather
-       than an intrusive token. Coupled with right-margin positioning
-       in src/lib/positioning.ts, the pin no longer covers any text. */
-    width: 14px;
-    height: 14px;
+    /* Footnote-style marker. Sized in em so the dot scales naturally
+       with text zoom; coloured with the brand accent purple so it
+       reads as the same identity dot from the re.md logo + splash
+       animation rather than a generic yellow pin. */
+    width: 0.7em;
+    height: 0.7em;
     border-radius: 999px;
-    background: #ffca4a;
-    border: 1.5px solid rgba(0,0,0,0.15);
+    background: var(--accent);
+    border: 0;
     color: transparent;
     cursor: grab;
     pointer-events: auto;
+    padding: 0;
     /* Sit above the DrawLayer SVG so pin clicks aren't intercepted by it.
        (DrawLayer's stacking is at z-index: auto inside the same .content
        stacking context; any positive z here wins.) */
     z-index: 5;
-    box-shadow: 0 2px 6px rgba(255, 202, 74, 0.5);
-    transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+    box-shadow: 0 1px 3px rgba(139, 127, 255, 0.4);
+    transition: transform 0.15s, background 0.15s, box-shadow 0.15s, opacity 0.15s;
+    font-size: inherit;
+  }
+  .note-pin:hover {
+    transform: scale(1.3);
+    box-shadow: 0 2px 8px rgba(139, 127, 255, 0.7);
   }
   .note-pin:active {
     cursor: grabbing;
@@ -336,7 +343,7 @@
   }
   .note-pin.eraser:hover {
     background: #ff6e6e;
-    box-shadow: 0 2px 8px rgba(255, 110, 110, 0.6);
+    box-shadow: 0 2px 8px rgba(255, 110, 110, 0.7);
   }
   /* Popover uses fixed positioning so the clamped-to-viewport coordinates
      in clampedPopoverPos() are applied directly without further offset
