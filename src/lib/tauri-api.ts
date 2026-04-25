@@ -63,3 +63,7 @@ export async function loadSettingsJson(): Promise<string | null> {
 export async function saveSettingsJson(json: string): Promise<void> {
   await invoke('save_settings', { json });
 }
+
+export async function ensureWelcomeDoc(): Promise<string> {
+  return await invoke<string>('ensure_welcome_doc');
+}

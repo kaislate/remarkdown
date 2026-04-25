@@ -128,6 +128,12 @@ pub fn save_settings(app: tauri::AppHandle, json: String) -> Result<(), CommandE
 }
 
 #[tauri::command]
+pub fn ensure_welcome_doc(app: tauri::AppHandle) -> Result<String, CommandError> {
+    let p = crate::welcome::ensure(&app)?;
+    Ok(p.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);

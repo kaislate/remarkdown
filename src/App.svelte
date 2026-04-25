@@ -18,8 +18,11 @@
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
+  import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
   import { loadDocument } from './stores/doc';
+  import { welcomeDocPath } from './stores/welcome';
+  import { ensureWelcomeDoc } from './lib/tauri-api';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
@@ -98,10 +101,23 @@
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
 
-    // If the user opted in, reopen the most-recently-used file. Skip silently
-    // when there's nothing to open or the file no longer exists, so a missing
-    // file never blocks app launch.
-    if (s.openLastOnStartup) {
+    // Startup-document precedence:
+    //   1. If welcome is enabled (default), materialise it under app_data_dir
+    //      and open it. The user gets a guided tour every launch until they
+    //      tick the dismiss option.
+    //   2. Otherwise, if openLastOnStartup is on, reopen the most recent file.
+    //   3. Otherwise, leave the empty state visible.
+    if (!s.dontShowWelcomeOnLaunch) {
+      try {
+        const welcomePath = await ensureWelcomeDoc();
+        welcomeDocPath.set(welcomePath);
+        await loadDocument(welcomePath);
+        await recordRecent(welcomePath);
+      } catch {
+        // ensure_welcome_doc unavailable (non-Tauri host) — fall through to
+        // the openLast branch silently.
+      }
+    } else if (s.openLastOnStartup) {
       const last = get(recent)[0];
       const exists = last ? get(recentExistence)[last] !== false : false;
       if (last && exists) {
@@ -134,6 +150,7 @@
 <ToolRail />
 <ColorStrip />
 <ZoomControls />
+<WelcomeDismiss />
 <OrphanPanel />
 <SettingsModal />
 <CorruptSidecarModal />

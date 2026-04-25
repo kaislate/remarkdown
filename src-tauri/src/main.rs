@@ -4,6 +4,7 @@ mod commands;
 mod recent;
 mod settings;
 mod sidecar;
+mod welcome;
 
 fn main() {
     tauri::Builder::default()
@@ -20,6 +21,7 @@ fn main() {
             commands::backup_corrupt_sidecar,
             commands::load_settings,
             commands::save_settings,
+            commands::ensure_welcome_doc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

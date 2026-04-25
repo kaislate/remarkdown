@@ -24,6 +24,7 @@ export const SettingsSchema = z.object({
   articleWidth: z.number().int().min(480).max(1200),
   maxRecent: z.number().int().min(1).max(50),
   openLastOnStartup: z.boolean(),
+  dontShowWelcomeOnLaunch: z.boolean(),
 
   // Annotation
   defaultHighlightColor: z
@@ -54,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   articleWidth: 720,
   maxRecent: 10,
   openLastOnStartup: false,
+  dontShowWelcomeOnLaunch: false,
   defaultHighlightColor: HIGHLIGHT_COLORS[0],
   defaultInkColor: DRAW_COLORS[0],
   saveDebounceMs: 500,
