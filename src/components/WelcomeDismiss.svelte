@@ -36,9 +36,9 @@
     left: 22px;
     z-index: 100;
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.3;
     color: var(--accent);
     cursor: pointer;
     user-select: none;
