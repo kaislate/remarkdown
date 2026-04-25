@@ -30,7 +30,8 @@
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
-  import { tool } from './stores/tool';
+  import { tool, setMode } from './stores/tool';
+  import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
   let pulse = $state(0);
@@ -82,6 +83,32 @@
     else if (e.key === '0') { e.preventDefault(); resetZoom(); }
   }
 
+  // Bare-number keys switch the active annotation tool. Skipped while a
+  // text input or contenteditable element is focused so typing "1" inside
+  // a NotePopover writes the digit instead of swapping to the cursor tool.
+  const TOOL_SHORTCUTS: Record<string, Tool> = {
+    '1': 'cursor',
+    '2': 'highlight',
+    '3': 'note',
+    '4': 'draw',
+    '0': 'eraser',
+  };
+  function onToolShortcut(e: KeyboardEvent) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    const mode = TOOL_SHORTCUTS[e.key];
+    if (mode) {
+      e.preventDefault();
+      setMode(mode);
+    }
+  }
+
   onMount(async () => {
     // Load persisted settings before anything else so subsequent subscribers
     // (theme, watermark, etc.) see the user's preferences instead of defaults.
@@ -113,6 +140,7 @@
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
+    window.addEventListener('keydown', onToolShortcut);
 
     // Startup-document precedence:
     //   1. If welcome is enabled (default), materialise it under app_data_dir
@@ -151,7 +179,10 @@
     unsubZoom();
     unsubTool();
     unsubTheme();
-    if (typeof window !== 'undefined') window.removeEventListener('keydown', onZoomKey);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', onZoomKey);
+      window.removeEventListener('keydown', onToolShortcut);
+    }
   });
 </script>
 

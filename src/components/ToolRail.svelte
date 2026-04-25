@@ -8,12 +8,12 @@
   import Eraser from 'phosphor-svelte/lib/Eraser';
   import type { Component } from 'svelte';
 
-  const TOOLS: { mode: Tool; label: string; icon: Component }[] = [
-    { mode: 'cursor', label: 'Cursor', icon: Cursor },
-    { mode: 'highlight', label: 'Highlight', icon: Highlighter },
-    { mode: 'note', label: 'Note', icon: NotePencil },
-    { mode: 'draw', label: 'Draw', icon: PencilSimple },
-    { mode: 'eraser', label: 'Eraser', icon: Eraser },
+  const TOOLS: { mode: Tool; label: string; icon: Component; shortcut: string }[] = [
+    { mode: 'cursor', label: 'Cursor', icon: Cursor, shortcut: '1' },
+    { mode: 'highlight', label: 'Highlight', icon: Highlighter, shortcut: '2' },
+    { mode: 'note', label: 'Note', icon: NotePencil, shortcut: '3' },
+    { mode: 'draw', label: 'Draw', icon: PencilSimple, shortcut: '4' },
+    { mode: 'eraser', label: 'Eraser', icon: Eraser, shortcut: '0' },
   ];
 </script>
 
@@ -23,8 +23,8 @@
       class="btn"
       role="radio"
       aria-checked={$tool.mode === t.mode}
-      aria-label={t.label}
-      title={t.label}
+      aria-label={`${t.label} (${t.shortcut})`}
+      title={`${t.label} (${t.shortcut})`}
       onclick={() => setMode(t.mode)}
     >
       <span class="glyph" aria-hidden="true">
