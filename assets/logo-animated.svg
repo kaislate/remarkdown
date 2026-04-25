@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 280" width="1000" height="280" role="img" aria-label="re.md morphing into remarkdown">
+  <title>remarkdown</title>
+  <desc>Animated wordmark that loops between the compact "re.md" form and the full "remarkdown" form.</desc>
+  <defs>
+    <radialGradient id="anim-glow-a" cx="28%" cy="32%" r="60%">
+      <stop offset="0%" stop-color="#8b7fff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#8b7fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="anim-glow-b" cx="72%" cy="68%" r="60%">
+      <stop offset="0%" stop-color="#5f9bff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#5f9bff" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      /* Two complete wordmarks stacked in the same position; we crossfade
+         their opacity in a 6-second loop. The hold percentages give each
+         form ~1.8s of full visibility followed by a ~0.6s crossfade. */
+      .compact { animation: compactCycle 6s ease-in-out infinite; }
+      .full    { animation: fullCycle    6s ease-in-out infinite; }
+      @keyframes compactCycle {
+        0%   { opacity: 1; }
+        30%  { opacity: 1; }
+        42%  { opacity: 0; }
+        58%  { opacity: 0; }
+        70%  { opacity: 1; }
+        100% { opacity: 1; }
+      }
+      @keyframes fullCycle {
+        0%   { opacity: 0; }
+        30%  { opacity: 0; }
+        42%  { opacity: 1; }
+        58%  { opacity: 1; }
+        70%  { opacity: 0; }
+        100% { opacity: 0; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1000" height="280" rx="28" fill="#0b0a12"/>
+  <rect width="1000" height="280" rx="28" fill="url(#anim-glow-a)"/>
+  <rect width="1000" height="280" rx="28" fill="url(#anim-glow-b)"/>
+
+  <!-- Compact "re.md" mark — the dot uses the accent color to match the
+       splash and the static brand assets. -->
+  <text
+    class="compact"
+    x="500" y="184"
+    text-anchor="middle"
+    font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="148"
+    font-weight="600"
+    letter-spacing="-2.8"
+  ><tspan fill="#e8e6f2">re</tspan><tspan fill="#8b7fff">.</tspan><tspan fill="#e8e6f2">md</tspan></text>
+
+  <!-- Full "remarkdown" wordmark. -->
+  <text
+    class="full"
+    x="500" y="188"
+    text-anchor="middle"
+    font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="168"
+    font-weight="600"
+    letter-spacing="-3.4"
+    fill="#e8e6f2"
+  >remarkdown</text>
+</svg>

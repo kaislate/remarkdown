@@ -1,8 +1,6 @@
 <div align="center">
-  <img src="assets/logo-remd.svg" alt="re.md — remarkdown" width="200">
+  <img src="assets/logo-animated.svg" alt="remarkdown" width="420">
 </div>
-
-<h1 align="center">remarkdown</h1>
 
 > **A desktop reader for markdown documents with PDF-style annotations** — highlight, sticky-note, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
 
