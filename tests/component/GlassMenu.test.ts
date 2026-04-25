@@ -17,6 +17,8 @@ vi.mock('../../src/stores/recent', async () => {
   return {
     recordRecent: vi.fn(),
     markMissing: vi.fn(),
+    removeFromRecent: vi.fn(),
+    clearAllRecent: vi.fn(),
     recent: writable<string[]>([]),
     recentExistence: writable<Record<string, boolean>>({}),
   };
@@ -36,6 +38,8 @@ beforeEach(() => {
   annots.set([]);
   currentViewerRoot.set(null);
   closeModal();
+  // Clear accumulated mock call history so each test starts fresh.
+  vi.clearAllMocks();
 });
 
 describe('GlassMenu', () => {
@@ -130,5 +134,55 @@ describe('GlassMenu — Open Recent', () => {
     render(GlassMenu);
     await user.click(screen.getByRole('button', { name: /menu/i }));
     expect(screen.getByText(/missing\.md \(missing\)/i)).toBeInTheDocument();
+  });
+
+  it('renders a per-row remove (×) button for each recent entry', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/a.md', '/home/kai/b.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByRole('button', { name: /remove a\.md from recents/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove b\.md from recents/i })).toBeInTheDocument();
+  });
+
+  it('clicking the remove (×) button calls removeFromRecent and does NOT open the file', async () => {
+    const { recent, removeFromRecent } = await import('../../src/stores/recent');
+    const { loadDocument } = await import('../../src/stores/doc');
+    recent.set(['/home/kai/a.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    await user.click(screen.getByRole('button', { name: /remove a\.md from recents/i }));
+    expect(removeFromRecent).toHaveBeenCalledWith('/home/kai/a.md');
+    expect(loadDocument).not.toHaveBeenCalled();
+  });
+
+  it('renders a "Clear recents" footer when there are recent entries', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/a.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.getByText('Clear recents')).toBeInTheDocument();
+  });
+
+  it('clicking "Clear recents" calls clearAllRecent', async () => {
+    const { recent, clearAllRecent } = await import('../../src/stores/recent');
+    recent.set(['/home/kai/a.md', '/home/kai/b.md']);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    await user.click(screen.getByText('Clear recents'));
+    expect(clearAllRecent).toHaveBeenCalled();
+  });
+
+  it('omits the "Clear recents" footer when there are no recent entries', async () => {
+    const { recent } = await import('../../src/stores/recent');
+    recent.set([]);
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    expect(screen.queryByText('Clear recents')).toBeNull();
   });
 });

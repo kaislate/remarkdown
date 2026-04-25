@@ -44,6 +44,10 @@ export async function clearRecent(): Promise<void> {
   await invoke('clear_recent');
 }
 
+export async function removeRecent(path: string): Promise<string[]> {
+  return await invoke<string[]>('remove_recent', { path });
+}
+
 export async function checkPathsExist(paths: string[]): Promise<boolean[]> {
   return await invoke<boolean[]>('check_paths_exist', { paths });
 }

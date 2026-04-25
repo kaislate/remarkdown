@@ -54,6 +54,16 @@ pub fn list(app: &tauri::AppHandle) -> Result<Vec<String>, crate::commands::Comm
     Ok(load(app)?.paths)
 }
 
+pub fn remove(
+    app: &tauri::AppHandle,
+    path: &str,
+) -> Result<Vec<String>, crate::commands::CommandError> {
+    let mut r = load(app)?;
+    r.paths.retain(|p| p != path);
+    save(app, &r)?;
+    Ok(r.paths.clone())
+}
+
 pub fn clear(app: &tauri::AppHandle) -> Result<(), crate::commands::CommandError> {
     save(app, &RecentFile::default())
 }

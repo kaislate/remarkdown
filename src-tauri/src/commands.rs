@@ -113,6 +113,11 @@ pub fn clear_recent(app: tauri::AppHandle) -> Result<(), CommandError> {
 }
 
 #[tauri::command]
+pub fn remove_recent(app: tauri::AppHandle, path: String) -> Result<Vec<String>, CommandError> {
+    crate::recent::remove(&app, &path)
+}
+
+#[tauri::command]
 pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
     paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
 }

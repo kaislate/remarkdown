@@ -17,6 +17,7 @@ fn main() {
             commands::push_recent,
             commands::list_recent,
             commands::clear_recent,
+            commands::remove_recent,
             commands::check_paths_exist,
             commands::backup_corrupt_sidecar,
             commands::load_settings,

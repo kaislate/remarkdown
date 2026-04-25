@@ -2,7 +2,7 @@
   import { get } from 'svelte/store';
   import { openFileDialog } from '../lib/tauri-api';
   import { loadDocument } from '../stores/doc';
-  import { recent, recordRecent, recentExistence, markMissing } from '../stores/recent';
+  import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
@@ -39,6 +39,26 @@
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
+    }
+  }
+
+  async function removeRecentItem(path: string, e: MouseEvent) {
+    // Stop the click from bubbling to the row's openRecent handler.
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await removeFromRecent(path);
+    } catch (err) {
+      addToast({ kind: 'error', message: `Could not remove from recents: ${(err as Error).message}` });
+    }
+  }
+
+  async function clearAll() {
+    try {
+      await clearAllRecent();
+      addToast({ kind: 'info', message: 'Recent files list cleared.' });
+    } catch (err) {
+      addToast({ kind: 'error', message: `Could not clear recents: ${(err as Error).message}` });
     }
   }
 </script>
@@ -86,16 +106,42 @@
         <div class="separator" role="separator"></div>
         <div class="submenu-label">Open Recent</div>
         {#each $recent as path (path)}
-          <button
-            class="item recent"
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="recent-row"
             class:missing={$recentExistence[path] === false}
             role="menuitem"
-            onclick={() => openRecent(path)}
+            tabindex="-1"
             title={path}
+            onclick={(e) => {
+              // Defensive guard: even though removeRecentItem stops
+              // propagation, check the click target so the row never
+              // mistakenly opens the file when the user meant to remove.
+              if ((e.target as HTMLElement).closest?.('.recent-remove')) return;
+              openRecent(path);
+            }}
           >
-            {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
-          </button>
+            <span class="recent-name">
+              {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
+            </span>
+            <button
+              class="recent-remove"
+              aria-label={`Remove ${basename(path)} from recents`}
+              title="Remove from recents"
+              onclick={(e) => removeRecentItem(path, e)}
+            >×</button>
+          </div>
         {/each}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="clear-recents"
+          role="menuitem"
+          tabindex="0"
+          onclick={clearAll}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); clearAll(); } }}
+        >Clear recents</div>
       {/if}
     </div>
   {/if}
@@ -191,11 +237,79 @@
     color: var(--fg-2);
     padding: 4px 10px;
   }
-  .item.recent {
+  /* A recent entry is a flex row so the filename can ellipsis-truncate
+     while the remove (×) button stays anchored to the right and only
+     reveals on row hover. The row itself is a div (not a button) so we
+     can nest the secondary remove button inside it without tripping the
+     "no nested buttons" HTML rule. */
+  .recent-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 8px 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--fg-0);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    max-width: 260px;
+  }
+  .recent-row:hover {
+    background: var(--accent-soft);
+  }
+  .recent-name {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 240px;
   }
-  .item.missing { color: var(--fg-2); font-style: italic; }
+  .recent-row.missing .recent-name {
+    color: var(--fg-2);
+    font-style: italic;
+  }
+  .recent-remove {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+    padding: 0;
+  }
+  .recent-row:hover .recent-remove,
+  .recent-remove:focus-visible {
+    opacity: 1;
+  }
+  .recent-remove:hover {
+    background: rgba(192, 57, 43, 0.2);
+    color: #ffb0a8;
+  }
+
+  /* Footer link styled like the WelcomeDismiss affordance — accent
+     colour, small text, no chrome. Sits at the bottom of the recents
+     list as a quiet "wipe everything" action (no confirmation needed
+     since recents are just metadata). */
+  .clear-recents {
+    margin: 4px 10px 2px;
+    padding: 4px 0;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.12s ease;
+  }
+  .clear-recents:hover { filter: brightness(1.15); }
+  .clear-recents:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
 </style>

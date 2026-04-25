@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { listRecent, pushRecent, checkPathsExist } from '../lib/tauri-api';
+import { listRecent, pushRecent, checkPathsExist, removeRecent as ipcRemoveRecent, clearRecent as ipcClearRecent } from '../lib/tauri-api';
 import { getSettings } from './settings';
 
 export const recent = writable<string[]>([]);
@@ -32,4 +32,20 @@ export async function recordRecent(path: string): Promise<void> {
 
 export function markMissing(path: string): void {
   recentExistence.update((map) => ({ ...map, [path]: false }));
+}
+
+export async function removeFromRecent(path: string): Promise<void> {
+  const list = await ipcRemoveRecent(path);
+  recent.set(list);
+  recentExistence.update((map) => {
+    const next = { ...map };
+    delete next[path];
+    return next;
+  });
+}
+
+export async function clearAllRecent(): Promise<void> {
+  await ipcClearRecent();
+  recent.set([]);
+  recentExistence.set({});
 }
