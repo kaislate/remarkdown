@@ -58,4 +58,14 @@
     opacity: 0.45;
     text-decoration: line-through;
   }
+  /* While the tutorial overlay is up, this hint sits in the same lower-left
+     region as the re.marks tip and visually competes with it. Blur it out
+     and disable interaction until the tutorial is dismissed — the hint is
+     re-readable as soon as the user clicks "Got it" or "Hide forever". */
+  :global(body.tutorial-active) .dismiss {
+    filter: blur(3px);
+    opacity: 0.55;
+    pointer-events: none;
+    transition: filter 0.2s ease, opacity 0.2s ease;
+  }
 </style>

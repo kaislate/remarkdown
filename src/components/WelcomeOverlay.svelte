@@ -452,14 +452,16 @@
 
      column-reverse so the LABEL ends up on top (clear of the zoom
      tip's label band) and the SVG sits at the BOTTOM of the tip
-     element where its head can reach the pill. With bottom:77 the
-     SVG occupies screen bottom 77..147; arrow head at SVG y=64 lands
-     at screen bottom 147-64=83 — the pill's vertical centre. With
-     left:52 the head (SVG x=8) lands at screen x=60 — the pill's
-     horizontal centre. */
+     element where its head can reach the pill. With bottom:85 the
+     SVG occupies screen bottom 85..155; arrow head at SVG y=64 lands
+     at screen bottom 155-64=91 — slightly above pill centre, biting
+     into the upper half of the pill so the head sits firmly on the
+     pill rather than at its bottom edge. With left:60 the head (SVG
+     x=8) lands at screen x=68 — just right of the pill's horizontal
+     centre, into the body of the pill where it reads as a hit. */
   .tip-remarks {
-    bottom: 77px;
-    left: 52px;
+    bottom: 85px;
+    left: 60px;
     flex-direction: column-reverse;
     align-items: flex-start;
     gap: 0;
