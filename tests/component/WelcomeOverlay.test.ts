@@ -96,20 +96,33 @@ describe('WelcomeOverlay', () => {
     expect(overlay.textContent).toContain('Resize');
   });
 
-  it('clicking "Got it" sets welcomeTutorialDismissed in settings', async () => {
+  it('clicking "Got it" hides the overlay for the session WITHOUT touching the persisted setting', async () => {
     setWelcomeDocOpen();
     render(WelcomeOverlay);
     expect(get(settings).welcomeTutorialDismissed).toBe(false);
     const user = userEvent.setup();
     await user.click(document.querySelector('.dismiss-tutorial') as HTMLElement);
-    expect(get(settings).welcomeTutorialDismissed).toBe(true);
+    // Overlay is gone for the current session.
+    expect(document.querySelector('.overlay')).toBeNull();
+    // But the setting is unchanged — next launch will show it again.
+    expect(get(settings).welcomeTutorialDismissed).toBe(false);
   });
 
-  it('overlay disappears after the user dismisses', async () => {
+  it('clicking "Hide tutorial forever" sets the persisted setting AND hides the overlay', async () => {
     setWelcomeDocOpen();
     render(WelcomeOverlay);
+    expect(get(settings).welcomeTutorialDismissed).toBe(false);
     const user = userEvent.setup();
-    await user.click(document.querySelector('.dismiss-tutorial') as HTMLElement);
+    await user.click(document.querySelector('.dismiss-forever') as HTMLElement);
+    expect(get(settings).welcomeTutorialDismissed).toBe(true);
     expect(document.querySelector('.overlay')).toBeNull();
+  });
+
+  it('the seventh re.marks tip is rendered alongside the others', () => {
+    setWelcomeDocOpen();
+    render(WelcomeOverlay);
+    expect(document.querySelector('.tip-remarks')).not.toBeNull();
+    const overlay = document.querySelector('.overlay')!;
+    expect(overlay.textContent).toContain('Browse and jump to your re');
   });
 });

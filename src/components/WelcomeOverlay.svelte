@@ -5,8 +5,21 @@
   import rough from 'roughjs';
   import type { Options } from 'roughjs/bin/core';
 
-  function dismiss() {
+  // Two-tier dismiss:
+  //   sessionDismissed (local state) — hides the tutorial for THIS run
+  //     only. Next launch the user sees it again.
+  //   welcomeTutorialDismissed (persisted setting) — hides forever
+  //     until the user re-enables it from Settings.
+  let sessionDismissed = $state(false);
+
+  function dismissForSession() {
+    sessionDismissed = true;
+  }
+
+  function dismissForever() {
     updateSettings({ welcomeTutorialDismissed: true });
+    sessionDismissed = true; // collapse immediately so the user sees
+                              // the same instant feedback either way
   }
 
   // Toggle a body class while the tutorial is active so global CSS can
@@ -15,7 +28,10 @@
   // disrupts the read-the-tutorial flow.
   $effect(() => {
     if (typeof document === 'undefined') return;
-    const active = $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed;
+    const active =
+      $isWelcomeDocOpen &&
+      !$settings.welcomeTutorialDismissed &&
+      !sessionDismissed;
     document.body.classList.toggle('tutorial-active', active);
     return () => {
       document.body.classList.remove('tutorial-active');
@@ -79,6 +95,13 @@
     { d: 'M 70,10 Q 40,40 18,58', strokeWidth: 3 },
     { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
   ];
+  // Re.marks pill is just above the zoom pill at left:22, bottom:68.
+  // Curve sweeps further left + steeper than the zoom arrow so the two
+  // tips don't read as duplicates when stacked vertically.
+  const arrowRemarks: RoughPath[] = [
+    { d: 'M 70,8 C 55,30 35,42 18,58', strokeWidth: 3 },
+    { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
+  ];
   // Bracket spine + arms — drawn as three short strokes rather than one
   // continuous path so each segment gets its own jitter and reads as
   // separate pen strokes laid down in sequence (which is how a person
@@ -99,7 +122,7 @@
   ];
 </script>
 
-{#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed}
+{#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed && !sessionDismissed}
   <!-- Backdrop is a sibling (NOT a child) of the overlay so the minimap
        (z:85) can stack above the backdrop (z:80) but below the overlay's
        tips (z:90). pointer-events:none keeps every chrome element
@@ -160,10 +183,25 @@
       <div class="label">Resize your view here</div>
     </div>
 
-    <!-- Got-it dismiss. Bottom-center, away from the chrome being explained. -->
-    <button class="dismiss-tutorial" onclick={dismiss}>
-      Got it — dismiss tutorial
-    </button>
+    <!-- Tip 7: Re.marks pill (bottom-left, immediately above zoom).
+         Diagonal down-left arrow points toward the pill. Stacked
+         above the zoom tip so the two tips don't visually crowd. -->
+    <div class="tip tip-remarks">
+      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowRemarks}></svg>
+      <div class="label">Browse and jump to your re<span class="brand-dot">.</span>marks here</div>
+    </div>
+
+    <!-- Stacked dismiss controls at bottom-centre. The PURPLE LINK is
+         a permanent dismiss (sets the persisted setting); the pill
+         button is a session-only dismiss (resets next launch). -->
+    <div class="dismiss-stack">
+      <button class="dismiss-forever" onclick={dismissForever}>
+        Hide tutorial forever (reshow in settings)
+      </button>
+      <button class="dismiss-tutorial" onclick={dismissForSession}>
+        Got it — dismiss tutorial
+      </button>
+    </div>
   </div>
 {/if}
 
@@ -406,16 +444,71 @@
     top: -24px;
   }
 
-  /* Dismiss button — re-enables pointer-events so the user can click it.
-     Bottom-centre keeps it away from the watermark, the zoom pill, and
-     the annotation tools. Same handwritten-font treatment as the labels
-     for visual consistency with the tutorial language. */
-  .dismiss-tutorial {
+  /* Tip 7 — re.marks pill (just above the zoom pill). Same down-left
+     arrow geometry but stacked above the zoom tip so the two don't
+     visually compete. */
+  .tip-remarks {
+    bottom: 160px;
+    left: 160px;
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .tip-remarks .label {
+    position: relative;
+    top: -24px;
+  }
+  .tip-remarks .label .brand-dot {
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+
+  /* Bottom-centre stack: a purple text link for the permanent dismiss
+     sits just above the session-dismiss pill button so users see both
+     options as a vertical pair. Both re-enable pointer-events so the
+     user can click them. */
+  .dismiss-stack {
     position: fixed;
     bottom: 18px;
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .dismiss-forever,
+  .dismiss-tutorial {
     pointer-events: auto;
+  }
+
+  /* Permanent dismiss — purple link styling, no chrome. Same handwritten
+     stack as the rest of the tutorial copy, smaller weight. Centred via
+     the parent flex column. */
+  .dismiss-forever {
+    background: transparent;
+    border: 0;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: underline dashed;
+    text-underline-offset: 3px;
+    transition: filter 0.15s ease;
+  }
+  .dismiss-forever:hover {
+    filter: brightness(1.18);
+  }
+  .dismiss-forever:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+
+  /* Session dismiss — same handwritten-font treatment as the labels for
+     visual consistency with the tutorial language. */
+  .dismiss-tutorial {
     background: var(--accent);
     color: #fff;
     border: 0;
@@ -427,7 +520,7 @@
   }
   .dismiss-tutorial:hover {
     filter: brightness(1.1);
-    transform: translateX(-50%) translateY(-2px) scale(1.04);
+    transform: translateY(-2px) scale(1.04);
   }
   .dismiss-tutorial:focus-visible {
     outline: 2px solid var(--fg-0);
