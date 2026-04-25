@@ -1,6 +1,72 @@
-/* Named highlights — one per preset color. Order matches HIGHLIGHT_COLORS in tool.ts. */
-::highlight(rmd-hl-0) { background-color: rgba(255, 210, 90, 0.35); }
-::highlight(rmd-hl-1) { background-color: rgba(130, 217, 156, 0.35); }
-::highlight(rmd-hl-2) { background-color: rgba(255, 165, 138, 0.35); }
-::highlight(rmd-hl-3) { background-color: rgba(168, 197, 255, 0.35); }
-::highlight(rmd-hl-4) { background-color: rgba(224, 168, 255, 0.35); }
+/* Highlighter-pen rendering for the CSS Custom Highlight API.
+   Order matches HIGHLIGHT_COLORS in stores/tool.ts.
+
+   Each highlight uses three properties to approximate the look of real
+   marker ink against the dark canvas:
+
+     1. A saturated translucent background-color (~45% alpha) for the
+        bulk of the highlight body.
+     2. A wavy underline in a slightly more opaque version of the same
+        ink, drawn through the lower portion of the highlight rectangle —
+        breaks the perfect-rectangle perception by adding a visible
+        irregularity that reads as marker streakiness or where the pen
+        pressed harder.
+     3. A small text-shadow in the same hue at very low alpha — produces
+        a subtle ink-bleed glow around the letterforms inside the
+        highlight, so the colour doesn't read as a hard-edged background
+        fill.
+
+   The CSS Custom Highlight API only accepts a tiny property whitelist
+   (background-color, color, text-decoration-*, text-shadow); the
+   combination above is the practical limit of what we can do without
+   abandoning the API entirely for an SVG overlay layer. */
+
+::highlight(rmd-hl-0) {
+  /* Fluorescent yellow */
+  background-color: rgba(255, 242, 0, 0.45);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(255, 242, 0, 0.7);
+  text-decoration-thickness: 2px;
+  text-shadow: 0 0 2px rgba(255, 242, 0, 0.45);
+}
+
+::highlight(rmd-hl-1) {
+  /* Fluorescent green */
+  background-color: rgba(194, 255, 102, 0.45);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(194, 255, 102, 0.7);
+  text-decoration-thickness: 2px;
+  text-shadow: 0 0 2px rgba(194, 255, 102, 0.45);
+}
+
+::highlight(rmd-hl-2) {
+  /* Highlighter pink */
+  background-color: rgba(255, 123, 161, 0.5);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(255, 123, 161, 0.75);
+  text-decoration-thickness: 2px;
+  text-shadow: 0 0 2px rgba(255, 123, 161, 0.45);
+}
+
+::highlight(rmd-hl-3) {
+  /* Highlighter cyan */
+  background-color: rgba(102, 225, 255, 0.45);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(102, 225, 255, 0.7);
+  text-decoration-thickness: 2px;
+  text-shadow: 0 0 2px rgba(102, 225, 255, 0.45);
+}
+
+::highlight(rmd-hl-4) {
+  /* Highlighter purple */
+  background-color: rgba(200, 137, 255, 0.5);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(200, 137, 255, 0.75);
+  text-decoration-thickness: 2px;
+  text-shadow: 0 0 2px rgba(200, 137, 255, 0.45);
+}

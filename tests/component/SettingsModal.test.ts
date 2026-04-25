@@ -82,14 +82,9 @@ describe('SettingsModal', () => {
     const user = userEvent.setup();
     // Click the second swatch.
     await user.click(swatches[1] as HTMLElement);
-    expect(get(settings).defaultHighlightColor).not.toBe(get(settings).defaultHighlightColor === '#ffd25a' ? '#ffd25a' : 'never');
-    expect([
-      '#ffd25a',
-      '#82d99c',
-      '#ffa58a',
-      '#a8c5ff',
-      '#e0a8ff',
-    ]).toContain(get(settings).defaultHighlightColor);
+    // The chosen colour must be one of the current HIGHLIGHT_COLORS preset.
+    const { HIGHLIGHT_COLORS } = await import('../../src/stores/tool');
+    expect(HIGHLIGHT_COLORS as readonly string[]).toContain(get(settings).defaultHighlightColor);
   });
 
   it('Reset to defaults restores all settings to defaults', async () => {

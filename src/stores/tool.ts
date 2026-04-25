@@ -1,7 +1,11 @@
 import { writable, get } from 'svelte/store';
 import type { Tool } from '../lib/schema';
 
-export const HIGHLIGHT_COLORS = ['#ffd25a', '#82d99c', '#ffa58a', '#a8c5ff', '#e0a8ff'] as const;
+// Fluorescent highlighter ink colours. These are the swatches users pick
+// from in the colour strip; the rendered highlight uses the same RGB at
+// reduced alpha (see styles/highlights.css). Saturated values that pop
+// against the dark theme.
+export const HIGHLIGHT_COLORS = ['#fff200', '#c2ff66', '#ff7ba1', '#66e1ff', '#c889ff'] as const;
 export const DRAW_COLORS = ['#d6336c', '#5f9bff', '#f59f00', '#20c997', '#d9d9d9'] as const;
 
 export interface ToolState {
