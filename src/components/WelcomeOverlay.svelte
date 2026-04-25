@@ -96,10 +96,11 @@
     { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
   ];
   // Re.marks pill is just above the zoom pill at left:22, bottom:68.
-  // Curve sweeps further left + steeper than the zoom arrow so the two
-  // tips don't read as duplicates when stacked vertically.
+  // S-curve (cubic bezier with control points pulling in OPPOSITE
+  // directions) gives this arrow a distinctly wavy silhouette so it
+  // doesn't read as a duplicate of the zoom tip's plain diagonal.
   const arrowRemarks: RoughPath[] = [
-    { d: 'M 70,8 C 55,30 35,42 18,58', strokeWidth: 3 },
+    { d: 'M 70,8 C 80,30 5,38 18,58', strokeWidth: 3 },
     { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
   ];
   // Bracket spine + arms — drawn as three short strokes rather than one
@@ -427,12 +428,14 @@
     transform: translateX(-50%) scale(1.06) rotate(-1.2deg);
   }
 
-  /* Tip 6 — zoom pill at bottom-left. Arrow tail sits at the top-RIGHT
-     of its SVG (curve sweeps down-left to the zoom pill), so
-     align-items: flex-start pulls the label up so it sits visually
-     anchored to the tail. */
+  /* Tip 6 — zoom pill at bottom-left. Bottom offset chosen so arrow
+     head (SVG y≈64) lands at screen bottom ≈37 — roughly the vertical
+     centre of the zoom pill which occupies bottom 22..52. Arrow tail
+     sits at the top-RIGHT of its SVG (curve sweeps down-left to the
+     zoom pill), so align-items: flex-start pulls the label up so it
+     sits visually anchored to the tail. */
   .tip-zoom {
-    bottom: 76px;
+    bottom: 31px;
     left: 160px;
     flex-direction: row;
     align-items: flex-start;
@@ -444,11 +447,13 @@
     top: -24px;
   }
 
-  /* Tip 7 — re.marks pill (just above the zoom pill). Same down-left
-     arrow geometry but stacked above the zoom tip so the two don't
-     visually compete. */
+  /* Tip 7 — re.marks pill (just above the zoom pill). Bottom offset
+     chosen so arrow head lands at screen bottom ≈83 — roughly the
+     vertical centre of the re.marks pill which occupies bottom
+     68..98. The S-curve arrow visually distinguishes this tip from
+     the plain-diagonal zoom tip stacked below. */
   .tip-remarks {
-    bottom: 160px;
+    bottom: 77px;
     left: 160px;
     flex-direction: row;
     align-items: flex-start;
