@@ -126,14 +126,14 @@ describe('NotesPanel', () => {
     expect(row.textContent).toContain('a thoughtful comment');
   });
 
-  it('shows "(empty note)" placeholder for notes with no body', async () => {
+  it('shows "(empty re.mark)" placeholder for notes with no body', async () => {
     setupViewer([{ id: 'p:1', text: 'Hello world' }]);
     annots.set([fakeNote('a', 'Hello', '')]);
     render(NotesPanel);
     await tick();
     const user = userEvent.setup();
     await user.click(document.querySelector('.pill') as HTMLElement);
-    expect(document.querySelector('.body.empty')!.textContent).toContain('empty note');
+    expect(document.querySelector('.body.empty')!.textContent).toContain('empty re.mark');
   });
 
   it('Esc closes an open popup', async () => {

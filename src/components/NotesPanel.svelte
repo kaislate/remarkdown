@@ -1,17 +1,71 @@
 <script lang="ts">
-  import { resolvedAnnots } from '../stores/annots';
+  import { resolvedAnnots, currentViewerRoot } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
   import { doc } from '../stores/doc';
+  import { settings } from '../stores/settings';
+  import { buildSentenceContext } from '../lib/sentence-context';
   import type { Note } from '../lib/schema';
 
   let open = $state(false);
+
+  // Compute the anchor's character offset within its containing block,
+  // by walking text nodes in the block until we hit the range's start.
+  function anchorOffsetWithinBlock(range: Range, block: HTMLElement): number | null {
+    let acc = 0;
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let n = walker.nextNode();
+    while (n) {
+      if (n === range.startContainer) {
+        return acc + range.startOffset;
+      }
+      acc += (n as Text).data.length;
+      n = walker.nextNode();
+    }
+    return null;
+  }
+
+  // Build the display context for a single re.mark: the anchor's
+  // sentence plus settings.remarkContextSentences-1 preceding ones.
+  // If remarkContextStopAtParagraph is false, the walk crosses block
+  // boundaries to fill the budget.
+  function contextFor(range: Range): string {
+    const root = $currentViewerRoot;
+    if (!root) return '';
+    const startEl = (range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : (range.startContainer as Element));
+    const block = startEl?.closest<HTMLElement>('[data-block-id]');
+    if (!block) return '';
+    const anchorOffset = anchorOffsetWithinBlock(range, block);
+    if (anchorOffset === null) return block.textContent ?? '';
+
+    const blocks = $settings.remarkContextStopAtParagraph
+      ? [block]
+      : (() => {
+          const all = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
+          const idx = all.indexOf(block);
+          return idx < 0 ? [block] : all.slice(0, idx + 1);
+        })();
+    const blockTexts = blocks.map((b) => b.textContent ?? '');
+
+    return buildSentenceContext(
+      blockTexts,
+      anchorOffset,
+      $settings.remarkContextSentences,
+      $settings.remarkContextStopAtParagraph,
+    );
+  }
 
   // Resolved notes only — orphaned notes live in their own panel and
   // can't be jumped-to anyway.
   const notes = $derived(
     $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
-      .map((r) => ({ note: r.annotation as Note, range: r.range })),
+      .map((r) => ({
+        note: r.annotation as Note,
+        range: r.range,
+        context: contextFor(r.range),
+      })),
   );
 
   function jumpTo(range: Range) {
@@ -77,11 +131,11 @@
                 <button class="note-row" onclick={() => jumpTo(n.range)}>
                   <span class="dot" aria-hidden="true"></span>
                   <div class="text">
-                    <div class="quote">{excerpt(n.note.anchor.text)}</div>
+                    <div class="quote">{n.context || excerpt(n.note.anchor.text)}</div>
                     {#if n.note.body}
-                      <div class="body">{excerpt(n.note.body, 80)}</div>
+                      <div class="body">{excerpt(n.note.body, 120)}</div>
                     {:else}
-                      <div class="body empty">(empty note)</div>
+                      <div class="body empty">(empty re.mark)</div>
                     {/if}
                   </div>
                 </button>
@@ -260,20 +314,29 @@
     flex-direction: column;
     gap: 2px;
   }
+  /* Quote can span multiple lines now that it carries sentence context.
+     Cap at three lines with line-clamp ellipsis so a verbose 5-sentence
+     setting still renders compactly. */
   .quote {
     color: var(--fg-2);
     font-size: 11px;
     font-style: italic;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .body {
     color: var(--fg-0);
     font-weight: 500;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .body.empty {
     color: var(--fg-2);

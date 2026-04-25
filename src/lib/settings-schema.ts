@@ -44,6 +44,10 @@ export const SettingsSchema = z.object({
   // Save / annotation timing
   saveDebounceMs: z.number().int().min(100).max(5000),
   drawIdleFinalizeMs: z.number().int().min(500).max(15000),
+
+  // re.marks panel — how much context to show with each entry.
+  remarkContextSentences: z.number().int().min(1).max(5),
+  remarkContextStopAtParagraph: z.boolean(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -66,6 +70,8 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultInkColor: DRAW_COLORS[0],
   saveDebounceMs: 500,
   drawIdleFinalizeMs: 3000,
+  remarkContextSentences: 1,
+  remarkContextStopAtParagraph: true,
 };
 
 // Parse a JSON string from disk, falling back to defaults for any field that's

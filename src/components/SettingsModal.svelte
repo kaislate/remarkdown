@@ -229,6 +229,29 @@
               <span class="value">{($settings.drawIdleFinalizeMs / 1000).toFixed(2)}s</span>
             </div>
           </div>
+
+          <div class="row">
+            <label for="setting-remark-sentences">re.marks context sentences</label>
+            <select
+              id="setting-remark-sentences"
+              value={$settings.remarkContextSentences}
+              onchange={(e) => updateSettings({ remarkContextSentences: Number((e.currentTarget as HTMLSelectElement).value) })}
+            >
+              {#each [1, 2, 3, 4, 5] as n}
+                <option value={n}>{n} {n === 1 ? 'sentence' : 'sentences'}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="row">
+            <label for="setting-remark-stop-paragraph">Stop at paragraph boundary</label>
+            <input
+              id="setting-remark-stop-paragraph"
+              type="checkbox"
+              checked={$settings.remarkContextStopAtParagraph}
+              onchange={(e) => updateSettings({ remarkContextStopAtParagraph: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
         </section>
 
         <section>
