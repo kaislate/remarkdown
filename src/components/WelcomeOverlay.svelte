@@ -9,12 +9,13 @@
 </script>
 
 {#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed}
-  <div class="overlay" aria-label="Welcome tutorial">
-    <!-- Backdrop blurs everything behind the overlay so the tutorial reads
-         as a separate, deliberately-foregrounded layer. pointer-events:none
-         keeps every chrome element underneath fully clickable through it. -->
-    <div class="backdrop" aria-hidden="true"></div>
+  <!-- Backdrop is a sibling (NOT a child) of the overlay so the minimap
+       (z:85) can stack above the backdrop (z:80) but below the overlay's
+       tips (z:90). pointer-events:none keeps every chrome element
+       underneath fully clickable through it. -->
+  <div class="backdrop" aria-hidden="true"></div>
 
+  <div class="overlay" aria-label="Welcome tutorial">
     <!-- Shared SVG filter for the hand-drawn arrow stroke effect. The
          feTurbulence generates fractal noise; feDisplacementMap pushes each
          point of the source path along the X/Y axes by the noise field —
@@ -58,7 +59,10 @@
       <div class="bracket-label">Navigate long documents here</div>
       <svg class="bracket" viewBox="0 0 24 200" preserveAspectRatio="none" aria-hidden="true">
         <g filter="url(#rough-arrow-strong)">
-          <path d="M 4,2 L 18,2 L 18,198 L 4,198" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          <!-- Spine on the LEFT side (x=6) with arms extending RIGHT
+               toward the minimap (x=20). Visually like `[` — the
+               bracket's opening faces the minimap, embracing it. -->
+          <path d="M 20,2 L 6,2 L 6,198 L 20,198" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
         </g>
       </svg>
     </div>
@@ -85,15 +89,17 @@
       <div class="label">Hold to drag the window from here</div>
     </div>
 
-    <!-- Tip 6: Zoom pill (bottom-left) -->
+    <!-- Tip 6: Zoom pill (bottom-left). Arrow leads with its head pointing
+         DOWN-LEFT at the zoom pill; the label sits to the right of the
+         arrow as the visual continuation of the trail. -->
     <div class="tip tip-zoom">
-      <div class="label">Resize your view here</div>
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
         <g filter="url(#rough-arrow)">
           <path d="M 70,10 Q 40,40 18,58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M 8,64 L 14,48 L 24,58 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
         </g>
       </svg>
+      <div class="label">Resize your view here</div>
     </div>
 
     <!-- Got-it dismiss. Bottom-center, away from the chrome being explained. -->
@@ -119,15 +125,15 @@
     to   { opacity: 1; }
   }
 
-  /* Backdrop blurs the canvas behind the overlay. backdrop-filter only
-     blurs what's behind THIS element, so the tip bubbles, arrows, and
-     dismiss button (rendered on top of the backdrop in DOM order) stay
-     pin-sharp. The slight darkening keeps the bubbles readable on light
-     theme too. */
+  /* Backdrop blurs the canvas behind everything below z:80. The minimap
+     (z:85) sits above this backdrop and stays sharp; the tips and
+     dismiss button (inside .overlay at z:90) sit even higher and also
+     stay sharp. pointer-events:none keeps chrome clickable through it. */
   .backdrop {
     position: fixed;
     inset: 0;
     pointer-events: none;
+    z-index: 80;
     backdrop-filter: blur(5px) saturate(0.85);
     -webkit-backdrop-filter: blur(5px) saturate(0.85);
     background: rgba(11, 10, 18, 0.32);

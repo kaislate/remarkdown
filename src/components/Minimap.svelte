@@ -176,7 +176,11 @@
     bottom: 110px;
     width: var(--mm-width);
     overflow: hidden;
-    z-index: 60;
+    /* z-index sits above the welcome tutorial backdrop (z:80) so the
+       minimap stays sharp during the tutorial — but below the chrome
+       (hamburger, tool rail, etc. at z:100) and the tutorial tips
+       inside .overlay (z:90) so it doesn't cover important controls. */
+    z-index: 85;
     cursor: pointer;
     user-select: none;
     background: rgba(17, 15, 25, 0.55);
