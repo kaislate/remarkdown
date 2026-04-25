@@ -73,8 +73,18 @@
   </button>
 
   <!-- Brand mark next to the hamburger. pointer-events:none so window
-       dragging still works through the wordmark area. -->
-  <span class="wordmark" aria-hidden="true">re<span class="dot">.</span>md</span>
+       dragging still works through the wordmark area. The wordmark
+       morphs from "re.md" to "remarkdown" while the hamburger is
+       hovered (or while the menu popover is open) — same dot-collapse
+       + ark/own unfold choreography as the splash, just driven by
+       hover transitions instead of a one-shot animation. -->
+  <span class="wordmark" aria-hidden="true"
+    ><span class="seg re">re</span><!--
+    --><span class="seg dot">.</span><!--
+    --><span class="seg m">m</span><!--
+    --><span class="seg ark">ark</span><!--
+    --><span class="seg d">d</span><!--
+    --><span class="seg own">own</span></span>
 
   {#if open}
     <div class="popover glass" role="menu">
@@ -177,7 +187,23 @@
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
+    transition:
+      transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      background 0.2s ease;
   }
+  .hamburger:hover {
+    transform: scale(1.05);
+    border-color: var(--accent-soft);
+    background: rgba(139, 127, 255, 0.08);
+    box-shadow: 0 2px 10px rgba(139, 127, 255, 0.25);
+  }
+  .hamburger[aria-expanded='true'] {
+    border-color: var(--accent-soft);
+    background: var(--accent-soft);
+  }
+
   .wordmark {
     font-family: var(--font-sans);
     font-size: 18px;
@@ -187,8 +213,61 @@
     line-height: 1;
     user-select: none;
     pointer-events: none;
+    /* Accommodate the wider 'remarkdown' shape on hover so the rest of
+       the chrome doesn't reflow when the morph plays. */
+    white-space: nowrap;
   }
-  .wordmark .dot { color: var(--accent); }
+  .wordmark .seg {
+    display: inline-block;
+    vertical-align: baseline;
+  }
+  .wordmark .dot {
+    color: var(--accent);
+    max-width: 0.45em;
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    transition:
+      max-width 0.35s cubic-bezier(0.5, 0, 0.7, 0.4),
+      opacity 0.35s ease,
+      transform 0.35s cubic-bezier(0.5, 0, 0.7, 0.4);
+  }
+  /* "ark" and "own" are hidden in the resting state; on hover they
+     unfold from zero width left-to-right, the same way the splash
+     morph plays. clip-path (rather than overflow:hidden) keeps the
+     surrounding letters on the natural baseline. */
+  .wordmark .ark,
+  .wordmark .own {
+    max-width: 0;
+    opacity: 0.4;
+    clip-path: inset(0 100% 0 0);
+    transition:
+      max-width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+      clip-path 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+      opacity 0.5s ease;
+  }
+  .wordmark .own {
+    /* Slight stagger so the two segments feel sequential rather than
+       simultaneous, matching the splash. */
+    transition-delay: 0.08s;
+  }
+
+  /* The morph fires on hover OR when the menu popover is open — the
+     latter so the wordmark stays "remarkdown" while the user is
+     actively browsing menu items. */
+  .hamburger:hover ~ .wordmark .dot,
+  .hamburger[aria-expanded='true'] ~ .wordmark .dot {
+    max-width: 0;
+    opacity: 0;
+    transform: translateY(0.4em) scale(0.6);
+  }
+  .hamburger:hover ~ .wordmark .ark,
+  .hamburger:hover ~ .wordmark .own,
+  .hamburger[aria-expanded='true'] ~ .wordmark .ark,
+  .hamburger[aria-expanded='true'] ~ .wordmark .own {
+    max-width: 4.5ch;
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
   .bar {
     width: 16px;
     height: 1.5px;
