@@ -249,7 +249,7 @@
      hamburger), so align-items: flex-end pulls the label down so it
      sits visually anchored to the tail of the arrow. */
   .tip-hamburger {
-    top: 70px;
+    top: 95px;
     left: 70px;
     flex-direction: row;
     align-items: flex-end;
@@ -300,7 +300,7 @@
      align-items: flex-start pulls the label up so it sits visually
      anchored to the tail. */
   .tip-tools {
-    bottom: 76px;
+    bottom: 100px;
     right: 220px;
     flex-direction: row;
     align-items: flex-start;
@@ -327,7 +327,7 @@
      align-items: flex-start pulls the label up so it sits visually
      anchored to the tail. */
   .tip-zoom {
-    bottom: 76px;
+    bottom: 100px;
     left: 160px;
     flex-direction: row;
     align-items: flex-start;
