@@ -116,6 +116,16 @@
   const connectorTip1to2: RoughPath[] = [
     { d: 'M 8,4 C 4,28 4,45 46,55', strokeWidth: 2.5 },
   ];
+
+  // Tip 8 — sketchy ring encircling the reader-mode button. The button
+  // sits at left:144, bottom:22 (38×38 → screen centre 163,41 from
+  // bottom). With the tip positioned at left:93, bottom:0 and the SVG
+  // 140×110, the button centre lands at SVG (70, 69) and the ring is
+  // an ellipse with rx=29 / ry=24 around that point. Closed with two
+  // half-arcs as the standard SVG full-ellipse-via-path idiom.
+  const ringFocus: RoughPath[] = [
+    { d: 'M 41,69 a 29,24 0 1 0 58,0 a 29,24 0 1 0 -58,0', strokeWidth: 2.5 },
+  ];
 </script>
 
 {#if $tutorialOverlayVisible}
@@ -185,6 +195,25 @@
     <div class="tip tip-remarks">
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowRemarks}></svg>
       <div class="label">Browse and jump to your re<span class="brand-dot">.</span>marks here</div>
+    </div>
+
+    <!-- Tip 8: Reader-mode button (right of the zoom controls). A sketchy
+         ring encircles the button and "Focus mode" arcs above it on a
+         curved baseline. SVG-only tip — no rectangular label. -->
+    <div class="tip tip-reader">
+      <svg class="reader-svg" viewBox="0 0 140 110" width="140" height="110" aria-hidden="true" use:drawRough={ringFocus}>
+        <defs>
+          <!-- Convex-up arc: starts low-left, peaks high-centre, ends
+               low-right. Text along it reads naturally left-to-right
+               with a slight smile rise toward the middle. -->
+          <path id="arc-focus-mode" d="M 18,50 Q 70,18 122,50" fill="none" />
+        </defs>
+        <text class="arc-text">
+          <textPath href="#arc-focus-mode" startOffset="50%" text-anchor="middle">
+            Focus mode
+          </textPath>
+        </text>
+      </svg>
     </div>
 
     <!-- Stacked dismiss controls at bottom-centre. The pill button is
@@ -429,8 +458,8 @@
      align-items: flex-start pulls the label up so it sits visually
      anchored to the tail. */
   .tip-zoom {
-    bottom: 40px;
-    left: 148px;
+    bottom: 56px;
+    left: 130px;
     flex-direction: row;
     align-items: flex-start;
   }
@@ -457,6 +486,42 @@
   .tip-remarks .label .brand-dot {
     color: var(--accent);
     font-family: var(--font-mono);
+  }
+
+  /* Tip 8 — reader-mode button (right of the zoom pill at left:144,
+     bottom:22, 38×38 → screen centre 163, 41 from bottom). Tip is
+     SVG-only: a sketchy ring around the button + "Focus mode" arcing
+     above it. The 140-wide tip starts at left:93 so its centre lines
+     up with the button's centre (93 + 70 = 163). Bottom 0 puts the
+     ring at the right vertical position. */
+  .tip-reader {
+    bottom: 0;
+    left: 93px;
+    /* The SVG carries everything; no .label child to align. */
+    color: var(--accent);
+  }
+  .tip-reader .reader-svg {
+    /* overflow visible so the rough.js stroke jitter (which extends
+       beyond the path bounding box) doesn't get clipped. */
+    overflow: visible;
+  }
+  /* "Focus mode" arc text — same colour as the ring, in the marketing
+     italic so it reads as hand-noted commentary rather than an
+     interface label. The slight letter-spacing gives the hand-drawn
+     curl a touch of casualness. */
+  .tip-reader .arc-text {
+    fill: var(--accent);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: 0.04em;
+  }
+  /* Subtle drop shadow on the ring + text so it lifts off whatever
+     content is behind the backdrop. Applied to the SVG so both the
+     rendered <text> and the rough.js paths get the same lift. */
+  .tip-reader .reader-svg {
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5));
   }
 
   /* Bottom-centre stack: a purple text link for the permanent dismiss
