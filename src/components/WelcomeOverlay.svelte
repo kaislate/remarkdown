@@ -75,6 +75,15 @@
     { d: 'M 6,2 L 6,198', strokeWidth: 2.5 },          // spine
     { d: 'M 6,198 L 20,198', strokeWidth: 2.5 },       // bottom arm
   ];
+
+  // Visual connector linking Tip 1 (Open .md files) to Tip 2 (drag-drop
+  // hint) — same hand-drawn line style as the arrows but with no
+  // arrowhead. Shape is a J-hook: a near-vertical drop from below
+  // Tip 1's lower edge, then a sweep to the right that lands at the
+  // file icon of Tip 2.
+  const connectorTip1to2: RoughPath[] = [
+    { d: 'M 8,4 C 4,28 4,45 64,55', strokeWidth: 2.5 },
+  ];
 </script>
 
 {#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed}
@@ -90,6 +99,17 @@
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowHamburger}></svg>
       <div class="label">Open <code>.md</code> files and settings here</div>
     </div>
+
+    <!-- Curved hand-drawn connector from Tip 1 down to Tip 2's icon. No
+         arrowhead — purely a visual link between the two related tips. -->
+    <svg
+      class="connector connector-tip1-tip2"
+      viewBox="0 0 75 60"
+      width="75"
+      height="60"
+      aria-hidden="true"
+      use:drawRough={connectorTip1to2}
+    ></svg>
 
     <!-- Tip 2: Drag-drop hint -->
     <div class="tip tip-drag">
@@ -269,6 +289,18 @@
     left: 250px;
     flex-direction: row;
     align-items: center;
+  }
+
+  /* Connector between Tip 1 and Tip 2 — hand-drawn J-hook curve, no
+     arrowhead. Drops from below Tip 1's lower edge, then sweeps right
+     to land at the file icon of Tip 2. Pure decoration. */
+  .connector-tip1-tip2 {
+    position: fixed;
+    top: 165px;
+    left: 200px;
+    pointer-events: none;
+    color: var(--accent);
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
 
   /* Tip 3 — vertical bracket alongside the minimap. Minimap is at
