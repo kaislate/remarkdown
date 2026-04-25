@@ -249,10 +249,17 @@
      hamburger), so align-items: flex-end pulls the label down so it
      sits visually anchored to the tail of the arrow. */
   .tip-hamburger {
-    top: 95px;
+    top: 70px;
     left: 70px;
     flex-direction: row;
     align-items: flex-end;
+  }
+  /* Push only the label down to sit at/below the arrow's tail without
+     moving the arrow itself. position: relative shifts the rendering
+     without disturbing the flex layout. */
+  .tip-hamburger .label {
+    position: relative;
+    top: 25px;
   }
 
   /* Tip 2 — sits below and to the right of Tip 1's anchored label, in
@@ -300,10 +307,16 @@
      align-items: flex-start pulls the label up so it sits visually
      anchored to the tail. */
   .tip-tools {
-    bottom: 100px;
+    bottom: 76px;
     right: 220px;
     flex-direction: row;
     align-items: flex-start;
+  }
+  /* Pull only the label up to sit at/above the arrow's tail without
+     moving the arrow itself. */
+  .tip-tools .label {
+    position: relative;
+    top: -24px;
   }
 
   /* Tip 5 — title bar drag region. Stacked column: arrow on top
@@ -327,10 +340,16 @@
      align-items: flex-start pulls the label up so it sits visually
      anchored to the tail. */
   .tip-zoom {
-    bottom: 100px;
+    bottom: 76px;
     left: 160px;
     flex-direction: row;
     align-items: flex-start;
+  }
+  /* Pull only the label up to sit at/above the arrow's tail without
+     moving the arrow itself. */
+  .tip-zoom .label {
+    position: relative;
+    top: -24px;
   }
 
   /* Dismiss button — re-enables pointer-events so the user can click it.
