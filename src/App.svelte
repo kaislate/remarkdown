@@ -14,6 +14,7 @@
   import OrphanPanel from './components/OrphanPanel.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
   import ClearAnnotsConfirm from './components/ClearAnnotsConfirm.svelte';
+  import UpdateModal from './components/UpdateModal.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
@@ -201,6 +202,7 @@
 <OrphanPanel />
 <SettingsModal />
 <ClearAnnotsConfirm />
+<UpdateModal />
 <CorruptSidecarModal />
 <ErrorBanner />
 <Toasts />
