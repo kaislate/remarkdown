@@ -147,6 +147,26 @@
               onchange={(e) => updateSettings({ autoCheckForUpdates: (e.currentTarget as HTMLInputElement).checked })}
             />
           </div>
+
+          <div class="row">
+            <label for="setting-show-welcome">Show welcome.md on launch</label>
+            <input
+              id="setting-show-welcome"
+              type="checkbox"
+              checked={!$settings.dontShowWelcomeOnLaunch}
+              onchange={(e) => updateSettings({ dontShowWelcomeOnLaunch: !(e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
+            <label for="setting-show-tutorial">Show tutorial overlay on welcome.md</label>
+            <input
+              id="setting-show-tutorial"
+              type="checkbox"
+              checked={!$settings.welcomeTutorialDismissed}
+              onchange={(e) => updateSettings({ welcomeTutorialDismissed: !(e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
         </section>
 
         <section>
