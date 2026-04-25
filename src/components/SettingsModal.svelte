@@ -143,6 +143,16 @@
           <h3>Annotation</h3>
 
           <div class="row">
+            <label for="setting-hide-controls">Hide annotation controls</label>
+            <input
+              id="setting-hide-controls"
+              type="checkbox"
+              checked={$settings.hideAnnotationControls}
+              onchange={(e) => updateSettings({ hideAnnotationControls: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
             <span class="row-label">Default highlight color</span>
             <div class="swatches" role="radiogroup" aria-label="Default highlight color">
               {#each HIGHLIGHT_COLORS as c}

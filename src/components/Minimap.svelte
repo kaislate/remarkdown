@@ -169,7 +169,11 @@
     position: fixed;
     top: 52px;
     right: 16px;
-    bottom: 52px;
+    /* Tightened to clear the bottom-right ToolRail (bottom:22 + 38 height
+       = top at 60) and ColorStrip (above the rail at bottom:68 + 34
+       height = top at 102), with a small breathing gap above the
+       controls stack. */
+    bottom: 110px;
     width: var(--mm-width);
     overflow: hidden;
     z-index: 60;

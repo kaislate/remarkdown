@@ -38,8 +38,7 @@
   .rail {
     position: fixed;
     bottom: 22px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 22px;
     display: flex;
     gap: 4px;
     padding: 4px;

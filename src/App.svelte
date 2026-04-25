@@ -147,8 +147,10 @@
 <Minimap />
 <TitleBar />
 <GlassMenu />
-<ToolRail />
-<ColorStrip />
+{#if !$settings.hideAnnotationControls}
+  <ToolRail />
+  <ColorStrip />
+{/if}
 <ZoomControls />
 <WelcomeDismiss />
 <OrphanPanel />

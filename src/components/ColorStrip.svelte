@@ -30,9 +30,8 @@
 <style>
   .strip {
     position: fixed;
-    bottom: 74px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 68px;
+    right: 22px;
     display: flex;
     gap: 6px;
     padding: 6px;
