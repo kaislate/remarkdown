@@ -9,15 +9,38 @@
 </script>
 
 {#if $isWelcomeDocOpen && !$settings.welcomeTutorialDismissed}
-  <!-- Container has pointer-events: none so the underlying chrome
-       (hamburger, tool rail, etc.) stays fully usable through the
-       overlay; only the dismiss button re-enables pointer-events. -->
   <div class="overlay" aria-label="Welcome tutorial">
+    <!-- Backdrop blurs everything behind the overlay so the tutorial reads
+         as a separate, deliberately-foregrounded layer. pointer-events:none
+         keeps every chrome element underneath fully clickable through it. -->
+    <div class="backdrop" aria-hidden="true"></div>
+
+    <!-- Shared SVG filter for the hand-drawn arrow stroke effect. The
+         feTurbulence generates fractal noise; feDisplacementMap pushes each
+         point of the source path along the X/Y axes by the noise field —
+         producing a wobble that looks like ink being laid down by a
+         slightly unsteady hand. The filter ID is referenced by every
+         arrow path's filter attribute. -->
+    <svg width="0" height="0" aria-hidden="true" style="position:fixed; pointer-events:none">
+      <defs>
+        <filter id="rough-arrow" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7"/>
+          <feDisplacementMap in="SourceGraphic" scale="3.5"/>
+        </filter>
+        <filter id="rough-arrow-strong" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="11"/>
+          <feDisplacementMap in="SourceGraphic" scale="2.5"/>
+        </filter>
+      </defs>
+    </svg>
+
     <!-- Tip 1: Hamburger menu -->
     <div class="tip tip-hamburger">
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <path d="M 70,60 Q 40,30 18,12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M 8,6 L 24,8 L 18,22 Z" fill="currentColor"/>
+        <g filter="url(#rough-arrow)">
+          <path d="M 70,60 Q 40,30 18,12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M 8,6 L 24,8 L 18,22 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+        </g>
       </svg>
       <div class="label">Open <code>.md</code> files and settings here</div>
     </div>
@@ -34,7 +57,9 @@
     <div class="bracket-row" aria-hidden="true">
       <div class="bracket-label">Navigate long documents here</div>
       <svg class="bracket" viewBox="0 0 24 200" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M 4,2 L 18,2 L 18,198 L 4,198" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        <g filter="url(#rough-arrow-strong)">
+          <path d="M 4,2 L 18,2 L 18,198 L 4,198" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        </g>
       </svg>
     </div>
 
@@ -42,16 +67,20 @@
     <div class="tip tip-tools">
       <div class="label">Add annotations using these tools</div>
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <path d="M 10,10 Q 40,40 62,58" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M 72,64 L 56,62 L 62,48 Z" fill="currentColor"/>
+        <g filter="url(#rough-arrow)">
+          <path d="M 10,10 Q 40,40 62,58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M 72,64 L 56,62 L 62,48 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+        </g>
       </svg>
     </div>
 
     <!-- Tip 5: Title bar drag area (top-center) -->
     <div class="tip tip-titlebar">
       <svg class="arrow" viewBox="0 0 30 60" width="30" height="60" aria-hidden="true">
-        <path d="M 15,55 L 15,16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M 15,4 L 24,18 L 6,18 Z" fill="currentColor"/>
+        <g filter="url(#rough-arrow)">
+          <path d="M 15,55 L 15,16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M 15,4 L 24,18 L 6,18 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+        </g>
       </svg>
       <div class="label">Hold to drag the window from here</div>
     </div>
@@ -60,8 +89,10 @@
     <div class="tip tip-zoom">
       <div class="label">Resize your view here</div>
       <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true">
-        <path d="M 70,10 Q 40,40 18,58" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M 8,64 L 14,48 L 24,58 Z" fill="currentColor"/>
+        <g filter="url(#rough-arrow)">
+          <path d="M 70,10 Q 40,40 18,58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M 8,64 L 14,48 L 24,58 Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+        </g>
       </svg>
     </div>
 
@@ -88,29 +119,81 @@
     to   { opacity: 1; }
   }
 
+  /* Backdrop blurs the canvas behind the overlay. backdrop-filter only
+     blurs what's behind THIS element, so the tip bubbles, arrows, and
+     dismiss button (rendered on top of the backdrop in DOM order) stay
+     pin-sharp. The slight darkening keeps the bubbles readable on light
+     theme too. */
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    backdrop-filter: blur(5px) saturate(0.85);
+    -webkit-backdrop-filter: blur(5px) saturate(0.85);
+    background: rgba(11, 10, 18, 0.32);
+  }
+
+  /* Tip wrapper: pointer-events: auto so the bubble responds to hover.
+     Children inherit. The hover animation lifts and tilts the tip a hair
+     — playful, like a sticky note rising off the page. */
   .tip {
     position: fixed;
     display: flex;
     align-items: flex-start;
     gap: 6px;
-    pointer-events: none;
+    pointer-events: auto;
+    transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: center center;
   }
+  .tip:hover {
+    transform: scale(1.06) rotate(-1.2deg);
+  }
+  /* The bracket-row is also a tip-style hoverable element, but with its
+     own positioning and a different idle rotation. */
+  .bracket-row {
+    transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .bracket-row:hover {
+    transform: scale(1.04);
+  }
+
+  /* Script-style font for tutorial copy. The font stack prefers a system
+     handwriting font on each platform, falling through to the generic
+     `cursive` family. Inline <code> elements are excluded — see below. */
+  .label,
+  .bracket-label,
+  .dismiss-tutorial {
+    font-family:
+      'Segoe Script',
+      'Bradley Hand',
+      'Marker Felt',
+      'Caveat',
+      'Patrick Hand',
+      'Comic Sans MS',
+      cursive;
+    /* Script fonts run small at the same px size as sans, so bump up. */
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
   .label {
     background: linear-gradient(var(--bg-1), var(--bg-1)), var(--glass-fill);
     color: var(--fg-0);
     border: 1px solid var(--accent-soft);
     padding: 7px 12px;
     border-radius: 8px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
     max-width: 220px;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
     line-height: 1.4;
   }
+  /* Re-style inline <code> back to monospace so things like ".md" stay
+     in the canonical mono treatment despite the script-font surroundings. */
   .label code {
     font-family: var(--font-mono);
     font-size: 11px;
+    font-weight: 500;
+    letter-spacing: normal;
     background: var(--bg-2);
     color: var(--accent);
     padding: 1px 4px;
@@ -155,7 +238,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    pointer-events: none;
+    pointer-events: auto;
     color: var(--accent);
   }
   .bracket-label {
@@ -164,9 +247,6 @@
     border: 1px solid var(--accent-soft);
     padding: 7px 12px;
     border-radius: 8px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
     line-height: 1.4;
     white-space: nowrap;
@@ -188,13 +268,17 @@
   }
 
   /* Tip 5 — title bar drag region. Bubble below the title bar centre,
-     arrow points up. */
+     arrow points up. transform-origin compensates for the centring
+     translateX so the hover scale anchors at the bubble's true centre. */
   .tip-titlebar {
     top: 60px;
     left: 50%;
     transform: translateX(-50%);
     flex-direction: row;
     align-items: center;
+  }
+  .tip-titlebar:hover {
+    transform: translateX(-50%) scale(1.06) rotate(-1.2deg);
   }
 
   /* Tip 6 — zoom pill at bottom-left (bottom:22, left:22, ~120px wide).
@@ -208,7 +292,8 @@
 
   /* Dismiss button — re-enables pointer-events so the user can click it.
      Bottom-centre keeps it away from the watermark, the zoom pill, and
-     the annotation tools. */
+     the annotation tools. Same script-font treatment as the labels for
+     visual consistency with the tutorial language. */
   .dismiss-tutorial {
     position: fixed;
     bottom: 18px;
@@ -218,18 +303,15 @@
     background: var(--accent);
     color: #fff;
     border: 0;
-    padding: 7px 16px;
+    padding: 8px 18px;
     border-radius: 999px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
     cursor: pointer;
     box-shadow: 0 4px 14px rgba(139, 127, 255, 0.35);
-    transition: filter 0.15s ease, transform 0.15s ease;
+    transition: filter 0.15s ease, transform 0.2s ease;
   }
   .dismiss-tutorial:hover {
     filter: brightness(1.1);
-    transform: translateX(-50%) translateY(-1px);
+    transform: translateX(-50%) translateY(-2px) scale(1.04);
   }
   .dismiss-tutorial:focus-visible {
     outline: 2px solid var(--fg-0);
