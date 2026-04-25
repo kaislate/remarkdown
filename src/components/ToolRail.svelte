@@ -11,7 +11,7 @@
   const TOOLS: { mode: Tool; label: string; icon: Component; shortcut: string }[] = [
     { mode: 'cursor', label: 'Cursor', icon: Cursor, shortcut: '1' },
     { mode: 'highlight', label: 'Highlight', icon: Highlighter, shortcut: '2' },
-    { mode: 'note', label: 'Note', icon: NotePencil, shortcut: '3' },
+    { mode: 'note', label: 're.mark', icon: NotePencil, shortcut: '3' },
     { mode: 'draw', label: 'Draw', icon: PencilSimple, shortcut: '4' },
     { mode: 'eraser', label: 'Eraser', icon: Eraser, shortcut: '0' },
   ];

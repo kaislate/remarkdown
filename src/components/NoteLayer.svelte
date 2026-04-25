@@ -275,7 +275,7 @@
         left:{p.position.left}px;
         {dragPinId === p.note.id ? `transform: translate(${dragOffset.x}px, ${dragOffset.y}px);` : ''}
       "
-      aria-label={$tool.mode === 'eraser' ? 'Erase note' : 'Open or drag note'}
+      aria-label={$tool.mode === 'eraser' ? 'Erase re.mark' : 'Open or drag re.mark'}
       data-id={p.note.id}
       onpointerdown={(e) => onPinPointerDown(e, p.note.id)}
       onpointermove={onPinPointerMove}

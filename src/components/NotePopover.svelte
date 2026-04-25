@@ -7,10 +7,10 @@
   let { body, onUpdate, onDelete }: Props = $props();
 </script>
 
-<div class="popover sticky-note" role="dialog" aria-label="Note">
+<div class="popover sticky-note" role="dialog" aria-label="re.mark">
   <textarea
-    aria-label="Note body"
-    placeholder="Write a note…"
+    aria-label="re.mark body"
+    placeholder="Write a re.mark…"
     value={body}
     oninput={(e) => onUpdate((e.currentTarget as HTMLTextAreaElement).value)}
     rows="4"

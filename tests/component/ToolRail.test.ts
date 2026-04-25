@@ -10,7 +10,9 @@ beforeEach(() => { setMode('cursor'); });
 describe('ToolRail', () => {
   it('renders four tool buttons', () => {
     render(ToolRail);
-    for (const name of ['cursor', 'highlight', 'note', 'draw']) {
+    // Note tool's user-facing label is "re.mark" (the `note` tool mode is
+    // the internal name for the same surface).
+    for (const name of ['cursor', 'highlight', 're.mark', 'draw']) {
       expect(screen.getByRole('radio', { name: new RegExp(name, 'i') })).toBeInTheDocument();
     }
   });

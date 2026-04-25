@@ -2,7 +2,7 @@
   <img src="assets/logo-animated.svg" alt="remarkdown" width="420">
 </div>
 
-> **A desktop reader for markdown documents with PDF-style annotations** — highlight, sticky-note, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
+> **A desktop reader for markdown documents with PDF-style annotations** — highlight, leave a re.mark, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
 
 <div align="center">
 
@@ -38,7 +38,7 @@ Both produce the same app. After installing, launch **remarkdown** from the Star
 
 ## ✨ Why remarkdown?
 
-When you're reading a technical spec, a paper, or a book chapter in markdown, you often want to **highlight key passages**, **scribble in the margins**, and **leave sticky notes** — the same mental model you'd use with a paper book or a PDF. Most markdown viewers are read-only, and most annotation tools require converting to PDF first.
+When you're reading a technical spec, a paper, or a book chapter in markdown, you often want to **highlight key passages**, **scribble in the margins**, and **leave re.marks** — the same mental model you'd use with a paper book or a PDF. Most markdown viewers are read-only, and most annotation tools require converting to PDF first.
 
 remarkdown reads plain markdown from disk, renders it in a clean dark UI, and lets you annotate on top. Your annotations save **alongside** the source file as a plain-text JSON sidecar — so they stay with your notes, survive document edits where possible, and can be read back by any tool (including LLMs) without the original document loaded.
 
@@ -48,9 +48,9 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 
 ### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
-- **📝 Sticky notes** with inline textarea popovers, pinned to the right margin of anchored text
+- **📝 re.marks** (sticky-note style) with inline textarea popovers, pinned to the right margin of anchored text
 - **✏️ Freehand drawings** with SVG strokes, 5 ink colors, auto-finalized after 3 seconds of idle
-- **🧹 Eraser tool** — single-click delete for any highlight, note, or drawing without confirmation
+- **🧹 Eraser tool** — single-click delete for any highlight, re.mark, or drawing without confirmation
 - **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
 - **👻 Orphan panel** — when an edit moves a phrase beyond recognition, the annotation goes to an "orphaned" list instead of being lost
 
@@ -84,7 +84,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 |------|-----------|----------|
 | 🎯 **Cursor** | Default | Normal text selection; copy works |
 | 🖍 **Highlight** | Tool rail | Drag-select text → highlight in current color. Right-click an existing highlight → Delete |
-| 📝 **Note** | Tool rail | Click in text → amber pin + inline popover for typing. Popover has a Delete button |
+| 📝 **re.mark** | Tool rail | Click in text → accent pin + inline popover for typing. Popover has a Delete button |
 | ✏️ **Draw** | Tool rail | Freehand stroke capture. 3s idle or tool-change finalizes. Right-click an existing drawing → Delete |
 | 🧹 **Eraser** | Tool rail | Click any annotation to delete it instantly — no confirmation |
 
@@ -173,7 +173,7 @@ Produces platform-native installers in `src-tauri/target/release/bundle/`:
 
 ### ✅ Beta (current)
 - Reader MVP with Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
-- All four annotation types (highlight, note, drawing, eraser) with save/load round-trip
+- All four annotation types (highlight, re.mark, drawing, eraser) with save/load round-trip
 - Anchoring with orphan detection and panel
 - Full error matrix and resilience: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
 - Drag-and-drop file opening, Open Recent menu, minimap, zoom, frameless window, splash screen

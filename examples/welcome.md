@@ -38,7 +38,7 @@ For very small distinctions inside a section.
 
 1. Read the document
 2. Highlight the passages that matter
-3. Add a sticky note where the margin would carry one
+3. Add a sticky re.mark where the margin would carry one
 4. Sketch the diagram you would have drawn anyway
 
 ### Tasks

@@ -70,7 +70,7 @@ describe('NoteLayer', () => {
     const user = userEvent.setup();
     const pin = document.querySelector('.note-pin') as HTMLButtonElement;
     await user.click(pin);
-    expect(screen.getByRole('dialog', { name: /note/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /re\.mark/i })).toBeInTheDocument();
   });
 });
 
@@ -93,7 +93,7 @@ describe('NoteLayer — eraser tool', () => {
     await user.click(pin);
 
     expect(get(annots).filter((a) => a.type === 'note')).toHaveLength(0);
-    expect(screen.queryByRole('dialog', { name: /note/i })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /re\.mark/i })).toBeNull();
   });
 
   it('marks pins with the eraser class so the cursor reflects the mode', () => {

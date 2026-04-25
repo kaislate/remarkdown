@@ -83,7 +83,7 @@ describe('NotesPanel', () => {
     const user = userEvent.setup();
     await user.click(document.querySelector('.pill') as HTMLElement);
     expect(document.querySelector('.empty-state')).not.toBeNull();
-    expect(document.querySelector('.empty-state')!.textContent).toContain('No notes yet');
+    expect(document.querySelector('.empty-state')!.textContent).toContain('No re.marks yet');
   });
 
   it('renders the pill with the note count when notes exist', async () => {

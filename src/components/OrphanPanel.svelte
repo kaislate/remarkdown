@@ -29,7 +29,7 @@
         <button class="close" aria-label="Close" onclick={closeModal}>×</button>
       </header>
       {#if $orphanedAnnots.length === 0}
-        <p class="empty">No orphaned annotations. All your notes are attached.</p>
+        <p class="empty">No orphaned annotations. All your re.marks are attached.</p>
       {:else}
         <ul>
           {#each $orphanedAnnots as a (a.id)}

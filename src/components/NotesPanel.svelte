@@ -67,7 +67,7 @@
         </header>
         {#if notes.length === 0}
           <p class="empty-state">
-            No notes yet. Pick the note tool (or press <kbd>3</kbd>),
+            No re.marks yet. Pick the re.mark tool (or press <kbd>3</kbd>),
             then click somewhere in the text.
           </p>
         {:else}
