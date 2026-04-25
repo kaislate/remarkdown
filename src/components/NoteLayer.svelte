@@ -307,13 +307,16 @@
        reads as the same identity dot from the re.md logo + splash
        animation rather than a generic yellow pin.
        margin-top pulls the pin up by ~half its height so it centres
-       on the baseline rather than dropping fully below the line —
-       like the subscript position of a footnote reference but on the
-       LOWER half of the text. The em unit keeps this aligned at any
-       zoom level. */
+       on the baseline rather than dropping fully below the line.
+       margin-left pulls the pin LEFT by half its width so it centres
+       on the end-of-word anchor point. Without this, the pin's full
+       width (~0.7em) extends past the word into the next word's
+       first character — wider than the typical inter-word space.
+       Both shifts are in em so they scale with text zoom. */
     width: 0.7em;
     height: 0.7em;
     margin-top: -0.55em;
+    margin-left: -0.35em;
     border-radius: 999px;
     background: var(--accent);
     border: 0;

@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { pinPosition } from '../../src/lib/positioning';
 
 describe('pinPosition', () => {
-  it('places the pin at the BOTTOM of the anchored line (subscript-style)', () => {
+  it('places the pin at the BOTTOM-RIGHT of the anchored line', () => {
     const fakeRootRect = { top: 10, left: 20, width: 700, height: 1000, right: 720, bottom: 1010, x: 20, y: 10 } as DOMRect;
     const fakeRangeRect = { top: 50, left: 100, width: 40, height: 20, right: 140, bottom: 70, x: 100, y: 50 } as DOMRect;
     const result = pinPosition(fakeRootRect, fakeRangeRect);
     // top: range.bottom (70) - root.top (10) = 60
     expect(result.top).toBe(60);
-    // left: range.right (140) - root.left (20) + 2 (offset) = 122
-    expect(result.left).toBe(122);
+    // left: range.right (140) - root.left (20) = 120 (no offset; CSS
+    // margin-left handles the centring shift in em).
+    expect(result.left).toBe(120);
   });
 
   it('left tracks the range end so notes on different lines land at different x', () => {
