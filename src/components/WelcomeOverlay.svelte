@@ -192,15 +192,16 @@
       <div class="label">Browse and jump to your re<span class="brand-dot">.</span>marks here</div>
     </div>
 
-    <!-- Stacked dismiss controls at bottom-centre. The PURPLE LINK is
-         a permanent dismiss (sets the persisted setting); the pill
-         button is a session-only dismiss (resets next launch). -->
+    <!-- Stacked dismiss controls at bottom-centre. The pill button is
+         the primary action (session-only dismiss, resets next launch);
+         the PURPLE LINK below is the permanent dismiss (sets the
+         persisted setting). -->
     <div class="dismiss-stack">
-      <button class="dismiss-forever" onclick={dismissForever}>
-        Hide tutorial forever (reshow in settings)
-      </button>
       <button class="dismiss-tutorial" onclick={dismissForSession}>
         Got it — dismiss tutorial
+      </button>
+      <button class="dismiss-forever" onclick={dismissForever}>
+        Hide tutorial forever (reshow in settings)
       </button>
     </div>
   </div>
