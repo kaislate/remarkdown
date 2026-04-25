@@ -302,8 +302,11 @@
   }
   .note-pin {
     position: absolute;
-    width: 18px;
-    height: 18px;
+    /* Smaller pin (was 18px) so the marker reads as marginalia rather
+       than an intrusive token. Coupled with right-margin positioning
+       in src/lib/positioning.ts, the pin no longer covers any text. */
+    width: 14px;
+    height: 14px;
     border-radius: 999px;
     background: #ffca4a;
     border: 1.5px solid rgba(0,0,0,0.15);
