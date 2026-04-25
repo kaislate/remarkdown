@@ -49,6 +49,21 @@
     }
   }
 
+  // Two ranges overlap iff each range starts before the other ends. We
+  // use compareBoundaryPoints which returns the position of the source
+  // range's boundary relative to this range's boundary (-1 before, 0
+  // equal, 1 after). Touching but non-overlapping ranges return 0 and
+  // are treated as non-overlapping.
+  function rangesOverlap(a: Range, b: Range): boolean {
+    try {
+      const bStartBeforeAEnd = a.compareBoundaryPoints(Range.START_TO_END, b);
+      const bEndAfterAStart = a.compareBoundaryPoints(Range.END_TO_START, b);
+      return bStartBeforeAEnd < 0 && bEndAfterAStart > 0;
+    } catch {
+      return false;
+    }
+  }
+
   function onContextMenu(e: MouseEvent): void {
     const root = get(currentViewerRoot);
     if (!root) return;
@@ -113,6 +128,20 @@
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
       if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+
+      // Remove any existing highlights that overlap with the new
+      // selection. Without this step a fresh highlight would stack on
+      // top of any existing one, leaving multiple annotation records
+      // for the same range — confusing in the orphan panel and
+      // requiring a separate delete per stacked highlight to clear.
+      // Re-highlighting overwrites instead of layering.
+      for (const r of get(resolvedAnnots)) {
+        if (r.annotation.type !== 'highlight') continue;
+        if (rangesOverlap(range, r.range)) {
+          removeAnnotation(r.annotation.id);
+        }
+      }
+
       const anchor = createAnchor(range, root);
       if (!anchor) return;
       const now = new Date().toISOString();
