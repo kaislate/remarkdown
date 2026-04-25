@@ -79,10 +79,10 @@
   // Visual connector linking Tip 1 (Open .md files) to Tip 2 (drag-drop
   // hint) — same hand-drawn line style as the arrows but with no
   // arrowhead. Shape is a J-hook: a near-vertical drop from below
-  // Tip 1's lower edge, then a sweep to the right that lands at the
-  // file icon of Tip 2.
+  // Tip 1's lower edge, then a sweep to the right that lands just
+  // before the file icon of Tip 2.
   const connectorTip1to2: RoughPath[] = [
-    { d: 'M 8,4 C 4,28 4,45 64,55', strokeWidth: 2.5 },
+    { d: 'M 8,4 C 4,28 4,45 46,55', strokeWidth: 2.5 },
   ];
 </script>
 
@@ -104,8 +104,8 @@
          arrowhead — purely a visual link between the two related tips. -->
     <svg
       class="connector connector-tip1-tip2"
-      viewBox="0 0 75 60"
-      width="75"
+      viewBox="0 0 56 60"
+      width="56"
       height="60"
       aria-hidden="true"
       use:drawRough={connectorTip1to2}
