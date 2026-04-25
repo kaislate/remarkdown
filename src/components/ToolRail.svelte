@@ -1,13 +1,19 @@
 <script lang="ts">
   import { tool, setMode } from '../stores/tool';
   import type { Tool } from '../lib/schema';
+  import Cursor from 'phosphor-svelte/lib/Cursor';
+  import Highlighter from 'phosphor-svelte/lib/Highlighter';
+  import NotePencil from 'phosphor-svelte/lib/NotePencil';
+  import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
+  import Eraser from 'phosphor-svelte/lib/Eraser';
+  import type { Component } from 'svelte';
 
-  const TOOLS: { mode: Tool; label: string; glyph: string }[] = [
-    { mode: 'cursor', label: 'Cursor', glyph: '↖' },
-    { mode: 'highlight', label: 'Highlight', glyph: '▬' },
-    { mode: 'note', label: 'Note', glyph: '✎' },
-    { mode: 'draw', label: 'Draw', glyph: '✏' },
-    { mode: 'eraser', label: 'Eraser', glyph: '⌫' },
+  const TOOLS: { mode: Tool; label: string; icon: Component }[] = [
+    { mode: 'cursor', label: 'Cursor', icon: Cursor },
+    { mode: 'highlight', label: 'Highlight', icon: Highlighter },
+    { mode: 'note', label: 'Note', icon: NotePencil },
+    { mode: 'draw', label: 'Draw', icon: PencilSimple },
+    { mode: 'eraser', label: 'Eraser', icon: Eraser },
   ];
 </script>
 
@@ -18,9 +24,12 @@
       role="radio"
       aria-checked={$tool.mode === t.mode}
       aria-label={t.label}
+      title={t.label}
       onclick={() => setMode(t.mode)}
     >
-      <span class="glyph" aria-hidden="true">{t.glyph}</span>
+      <span class="glyph" aria-hidden="true">
+        <svelte:component this={t.icon} size={18} weight="regular" />
+      </span>
     </button>
   {/each}
 </div>
@@ -46,7 +55,7 @@
     cursor: pointer;
     display: grid;
     place-items: center;
-    font-size: 16px;
+    transition: background 0.15s ease, color 0.15s ease;
   }
   .btn[aria-checked='true'] {
     background: var(--accent-soft);
@@ -54,5 +63,11 @@
   }
   .btn:hover:not([aria-checked='true']) {
     background: rgba(255, 255, 255, 0.04);
+    color: var(--fg-0);
+  }
+  .glyph {
+    display: grid;
+    place-items: center;
+    line-height: 0;
   }
 </style>
