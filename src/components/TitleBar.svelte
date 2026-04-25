@@ -10,7 +10,12 @@
   //
   // Drag-to-move uses getCurrentWindow().startDragging() on pointerdown — more
   // reliable in Tauri 2 than relying on the data-tauri-drag-region attribute.
-  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+
+  // Default startup window size, mirrored from src-tauri/tauri.conf.json.
+  // Double-clicking the resize grip restores the window to this size.
+  const DEFAULT_WIDTH = 1100;
+  const DEFAULT_HEIGHT = 780;
 
   async function safeCall(fn: () => Promise<unknown>) {
     try { await fn(); } catch { /* outside Tauri */ }
@@ -23,11 +28,23 @@
 
   async function onResizePointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
+    // Pass through double-clicks so the dblclick handler can fire
+    // (a startResizeDragging call on the FIRST click of a double-click
+    // would consume the gesture and the dblclick would never arrive).
+    if (e.detail >= 2) return;
     // preventDefault stops the browser from starting a text selection
     // before startResizeDragging grabs the pointer at the OS level.
     e.preventDefault();
     e.stopPropagation();
     await safeCall(() => getCurrentWindow().startResizeDragging('SouthEast'));
+  }
+
+  async function onResizeDoubleClick(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    await safeCall(() =>
+      getCurrentWindow().setSize(new LogicalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)),
+    );
   }
 
   const minimize = () => safeCall(() => getCurrentWindow().minimize());
@@ -85,8 +102,9 @@
   class="resize-grip"
   role="presentation"
   aria-hidden="true"
-  title="Drag to resize"
+  title="Drag to resize • double-click to reset"
   onpointerdown={onResizePointerDown}
+  ondblclick={onResizeDoubleClick}
 >
   <svg viewBox="0 0 16 16" aria-hidden="true" class="grip-glyph">
     <line x1="15" y1="3"  x2="3"  y2="15" />
