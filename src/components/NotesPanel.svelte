@@ -111,12 +111,15 @@
 
 <style>
   /* Sits above the ZoomControls pill (bottom:22, ~38px tall) with a
-     small gap. The popup expands UPWARD from the pill. */
+     small gap. The popup expands UPWARD from the pill.
+     z-index 110 puts the wrap above WelcomeDismiss (z:100) so the
+     expanding popup doesn't get visually covered by the dismiss text
+     when both are visible at the same time. */
   .notes-pill-wrap {
     position: fixed;
     bottom: 68px;
     left: 22px;
-    z-index: 100;
+    z-index: 110;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -165,18 +168,16 @@
     color: var(--accent);
   }
 
+  /* The popup uses the same translucent + backdrop-filtered look as
+     the hamburger menu (via the .glass class on the element).
+     Background, border, blur, shadow, and border-radius all come from
+     .glass — we only set sizing + layout here. */
   .popup {
     width: min(360px, calc(100vw - 44px));
     max-height: min(420px, 60vh);
     padding: 6px;
     display: flex;
     flex-direction: column;
-    background:
-      linear-gradient(var(--bg-1), var(--bg-1)),
-      var(--glass-fill);
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
   }
   header {
     padding: 6px 8px;
