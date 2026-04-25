@@ -28,3 +28,11 @@ docs/PROJECT-STATE.md
 
 # Annotation sidecars from manual QA on local files — never pushed.
 *.remarkdown.json
+
+# Updater signing keys — should always live OUTSIDE the repo (default
+# location is ~/.tauri/), but defensive ignore in case someone drops a
+# copy in the project tree.
+*.key
+*.key.pub
+.env
+.env.local
