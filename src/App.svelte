@@ -6,6 +6,7 @@
   import './styles/article.css';
   import './styles/cursors.css';
   import './styles/scrollbars.css';
+  import './styles/reader-mode.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';
@@ -23,6 +24,7 @@
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
+  import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
@@ -37,6 +39,7 @@
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool, setMode } from './stores/tool';
+  import { readerMode, exitReaderMode } from './stores/reader-mode';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -81,6 +84,24 @@
       document.body.classList.add(`cursor-mode-${t.mode}`);
     }
   });
+
+  // Reflect the reader-mode store on body so reader-mode.css can hide
+  // every chrome layer at once. Toggling rather than setting so we
+  // don't fight any pre-existing class set by another path.
+  const unsubReaderMode = readerMode.subscribe((on) => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('reader-mode', on);
+  });
+
+  // ESC exits reader mode. Other ESC handlers (modal close, popover
+  // close, menu close) live in their own components and run on the
+  // same keydown — that's fine; pressing ESC while a modal is open AND
+  // reader mode is on does both, which is what the user expects.
+  function onReaderModeEsc(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    if (!get(readerMode)) return;
+    exitReaderMode();
+  }
 
   function onZoomKey(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -168,6 +189,7 @@
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onToolShortcut);
+    window.addEventListener('keydown', onReaderModeEsc);
 
     // Startup-document precedence:
     //   1. If welcome is enabled (default), materialise it under app_data_dir
@@ -213,9 +235,11 @@
     unsubZoom();
     unsubTool();
     unsubTheme();
+    unsubReaderMode();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
       window.removeEventListener('keydown', onToolShortcut);
+      window.removeEventListener('keydown', onReaderModeEsc);
     }
   });
 </script>
@@ -231,6 +255,7 @@
   <ColorStrip />
 {/if}
 <ZoomControls />
+<ReaderModeToggle />
 <NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />

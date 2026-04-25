@@ -1,0 +1,32 @@
+/* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts.
+   Hides every chrome element so the article stands alone. The title-bar
+   drag region and the resize-grip stay invisible-but-functional so the
+   window can still be moved + resized without leaving reader mode. */
+
+body.reader-mode .menu-root,
+body.reader-mode .titlebar-controls,
+body.reader-mode .controls-aura,
+body.reader-mode .left-title,
+body.reader-mode .rail,
+body.reader-mode .strip,
+body.reader-mode .notes-pill-wrap,
+body.reader-mode .dismiss,
+body.reader-mode .minimap,
+body.reader-mode .minimap-toggle,
+body.reader-mode .zoom-rail {
+  display: none !important;
+}
+
+/* Resize-grip stays grabbable but visually invisible so the user can
+   resize the window without leaving reader mode. The hit zone is the
+   parent .resize-grip; only the visible glyph fades. */
+body.reader-mode .resize-grip .grip-glyph {
+  opacity: 0;
+}
+
+/* In reader mode the toggle button slides into the spot the zoom pill
+   used to occupy — otherwise it'd be floating alone at left:144 with
+   nothing visible to its left. */
+body.reader-mode .reader-mode-toggle {
+  left: 22px !important;
+}
