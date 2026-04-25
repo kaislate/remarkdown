@@ -64,6 +64,40 @@
     }
   }
 
+  // True iff `outer` fully contains `inner` (touching boundaries OK).
+  function rangeContainsRange(outer: Range, inner: Range): boolean {
+    try {
+      const innerStartAtOrAfterOuterStart = outer.compareBoundaryPoints(Range.START_TO_START, inner) >= 0;
+      const innerEndAtOrBeforeOuterEnd = outer.compareBoundaryPoints(Range.END_TO_END, inner) <= 0;
+      return innerStartAtOrAfterOuterStart && innerEndAtOrBeforeOuterEnd;
+    } catch {
+      return false;
+    }
+  }
+
+  // Smallest range that covers both `a` and `b`. Used to merge two
+  // same-colour highlights into a single annotation.
+  function unionRanges(a: Range, b: Range): Range | null {
+    try {
+      const startCompare = a.compareBoundaryPoints(Range.START_TO_START, b);
+      const useB_start = startCompare === -1; // b.start is BEFORE a.start
+      const startContainer = useB_start ? b.startContainer : a.startContainer;
+      const startOffset = useB_start ? b.startOffset : a.startOffset;
+
+      const endCompare = a.compareBoundaryPoints(Range.END_TO_END, b);
+      const useB_end = endCompare === 1; // b.end is AFTER a.end
+      const endContainer = useB_end ? b.endContainer : a.endContainer;
+      const endOffset = useB_end ? b.endOffset : a.endOffset;
+
+      const merged = document.createRange();
+      merged.setStart(startContainer, startOffset);
+      merged.setEnd(endContainer, endOffset);
+      return merged;
+    } catch {
+      return null;
+    }
+  }
+
   function onContextMenu(e: MouseEvent): void {
     const root = get(currentViewerRoot);
     if (!root) return;
@@ -129,26 +163,64 @@
       const range = sel.getRangeAt(0);
       if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
 
-      // Remove any existing highlights that overlap with the new
-      // selection. Without this step a fresh highlight would stack on
-      // top of any existing one, leaving multiple annotation records
-      // for the same range — confusing in the orphan panel and
-      // requiring a separate delete per stacked highlight to clear.
-      // Re-highlighting overwrites instead of layering.
-      for (const r of get(resolvedAnnots)) {
-        if (r.annotation.type !== 'highlight') continue;
-        if (rangesOverlap(range, r.range)) {
-          removeAnnotation(r.annotation.id);
+      // Decide what to do with overlapping highlights:
+      //   - SAME colour overlap → MERGE into one highlight whose range is
+      //     the union of every overlapping same-colour mark plus the
+      //     new selection. Single annotation record, single delete.
+      //   - DIFFERENT colour overlap → replace (delete the old, the new
+      //     selection wins).
+      // Special case: if the new selection is fully contained in any
+      // existing same-colour highlight, skip everything — the highlight
+      // already covers this text and a no-op preserves the original
+      // createdAt.
+      const newColor = get(tool).highlightColor;
+      const overlapping = get(resolvedAnnots).filter(
+        (r) => r.annotation.type === 'highlight' && rangesOverlap(range, r.range),
+      );
+      const fullyContained = overlapping.find(
+        (r) =>
+          (r.annotation as Highlight).color === newColor &&
+          rangeContainsRange(r.range, range),
+      );
+      if (fullyContained) {
+        sel.removeAllRanges();
+        return;
+      }
+
+      let mergedRange: Range = range;
+      for (const r of overlapping) {
+        if ((r.annotation as Highlight).color === newColor) {
+          mergedRange = unionRanges(mergedRange, r.range) ?? mergedRange;
+        }
+      }
+      // Re-scan with the (possibly expanded) merged range — additional
+      // same-colour highlights might overlap the union but not the
+      // original selection.
+      if (mergedRange !== range) {
+        for (const r of get(resolvedAnnots)) {
+          if (r.annotation.type !== 'highlight') continue;
+          if (overlapping.some((o) => o.annotation.id === r.annotation.id)) continue;
+          if ((r.annotation as Highlight).color !== newColor) continue;
+          if (rangesOverlap(mergedRange, r.range)) {
+            mergedRange = unionRanges(mergedRange, r.range) ?? mergedRange;
+            overlapping.push(r);
+          }
         }
       }
 
-      const anchor = createAnchor(range, root);
+      // Delete every overlapping highlight (same-colour merges + any
+      // different-colour replacements).
+      for (const r of overlapping) {
+        removeAnnotation(r.annotation.id);
+      }
+
+      const anchor = createAnchor(mergedRange, root);
       if (!anchor) return;
       const now = new Date().toISOString();
       const hl: Highlight = {
         id: ulid(),
         type: 'highlight',
-        color: get(tool).highlightColor,
+        color: newColor,
         anchor,
         createdAt: now,
         updatedAt: now,
