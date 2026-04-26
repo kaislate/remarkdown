@@ -209,6 +209,19 @@
           </div>
 
           <div class="row">
+            <div>
+              <label for="setting-auto-transform">Auto-transform drawings into shapes</label>
+              <div class="hint">recognize circles / rectangles / underlines</div>
+            </div>
+            <input
+              id="setting-auto-transform"
+              type="checkbox"
+              checked={$settings.autoTransformDrawings}
+              onchange={(e) => updateSettings({ autoTransformDrawings: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
             <span class="row-label">Default highlight color</span>
             <div class="swatches" role="radiogroup" aria-label="Default highlight color">
               {#each HIGHLIGHT_COLORS as c}

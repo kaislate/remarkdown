@@ -41,6 +41,7 @@ export const SettingsSchema = z.object({
       message: 'defaultInkColor must be one of DRAW_COLORS',
     }),
   showDrawingRecognitionConfidence: z.boolean(),
+  autoTransformDrawings: z.boolean(),
 
   // Save / annotation timing
   saveDebounceMs: z.number().int().min(100).max(5000),
@@ -70,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultHighlightColor: HIGHLIGHT_COLORS[0],
   defaultInkColor: DRAW_COLORS[0],
   showDrawingRecognitionConfidence: false,
+  autoTransformDrawings: false,
   saveDebounceMs: 500,
   drawIdleFinalizeMs: 3000,
   remarkContextSentences: 1,

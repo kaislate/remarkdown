@@ -2,6 +2,16 @@ import type { RoughSVG } from 'roughjs/bin/svg';
 import type { Drawing } from './schema';
 import { resolveAnchor } from './anchoring';
 
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = ((h << 5) - h) + id.charCodeAt(i);
+    h |= 0;
+  }
+  // rough.js seed must be a non-zero positive integer.
+  return Math.abs(h) || 1;
+}
+
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
 const PADDING_EM = {
@@ -37,8 +47,8 @@ export function renderDrawing(
       const h = r.height + pad * 2;
       const node =
         d.shape.kind === 'circle'
-          ? rc.ellipse(cx, cy, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width })
-          : rc.rectangle(cx - w / 2, cy - h / 2, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width });
+          ? rc.ellipse(cx, cy, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) })
+          : rc.rectangle(cx - w / 2, cy - h / 2, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) });
       return [node];
     }
 
@@ -51,7 +61,7 @@ export function renderDrawing(
       const node = rc.line(
         r.left  - svg_r.left, y,
         r.right - svg_r.left, y,
-        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width },
+        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) },
       );
       return [node];
     }
@@ -65,7 +75,7 @@ export function renderDrawing(
       const node = rc.line(
         r.left  - svg_r.left, y,
         r.right - svg_r.left, y,
-        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width },
+        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) },
       );
       return [node];
     }
@@ -80,7 +90,7 @@ export function renderDrawing(
       const cy = r.top  - svg_r.top  + d.shape.anchor.yEm * rem;
       const w = d.shape.radiusXEm * rem * 2;
       const h = d.shape.radiusYEm * rem * 2;
-      return [rc.ellipse(cx, cy, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width })];
+      return [rc.ellipse(cx, cy, w, h, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) })];
     }
 
     case 'margin-bar': {
@@ -92,7 +102,7 @@ export function renderDrawing(
       return [rc.line(
         x, r.top - svg_r.top,
         x, r.bottom - svg_r.top,
-        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width },
+        { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) },
       )];
     }
 
@@ -106,7 +116,7 @@ export function renderDrawing(
         [r.left - svg_r.left + xEm * rem, r.top - svg_r.top + yEm * rem] as [number, number],
       );
       if (pts.length < 2) return [];
-      return [rc.curve(pts, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width })];
+      return [rc.curve(pts, { ...DEFAULT_ROUGH, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) })];
     }
 
     case 'freehand-legacy': {
@@ -116,12 +126,13 @@ export function renderDrawing(
       const svg_r = svg.getBoundingClientRect();
       const scale = zoom / d.shape.captureZoom;
       const out: SVGElement[] = [];
-      for (const s of d.shape.strokes) {
+      for (let i = 0; i < d.shape.strokes.length; i++) {
+        const s = d.shape.strokes[i];
         const pts = s.points.map(([px, py]) =>
           [r.left - svg_r.left + px * scale, r.top - svg_r.top + py * scale] as [number, number],
         );
         if (pts.length < 2) continue;
-        out.push(rc.curve(pts, { ...DEFAULT_ROUGH, stroke: s.color, strokeWidth: s.width }));
+        out.push(rc.curve(pts, { ...DEFAULT_ROUGH, stroke: s.color, strokeWidth: s.width, seed: hashId(d.id) + i }));
       }
       return out;
     }

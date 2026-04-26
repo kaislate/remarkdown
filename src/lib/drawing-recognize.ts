@@ -72,7 +72,7 @@ function textAnchorFromRange(range: Range, root: HTMLElement): TextAnchor {
 
 export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
   if (points.length < 3) {
-    return freehand(points, root, 1.0);
+    return recognizeAsFreehand(points, root, 1.0);
   }
 
   const b = bbox(points);
@@ -157,10 +157,10 @@ export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
     }
   }
 
-  return freehand(points, root, 0.5);
+  return recognizeAsFreehand(points, root, 0.5);
 }
 
-function freehand(points: Point[], root: HTMLElement, confidence: number): RecognizedShape {
+export function recognizeAsFreehand(points: Point[], root: HTMLElement, confidence: number): RecognizedShape {
   const b = bbox(points);
   const cx = b.minX + b.width / 2;
   const cy = b.minY + b.height / 2;

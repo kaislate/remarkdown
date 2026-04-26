@@ -9,7 +9,7 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
-  import { recognize } from '../lib/drawing-recognize';
+  import { recognize, recognizeAsFreehand } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
   import { resolveAnchor } from '../lib/anchoring';
   import { hitTestDrawing } from '../lib/drawing-hit-test';
@@ -22,6 +22,8 @@
 
   type Point = [number, number];
   let drawSvg = $state<SVGSVGElement | null>(null);
+  let stableLayer = $state<SVGGElement | null>(null);
+  let liveLayer = $state<SVGGElement | null>(null);
   let resizeTick = $state(0);
   let drawing = $state(false);
   let currentStroke = $state<Point[]>([]);
@@ -53,7 +55,9 @@
       const viewportPoints: Array<[number, number]> = stroke.points.map(
         ([x, y]) => [x + svgRect.left, y + svgRect.top],
       );
-      const result = recognize(viewportPoints, root);
+      const result = $settings.autoTransformDrawings
+        ? recognize(viewportPoints, root)
+        : recognizeAsFreehand(viewportPoints, root, 1.0);
 
       let shape: Drawing['shape'];
       switch (result.kind) {
@@ -154,8 +158,8 @@
       .map((r) => r.annotation as Drawing),
   );
 
-  function labelPositionFor(d: Drawing, root: HTMLElement): { x: number; y: number } | null {
-    const root_r = root.getBoundingClientRect();
+  function labelPositionFor(d: Drawing, root: HTMLElement, svg: SVGSVGElement): { x: number; y: number } | null {
+    const svg_r = svg.getBoundingClientRect();
     let r: DOMRect | null = null;
     switch (d.shape.kind) {
       case 'circle':
@@ -180,9 +184,8 @@
       }
     }
     if (!r) return null;
-    // Small offset above the anchor's right edge — same coordinate system
-    // as renderDrawing's output (root-relative).
-    return { x: r.right - root_r.left + 4, y: r.top - root_r.top - 2 };
+    // Small offset above the anchor's right edge — SVG-relative coordinates.
+    return { x: r.right - svg_r.left + 4, y: r.top - svg_r.top - 2 };
   }
 
   // Re-finalize if tool changes away from draw while strokes pending.
@@ -200,67 +203,70 @@
     return () => window.removeEventListener('resize', onResize);
   });
 
+  // Stable layer: existing drawings + pending (already-released) strokes.
+  // Re-renders only when these or layout-affecting state changes.
   $effect(() => {
     void $zoomLevel;
+    void $settings.articleWidth;
+    void $settings.showDrawingRecognitionConfidence;
     void $resolvedAnnots;
     void resizeTick;
-    void $tool.drawColor;
-    void drawing;
-    void currentStroke;
     void pendingStrokes;
-    void $settings.showDrawingRecognitionConfidence;
-    void $settings.articleWidth;
-
     const svg = drawSvg;
+    const layer = stableLayer;
     const root = $currentViewerRoot;
-    if (!svg || !root) return;
-
-    // Defer one frame so any --zoom CSS variable change has flowed through
-    // layout before getBoundingClientRect reads.
+    if (!svg || !layer || !root) return;
     const id = requestAnimationFrame(() => {
-      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      while (layer.firstChild) layer.removeChild(layer.firstChild);
       const rc = rough.svg(svg);
-
       for (const d of existingDrawings) {
         try {
           const els = renderDrawing(rc, d, root, $zoomLevel, svg);
-          els.forEach((el) => svg.appendChild(el));
-        } catch {
-          // Swallow render errors per-drawing so one broken drawing
-          // doesn't blank the whole canvas. Orphaned drawings already
-          // return [] from renderDrawing, so this only catches
-          // unexpected exceptions.
-        }
+          els.forEach((el) => layer.appendChild(el));
+        } catch { /* per-drawing error swallow */ }
         if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
-          const pos = labelPositionFor(d, root);
+          const pos = labelPositionFor(d, root, svg);
           if (pos) {
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', String(pos.x));
             text.setAttribute('y', String(pos.y));
             text.setAttribute('class', 'confidence-overlay');
             text.textContent = d.recognitionConfidence.toFixed(2);
-            svg.appendChild(text);
+            layer.appendChild(text);
           }
         }
       }
-
-      // In-progress strokes (still being captured this session — not yet
-      // recognized + saved). Use rough.js curve so the live preview matches
-      // the final aesthetic.
+      // Pending strokes (released but not yet recognized + saved).
       for (const s of pendingStrokes) {
         const pts = s.points as Array<[number, number]>;
         if (pts.length < 2) continue;
         const node = rc.curve(pts, {
-          stroke: s.color, strokeWidth: s.width, roughness: 1.4, bowing: 1.2,
+          stroke: s.color, strokeWidth: s.width, roughness: 1.4, bowing: 1.2, seed: 1,
         });
-        svg.appendChild(node);
+        layer.appendChild(node);
       }
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
+  // Live layer: in-progress stroke only. Re-renders on every pointermove
+  // (which is what we want for the live preview), but doesn't touch the
+  // stable layer.
+  $effect(() => {
+    void drawing;
+    void currentStroke;
+    void $tool.drawColor;
+    const svg = drawSvg;
+    const layer = liveLayer;
+    if (!svg || !layer) return;
+    const id = requestAnimationFrame(() => {
+      while (layer.firstChild) layer.removeChild(layer.firstChild);
       if (drawing && currentStroke.length >= 2) {
+        const rc = rough.svg(svg);
         const node = rc.curve(currentStroke as Array<[number, number]>, {
-          stroke: $tool.drawColor, strokeWidth: 2, roughness: 1.4, bowing: 1.2,
+          stroke: $tool.drawColor, strokeWidth: 2, roughness: 1.4, bowing: 1.2, seed: 1,
         });
-        svg.appendChild(node);
+        layer.appendChild(node);
       }
     });
     return () => cancelAnimationFrame(id);
@@ -323,7 +329,10 @@
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
-></svg>
+>
+  <g bind:this={stableLayer}></g>
+  <g bind:this={liveLayer}></g>
+</svg>
 
 {#if menuForId}
   <div
