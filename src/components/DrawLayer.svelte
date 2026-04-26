@@ -223,7 +223,7 @@
 
       for (const d of existingDrawings) {
         try {
-          const els = renderDrawing(rc, d, root, $zoomLevel);
+          const els = renderDrawing(rc, d, root, $zoomLevel, svg);
           els.forEach((el) => svg.appendChild(el));
         } catch {
           // Swallow render errors per-drawing so one broken drawing

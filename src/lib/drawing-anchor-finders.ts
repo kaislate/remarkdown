@@ -2,19 +2,18 @@ import type { BBox } from './drawing-geometry';
 
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
-// Walk every text node inside `root` and return a Range covering the longest
-// contiguous run that lies fully within the bbox. Returns null if no text is
-// inside or every text node only partially overlaps.
 export function findEnclosedText(bbox: BBox, root: HTMLElement): Range | null {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  const inside: Array<{ node: Text; start: number; end: number }> = [];
+  let firstNode: Text | null = null;
+  let firstOffset = -1;
+  let lastNode: Text | null = null;
+  let lastOffset = -1;
 
   let node: Node | null;
   while ((node = walker.nextNode())) {
     const t = node as Text;
     if (!t.textContent || !t.textContent.trim()) continue;
     const range = document.createRange();
-    let runStart = -1;
     for (let i = 0; i < t.length; i++) {
       range.setStart(t, i);
       range.setEnd(t, i + 1);
@@ -22,22 +21,20 @@ export function findEnclosedText(bbox: BBox, root: HTMLElement): Range | null {
       const inX = r.left >= bbox.minX && r.right <= bbox.maxX;
       const inY = r.top  >= bbox.minY && r.bottom <= bbox.maxY;
       if (inX && inY) {
-        if (runStart === -1) runStart = i;
-      } else if (runStart !== -1) {
-        inside.push({ node: t, start: runStart, end: i });
-        runStart = -1;
+        if (firstNode === null) {
+          firstNode = t;
+          firstOffset = i;
+        }
+        lastNode = t;
+        lastOffset = i + 1;
       }
     }
-    if (runStart !== -1) inside.push({ node: t, start: runStart, end: t.length });
   }
 
-  if (inside.length === 0) return null;
-  // Pick the longest run.
-  inside.sort((a, b) => (b.end - b.start) - (a.end - a.start));
-  const best = inside[0];
+  if (firstNode === null || lastNode === null) return null;
   const out = document.createRange();
-  out.setStart(best.node, best.start);
-  out.setEnd(best.node, best.end);
+  out.setStart(firstNode, firstOffset);
+  out.setEnd(lastNode, lastOffset);
   return out;
 }
 
