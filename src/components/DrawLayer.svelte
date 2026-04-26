@@ -11,13 +11,13 @@
   } from '../stores/annots';
   import { recognize } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
+  import { hitTestDrawing } from '../lib/drawing-hit-test';
   import { zoomLevel } from '../stores/ui';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
   // tune it. Read at the moment startIdle() schedules its timer — changing the
   // setting affects the next idle cycle.
-  const HIT_TOLERANCE_PX = 12;
 
   type Point = [number, number];
   let drawSvg = $state<SVGSVGElement | null>(null);
@@ -100,21 +100,12 @@
   }
 
   function eraseStrokeAt(clientX: number, clientY: number): boolean {
-    const svg = document.querySelector<SVGSVGElement>('svg.draw-overlay');
-    if (!svg) return false;
-    const rect = svg.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const root = $currentViewerRoot;
+    if (!root) return false;
     for (const d of existingDrawings) {
-      // T10 will replace this with shape-aware hit testing. For now, only
-      // freehand-legacy drawings (pre-migration) are erasable here.
-      if (d.shape.kind === 'freehand-legacy') {
-        for (const s of d.shape.strokes) {
-          if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-            removeAnnotation(d.id);
-            return true;
-          }
-        }
+      if (hitTestDrawing(d, clientX, clientY, root, $zoomLevel)) {
+        removeAnnotation(d.id);
+        return true;
       }
     }
     return false;
@@ -230,39 +221,17 @@
     return () => cancelAnimationFrame(id);
   });
 
-  function strokePointDistance(px: number, py: number, points: [number, number, ...number[]][]): number {
-    let min = Infinity;
-    for (const [x, y] of points) {
-      const d = Math.hypot(px - x, py - y);
-      if (d < min) min = d;
-    }
-    return min;
-  }
-
   function onContextMenu(e: MouseEvent): void {
-    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement | null;
-    if (!svg) return;
-    // Bound the search to the SVG's full extent — drawings can sit anywhere
-    // on the canvas (including margins that aren't part of the text column),
-    // and they should still be deletable from there.
-    const rect = svg.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right ||
-        e.clientY < rect.top || e.clientY > rect.bottom) return;
-
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    if ($tool.mode !== 'draw' && $tool.mode !== 'eraser') return;
+    const root = $currentViewerRoot;
+    if (!root) return;
     for (const d of existingDrawings) {
-      // T10 will replace this with shape-aware hit testing. For now, only
-      // freehand-legacy drawings (pre-migration) support right-click delete here.
-      if (d.shape.kind === 'freehand-legacy') {
-        for (const s of d.shape.strokes) {
-          if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-            e.preventDefault();
-            menuForId = d.id;
-            menuPos = { x: e.clientX, y: e.clientY };
-            return;
-          }
-        }
+      if (hitTestDrawing(d, e.clientX, e.clientY, root, $zoomLevel)) {
+        e.preventDefault();
+        e.stopPropagation();
+        menuForId = d.id;
+        menuPos = { x: e.clientX, y: e.clientY };
+        return;
       }
     }
   }

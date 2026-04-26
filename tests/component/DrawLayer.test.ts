@@ -123,14 +123,13 @@ describe('DrawLayer — right-click delete', () => {
     mountViewer('<p data-block-id="p:1">x</p>');
     render(DrawLayer);
     flushSync(() => {
+      setMode('draw');
       annots.set([{
         id: '01D', type: 'drawing',
         shape: { kind: 'freehand-legacy', anchorBlock: 'p:1', captureZoom: 1, strokes: [{ color: '#d6336c', width: 2, points: [[50, 50], [60, 55], [70, 60]] }] },
         createdAt: 'now', updatedAt: 'now',
       } as any]);
     });
-    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
-    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     const root = get(currentViewerRoot)!;
     root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     flushSync(() => {
@@ -143,14 +142,13 @@ describe('DrawLayer — right-click delete', () => {
     mountViewer('<p data-block-id="p:1">x</p>');
     render(DrawLayer);
     flushSync(() => {
+      setMode('draw');
       annots.set([{
         id: '01D', type: 'drawing',
         shape: { kind: 'freehand-legacy', anchorBlock: 'p:1', captureZoom: 1, strokes: [{ color: '#d6336c', width: 2, points: [[50, 50], [60, 55]] }] },
         createdAt: 'now', updatedAt: 'now',
       } as any]);
     });
-    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
-    svg.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     const root = get(currentViewerRoot)!;
     root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     flushSync(() => {
@@ -182,23 +180,18 @@ describe('DrawLayer — right-click delete', () => {
 
   it('finds drawings in the canvas margins (outside the text-column rect) — covered also by eraser tests below', () => {
     // Drawing's strokes sit far right of the viewer's text column. Should
-    // still be hit by the contextmenu handler since the SVG spans the full
-    // canvas width.
+    // still be hit by the contextmenu handler since hitTestDrawing uses the
+    // block rect directly (not the SVG rect), so margin drawings are always reachable.
     mountViewer('<p data-block-id="p:1">x</p>');
     render(DrawLayer);
     flushSync(() => {
+      setMode('draw');
       annots.set([{
         id: '01D', type: 'drawing',
         shape: { kind: 'freehand-legacy', anchorBlock: 'p:1', captureZoom: 1, strokes: [{ color: '#d6336c', width: 2, points: [[900, 200], [910, 210]] }] },
         createdAt: 'now', updatedAt: 'now',
       } as any]);
     });
-    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement;
-    // SVG covers the whole canvas (e.g., 1100px wide).
-    svg.getBoundingClientRect = () => new DOMRect(0, 0, 1100, 600);
-    // Viewer text-column is the narrower middle band.
-    const root = get(currentViewerRoot)!;
-    root.getBoundingClientRect = () => new DOMRect(140, 0, 720, 600);
     flushSync(() => {
       document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 905, clientY: 205 }));
     });
