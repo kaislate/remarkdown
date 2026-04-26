@@ -196,6 +196,19 @@
           </div>
 
           <div class="row">
+            <div>
+              <label for="setting-drawing-confidence">Show drawing recognition confidence</label>
+              <div class="hint">developer / threshold-tuning aid</div>
+            </div>
+            <input
+              id="setting-drawing-confidence"
+              type="checkbox"
+              checked={$settings.showDrawingRecognitionConfidence}
+              onchange={(e) => updateSettings({ showDrawingRecognitionConfidence: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
             <span class="row-label">Default highlight color</span>
             <div class="swatches" role="radiogroup" aria-label="Default highlight color">
               {#each HIGHLIGHT_COLORS as c}
@@ -381,6 +394,11 @@
   .row.dim { opacity: 0.5; }
   .row label, .row-label {
     cursor: default;
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--fg-2);
+    margin-top: 2px;
   }
 
   /* Custom-styled form controls so the panel reads as one cohesive
