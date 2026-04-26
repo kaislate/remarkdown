@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ulid } from 'ulid';
+  import rough from 'roughjs';
   import { tool } from '../stores/tool';
   import { settings } from '../stores/settings';
   import {
@@ -9,6 +10,8 @@
     currentViewerRoot,
   } from '../stores/annots';
   import { recognize } from '../lib/drawing-recognize';
+  import { renderDrawing } from '../lib/drawing-render';
+  import { zoomLevel } from '../stores/ui';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
@@ -17,6 +20,8 @@
   const HIT_TOLERANCE_PX = 12;
 
   type Point = [number, number];
+  let drawSvg = $state<SVGSVGElement | null>(null);
+  let resizeTick = $state(0);
   let drawing = $state(false);
   let currentStroke = $state<Point[]>([]);
   let pendingStrokes = $state<Stroke[]>([]);
@@ -150,6 +155,13 @@
     startIdle();
   }
 
+  // Existing drawings rendered from resolved annotations.
+  const existingDrawings = $derived(
+    $resolvedAnnots
+      .filter((r) => r.annotation.type === 'drawing')
+      .map((r) => r.annotation as Drawing),
+  );
+
   // Re-finalize if tool changes away from draw while strokes pending.
   $effect(() => {
     if ($tool.mode !== 'draw' && pendingStrokes.length > 0) {
@@ -158,18 +170,65 @@
     }
   });
 
-  function pathD(points: Point[]): string {
-    if (points.length === 0) return '';
-    const [first, ...rest] = points;
-    return `M ${first[0]} ${first[1]} ` + rest.map(([x, y]) => `L ${x} ${y}`).join(' ');
-  }
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => { resizeTick += 1; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  });
 
-  // Existing drawings rendered from resolved annotations.
-  const existingDrawings = $derived(
-    $resolvedAnnots
-      .filter((r) => r.annotation.type === 'drawing')
-      .map((r) => r.annotation as Drawing),
-  );
+  $effect(() => {
+    void $zoomLevel;
+    void $resolvedAnnots;
+    void resizeTick;
+    void $tool.drawColor;
+    void drawing;
+    void currentStroke;
+    void pendingStrokes;
+
+    const svg = drawSvg;
+    const root = $currentViewerRoot;
+    if (!svg || !root) return;
+
+    // Defer one frame so any --zoom CSS variable change has flowed through
+    // layout before getBoundingClientRect reads.
+    const id = requestAnimationFrame(() => {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const rc = rough.svg(svg);
+
+      for (const d of existingDrawings) {
+        try {
+          const els = renderDrawing(rc, d, root, $zoomLevel);
+          els.forEach((el) => svg.appendChild(el));
+        } catch {
+          // Swallow render errors per-drawing so one broken drawing
+          // doesn't blank the whole canvas. Orphaned drawings already
+          // return [] from renderDrawing, so this only catches
+          // unexpected exceptions.
+        }
+      }
+
+      // In-progress strokes (still being captured this session — not yet
+      // recognized + saved). Use rough.js curve so the live preview matches
+      // the final aesthetic.
+      for (const s of pendingStrokes) {
+        const pts = s.points as Array<[number, number]>;
+        if (pts.length < 2) continue;
+        const node = rc.curve(pts, {
+          stroke: s.color, strokeWidth: s.width, roughness: 1.4, bowing: 1.2,
+        });
+        svg.appendChild(node);
+      }
+
+      if (drawing && currentStroke.length >= 2) {
+        const node = rc.curve(currentStroke as Array<[number, number]>, {
+          stroke: $tool.drawColor, strokeWidth: 2, roughness: 1.4, bowing: 1.2,
+        });
+        svg.appendChild(node);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
   function strokePointDistance(px: number, py: number, points: [number, number, ...number[]][]): number {
     let min = Infinity;
@@ -241,6 +300,7 @@
 </script>
 
 <svg
+  bind:this={drawSvg}
   class="draw-overlay"
   class:active={$tool.mode === 'draw'}
   role="presentation"
@@ -249,16 +309,7 @@
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
->
-  <!-- render moved to T9: existing drawings will be rendered via rough.js per shape kind -->
-  {#each existingDrawings as _d (_d.id)}{/each}
-  {#each pendingStrokes as s, i (i)}
-    <path d={pathD(s.points as Point[])} stroke={s.color} stroke-width={s.width} fill="none" stroke-linecap="round" stroke-linejoin="round" />
-  {/each}
-  {#if drawing}
-    <path d={pathD(currentStroke)} stroke={$tool.drawColor} stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-  {/if}
-</svg>
+></svg>
 
 {#if menuForId}
   <div
