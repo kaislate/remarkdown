@@ -31,12 +31,75 @@ export const StrokeSchema = z.object({
   points: z.array(z.tuple([z.number(), z.number()]).rest(z.number())),
 });
 
+const TextAnchorSchema = AnchorSchema; // Same shape as highlight/note anchors.
+
+const BlockAnchorSchema = z.object({ blockId: z.string() });
+
+const BlockEmAnchorSchema = z.object({
+  blockId: z.string(),
+  xEm: z.number(),
+  yEm: z.number(),
+});
+
+export const DrawingShapeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('circle'),
+    anchor: TextAnchorSchema,
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('circle-empty'),
+    anchor: BlockEmAnchorSchema,
+    radiusXEm: z.number(),
+    radiusYEm: z.number(),
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('rectangle'),
+    anchor: TextAnchorSchema,
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('underline'),
+    anchor: TextAnchorSchema,
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('strikethrough'),
+    anchor: TextAnchorSchema,
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('margin-bar'),
+    anchor: BlockAnchorSchema,
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('freehand'),
+    anchor: BlockAnchorSchema,
+    points: z.array(z.tuple([z.number(), z.number()])),
+    color: z.string(),
+    width: z.number(),
+  }),
+  z.object({
+    kind: z.literal('freehand-legacy'),
+    anchorBlock: z.string(),
+    captureZoom: z.number().default(1.0),
+    strokes: z.array(StrokeSchema),
+  }),
+]);
+
 export const DrawingSchema = z.object({
   id: z.string(),
   type: z.literal('drawing'),
-  anchorBlock: z.string(),
-  caption: z.string().optional(),
-  strokes: z.array(StrokeSchema),
+  shape: DrawingShapeSchema,
+  recognitionConfidence: z.number().min(0).max(1).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -67,6 +130,7 @@ export type Anchor = z.infer<typeof AnchorSchema>;
 export type Highlight = z.infer<typeof HighlightSchema>;
 export type Note = z.infer<typeof NoteSchema>;
 export type Stroke = z.infer<typeof StrokeSchema>;
+export type DrawingShape = z.infer<typeof DrawingShapeSchema>;
 export type Drawing = z.infer<typeof DrawingSchema>;
 export type Annotation = z.infer<typeof AnnotationSchema>;
 export type DocumentMeta = z.infer<typeof DocumentMetaSchema>;

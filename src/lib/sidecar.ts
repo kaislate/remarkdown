@@ -1,4 +1,5 @@
 import { SidecarSchema, type Sidecar, type DocumentMeta } from './schema';
+import { migrateDrawing } from './drawing-migration';
 
 export type LoadError =
   | { kind: 'parse'; message: string }
@@ -14,6 +15,16 @@ export function loadSidecar(json: string): LoadResult {
     parsed = JSON.parse(json);
   } catch (e) {
     return { ok: false, error: { kind: 'parse', message: (e as Error).message } };
+  }
+  // Migrate legacy drawings before schema validation.
+  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { annotations?: unknown[] }).annotations)) {
+    const obj = parsed as { annotations: unknown[] };
+    obj.annotations = obj.annotations.map((a) => {
+      if (a && typeof a === 'object' && (a as { type?: string }).type === 'drawing') {
+        return migrateDrawing(a as Record<string, unknown>);
+      }
+      return a;
+    });
   }
   const validated = SidecarSchema.safeParse(parsed);
   if (!validated.success) {
