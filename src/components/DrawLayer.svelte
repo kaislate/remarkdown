@@ -11,6 +11,7 @@
   } from '../stores/annots';
   import { recognize } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
+  import { resolveAnchor } from '../lib/anchoring';
   import { hitTestDrawing } from '../lib/drawing-hit-test';
   import { zoomLevel } from '../stores/ui';
   import type { Drawing, Stroke } from '../lib/schema';
@@ -153,6 +154,37 @@
       .map((r) => r.annotation as Drawing),
   );
 
+  function labelPositionFor(d: Drawing, root: HTMLElement): { x: number; y: number } | null {
+    const root_r = root.getBoundingClientRect();
+    let r: DOMRect | null = null;
+    switch (d.shape.kind) {
+      case 'circle':
+      case 'rectangle':
+      case 'underline':
+      case 'strikethrough': {
+        const range = resolveAnchor(d.shape.anchor, root);
+        if (range) r = range.getBoundingClientRect();
+        break;
+      }
+      case 'circle-empty':
+      case 'margin-bar':
+      case 'freehand': {
+        const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
+        if (block) r = block.getBoundingClientRect();
+        break;
+      }
+      case 'freehand-legacy': {
+        const block = root.querySelector<HTMLElement>(`[data-block-id="${(d.shape as { anchorBlock: string }).anchorBlock}"]`);
+        if (block) r = block.getBoundingClientRect();
+        break;
+      }
+    }
+    if (!r) return null;
+    // Small offset above the anchor's right edge — same coordinate system
+    // as renderDrawing's output (root-relative).
+    return { x: r.right - root_r.left + 4, y: r.top - root_r.top - 2 };
+  }
+
   // Re-finalize if tool changes away from draw while strokes pending.
   $effect(() => {
     if ($tool.mode !== 'draw' && pendingStrokes.length > 0) {
@@ -176,6 +208,7 @@
     void drawing;
     void currentStroke;
     void pendingStrokes;
+    void $settings.showDrawingRecognitionConfidence;
 
     const svg = drawSvg;
     const root = $currentViewerRoot;
@@ -196,6 +229,17 @@
           // doesn't blank the whole canvas. Orphaned drawings already
           // return [] from renderDrawing, so this only catches
           // unexpected exceptions.
+        }
+        if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
+          const pos = labelPositionFor(d, root);
+          if (pos) {
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', String(pos.x));
+            text.setAttribute('y', String(pos.y));
+            text.setAttribute('class', 'confidence-overlay');
+            text.textContent = d.recognitionConfidence.toFixed(2);
+            svg.appendChild(text);
+          }
         }
       }
 
@@ -324,4 +368,10 @@
     cursor: pointer;
   }
   .drawing-menu button:hover { background: var(--accent-soft); }
+  :global(.confidence-overlay) {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+  }
 </style>
