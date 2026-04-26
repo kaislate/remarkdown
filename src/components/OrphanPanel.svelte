@@ -4,12 +4,18 @@
   import type { Annotation } from '../lib/schema';
 
   function excerpt(a: Annotation): string {
-    if (a.type === 'drawing') return `[drawing — ${a.strokes.length} stroke(s)]`;
+    if (a.type === 'drawing') return `[drawing — ${a.shape.kind}]`;
     return a.anchor.text;
   }
 
   function blockInfo(a: Annotation): string {
-    if (a.type === 'drawing') return a.anchorBlock;
+    if (a.type === 'drawing') {
+      const s = a.shape;
+      if (s.kind === 'freehand-legacy') return s.anchorBlock;
+      if ('anchor' in s && 'blockId' in s.anchor) return s.anchor.blockId;
+      if ('anchor' in s && 'blockHint' in s.anchor) return s.anchor.blockHint;
+      return '';
+    }
     return a.anchor.blockHint;
   }
 

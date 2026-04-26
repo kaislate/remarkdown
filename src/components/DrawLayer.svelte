@@ -8,6 +8,7 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { recognize } from '../lib/drawing-recognize';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
@@ -34,33 +35,62 @@
     const root = $currentViewerRoot;
     if (!root) { pendingStrokes = []; return; }
 
-    // Compute centroid of all points across all strokes.
-    let sx = 0, sy = 0, n = 0;
-    for (const s of pendingStrokes) for (const [x, y] of s.points) { sx += x; sy += y; n += 1; }
-    const cx = n > 0 ? sx / n : 0;
-    const cy = n > 0 ? sy / n : 0;
-
-    // Find the block under the centroid by walking from the point. The SVG
-    // now spans the full canvas (wider than the text viewer), so convert the
-    // stroke-local centroid using the SVG's own bounding rect, not the viewer's.
+    // Stroke points are captured in SVG-LOCAL coordinates. recognize() needs
+    // VIEWPORT coordinates (because it queries getBoundingClientRect on text
+    // ranges + blocks, which return viewport coords). Translate via the SVG's
+    // own bounding rect.
     const svgEl = document.querySelector<SVGSVGElement>('svg.draw-overlay');
-    const sourceRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
-    let el: Element | null = null;
-    try { el = document.elementFromPoint(cx + sourceRect.left, cy + sourceRect.top); } catch {}
-    const block = el?.closest?.<HTMLElement>('[data-block-id]') ??
-      root.querySelector<HTMLElement>('[data-block-id]');
-    const blockId = block?.dataset.blockId ?? 'p:1';
+    const svgRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
 
     const now = new Date().toISOString();
-    const drawingAnnot: Drawing = {
-      id: ulid(),
-      type: 'drawing',
-      anchorBlock: blockId,
-      strokes: pendingStrokes,
-      createdAt: now,
-      updatedAt: now,
-    };
-    addAnnotation(drawingAnnot);
+    for (const stroke of pendingStrokes) {
+      const viewportPoints: Array<[number, number]> = stroke.points.map(
+        ([x, y]) => [x + svgRect.left, y + svgRect.top],
+      );
+      const result = recognize(viewportPoints, root);
+
+      let shape: Drawing['shape'];
+      switch (result.kind) {
+        case 'circle':
+        case 'rectangle':
+        case 'underline':
+        case 'strikethrough':
+          shape = { kind: result.kind, anchor: result.anchor, color: stroke.color, width: stroke.width };
+          break;
+        case 'circle-empty':
+          shape = {
+            kind: 'circle-empty',
+            anchor: result.anchor,
+            radiusXEm: result.radiusXEm,
+            radiusYEm: result.radiusYEm,
+            color: stroke.color,
+            width: stroke.width,
+          };
+          break;
+        case 'margin-bar':
+          shape = { kind: 'margin-bar', anchor: result.anchor, color: stroke.color, width: stroke.width };
+          break;
+        case 'freehand':
+          shape = {
+            kind: 'freehand',
+            anchor: result.anchor,
+            points: result.points,
+            color: stroke.color,
+            width: stroke.width,
+          };
+          break;
+      }
+
+      const drawingAnnot: Drawing = {
+        id: ulid(),
+        type: 'drawing',
+        shape,
+        recognitionConfidence: result.recognitionConfidence,
+        createdAt: now,
+        updatedAt: now,
+      };
+      addAnnotation(drawingAnnot);
+    }
     pendingStrokes = [];
   }
 
@@ -71,10 +101,14 @@
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     for (const d of existingDrawings) {
-      for (const s of d.strokes) {
-        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-          removeAnnotation(d.id);
-          return true;
+      // T10 will replace this with shape-aware hit testing. For now, only
+      // freehand-legacy drawings (pre-migration) are erasable here.
+      if (d.shape.kind === 'freehand-legacy') {
+        for (const s of d.shape.strokes) {
+          if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
+            removeAnnotation(d.id);
+            return true;
+          }
         }
       }
     }
@@ -159,12 +193,16 @@
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     for (const d of existingDrawings) {
-      for (const s of d.strokes) {
-        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-          e.preventDefault();
-          menuForId = d.id;
-          menuPos = { x: e.clientX, y: e.clientY };
-          return;
+      // T10 will replace this with shape-aware hit testing. For now, only
+      // freehand-legacy drawings (pre-migration) support right-click delete here.
+      if (d.shape.kind === 'freehand-legacy') {
+        for (const s of d.shape.strokes) {
+          if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
+            e.preventDefault();
+            menuForId = d.id;
+            menuPos = { x: e.clientX, y: e.clientY };
+            return;
+          }
         }
       }
     }
@@ -212,11 +250,8 @@
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
 >
-  {#each existingDrawings as d (d.id)}
-    {#each d.strokes as s, i (i)}
-      <path d={pathD(s.points as Point[])} stroke={s.color} stroke-width={s.width} fill="none" stroke-linecap="round" stroke-linejoin="round" />
-    {/each}
-  {/each}
+  <!-- render moved to T9: existing drawings will be rendered via rough.js per shape kind -->
+  {#each existingDrawings as _d (_d.id)}{/each}
   {#each pendingStrokes as s, i (i)}
     <path d={pathD(s.points as Point[])} stroke={s.color} stroke-width={s.width} fill="none" stroke-linecap="round" stroke-linejoin="round" />
   {/each}
