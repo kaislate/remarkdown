@@ -42,6 +42,7 @@ export const SettingsSchema = z.object({
     }),
   showDrawingRecognitionConfidence: z.boolean(),
   autoTransformDrawings: z.boolean(),
+  drawingRoughness: z.number().min(0).max(3),
 
   // Save / annotation timing
   saveDebounceMs: z.number().int().min(100).max(5000),
@@ -72,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultInkColor: DRAW_COLORS[0],
   showDrawingRecognitionConfidence: false,
   autoTransformDrawings: false,
+  drawingRoughness: 1.4,
   saveDebounceMs: 500,
   drawIdleFinalizeMs: 3000,
   remarkContextSentences: 1,

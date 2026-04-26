@@ -254,6 +254,25 @@
           </div>
 
           <div class="row">
+            <div>
+              <label for="setting-drawing-roughness">Drawing roughness</label>
+              <div class="hint">0 = clean / 3 = very sketchy</div>
+            </div>
+            <div class="slider-cell">
+              <input
+                id="setting-drawing-roughness"
+                type="range"
+                min="0"
+                max="3"
+                step="0.1"
+                value={$settings.drawingRoughness}
+                oninput={(e) => updateSettings({ drawingRoughness: parseFloat((e.currentTarget as HTMLInputElement).value) })}
+              />
+              <span class="value">{$settings.drawingRoughness.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <div class="row">
             <label for="setting-draw-idle">Drawing idle finalize (ms)</label>
             <div class="slider-cell">
               <input

@@ -209,6 +209,7 @@
     void $zoomLevel;
     void $settings.articleWidth;
     void $settings.showDrawingRecognitionConfidence;
+    void $settings.drawingRoughness;
     void $resolvedAnnots;
     void resizeTick;
     void pendingStrokes;
@@ -221,7 +222,7 @@
       const rc = rough.svg(svg);
       for (const d of existingDrawings) {
         try {
-          const els = renderDrawing(rc, d, root, $zoomLevel, svg);
+          const els = renderDrawing(rc, d, root, $zoomLevel, svg, $settings.drawingRoughness);
           els.forEach((el) => layer.appendChild(el));
         } catch { /* per-drawing error swallow */ }
         if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
@@ -241,7 +242,10 @@
         const pts = s.points as Array<[number, number]>;
         if (pts.length < 2) continue;
         const node = rc.curve(pts, {
-          stroke: s.color, strokeWidth: s.width, roughness: 1.4, bowing: 1.2, seed: 1,
+          stroke: s.color, strokeWidth: s.width,
+          roughness: $settings.drawingRoughness,
+          bowing: Math.min(1.4, $settings.drawingRoughness),
+          seed: 1,
         });
         layer.appendChild(node);
       }
@@ -256,6 +260,7 @@
     void drawing;
     void currentStroke;
     void $tool.drawColor;
+    void $settings.drawingRoughness;
     const svg = drawSvg;
     const layer = liveLayer;
     if (!svg || !layer) return;
@@ -264,7 +269,10 @@
       if (drawing && currentStroke.length >= 2) {
         const rc = rough.svg(svg);
         const node = rc.curve(currentStroke as Array<[number, number]>, {
-          stroke: $tool.drawColor, strokeWidth: 2, roughness: 1.4, bowing: 1.2, seed: 1,
+          stroke: $tool.drawColor, strokeWidth: 2,
+          roughness: $settings.drawingRoughness,
+          bowing: Math.min(1.4, $settings.drawingRoughness),
+          seed: 1,
         });
         layer.appendChild(node);
       }

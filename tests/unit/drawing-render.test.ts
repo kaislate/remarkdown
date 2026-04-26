@@ -25,7 +25,7 @@ describe('renderDrawing', () => {
       },
       createdAt: 't', updatedAt: 't',
     };
-    const els = renderDrawing(rough.svg(svg), d, root, 1.0, svg);
+    const els = renderDrawing(rough.svg(svg), d, root, 1.0, svg, 1.4);
     expect(els.length).toBe(0);
   });
 
@@ -40,7 +40,7 @@ describe('renderDrawing', () => {
       },
       createdAt: 't', updatedAt: 't',
     };
-    const els = renderDrawing(rough.svg(svg), d, root, 1.0, svg);
+    const els = renderDrawing(rough.svg(svg), d, root, 1.0, svg, 1.4);
     expect(els.length).toBe(0);
   });
 
@@ -55,7 +55,7 @@ describe('renderDrawing', () => {
       },
       createdAt: 't', updatedAt: 't',
     };
-    const els = renderDrawing(rough.svg(svg), d, root, 1.5, svg);
+    const els = renderDrawing(rough.svg(svg), d, root, 1.5, svg, 1.4);
     // jsdom returns rect-zero for the block; rough.js still produces an
     // SVG group element. We assert at least one element comes back.
     expect(els.length).toBeGreaterThanOrEqual(1);
