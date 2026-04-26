@@ -209,6 +209,7 @@
     void currentStroke;
     void pendingStrokes;
     void $settings.showDrawingRecognitionConfidence;
+    void $settings.articleWidth;
 
     const svg = drawSvg;
     const root = $currentViewerRoot;

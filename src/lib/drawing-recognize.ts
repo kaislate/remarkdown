@@ -13,6 +13,7 @@ import {
   findBlockBeside,
   findBlockAtPoint,
 } from './drawing-anchor-finders';
+import { createAnchor } from './anchoring';
 
 export type TextAnchor = {
   text: string;
@@ -52,26 +53,21 @@ const MIN_SHAPE_DIMENSION_PX = 20;
 const HORIZ_ASPECT_THRESHOLD = 4;       // aspect > 4 = "horizontal" stroke
 const VERT_ASPECT_THRESHOLD = 0.25;     // aspect < 0.25 = "vertical" stroke
 const LINE_HEIGHT_EM_CAP = 1.25;        // strokes thicker than this aren't lines
-const ANCHOR_CONTEXT_CHARS = 24;        // chars of prefix/suffix in text-quote anchors
 
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
-// Helper: build a TextAnchor from a Range using the existing anchoring strategy
-// (text + prefix + suffix + blockHint). This duplicates the logic in
-// src/lib/anchoring.ts at a small scale; if that module exposes a builder we
-// should use it directly. The implementation here is the minimum needed to
-// keep the recognizer self-contained for tests.
-function textAnchorFromRange(range: Range): TextAnchor {
+// Build a TextAnchor (text + prefix + suffix + blockHint) from a Range.
+// Delegates to anchoring.createAnchor which uses precise offset extraction
+// rather than the fragile indexOf approach. Falls back to a minimal anchor
+// if createAnchor returns null (e.g., the range isn't inside a block).
+function textAnchorFromRange(range: Range, root: HTMLElement): TextAnchor {
+  const anchor = createAnchor(range, root);
+  if (anchor) return anchor;
+  // Minimal fallback — text only, no context.
   const text = range.toString();
   const blockEl = (range.startContainer.parentElement?.closest('[data-block-id]') ??
                     range.endContainer.parentElement?.closest('[data-block-id]')) as HTMLElement | null;
-  const blockHint = blockEl?.dataset.blockId ?? '';
-  // Surrounding context: ANCHOR_CONTEXT_CHARS on each side, taken from the parent block.
-  const blockText = blockEl?.textContent ?? '';
-  const idx = blockText.indexOf(text);
-  const prefix = idx > 0 ? blockText.slice(Math.max(0, idx - ANCHOR_CONTEXT_CHARS), idx) : '';
-  const suffix = idx >= 0 ? blockText.slice(idx + text.length, idx + text.length + ANCHOR_CONTEXT_CHARS) : '';
-  return { text, prefix, suffix, blockHint };
+  return { text, prefix: '', suffix: '', blockHint: blockEl?.dataset.blockId ?? '' };
 }
 
 export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
@@ -97,13 +93,13 @@ export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
       if (looksLikeRect) {
         return {
           kind: 'rectangle',
-          anchor: textAnchorFromRange(enclosed),
+          anchor: textAnchorFromRange(enclosed, root),
           recognitionConfidence: 0.7 + (rectLikeCount / angles.length) * 0.3,
         };
       }
       return {
         kind: 'circle',
-        anchor: textAnchorFromRange(enclosed),
+        anchor: textAnchorFromRange(enclosed, root),
         recognitionConfidence: 0.7 + (1 - closure(points)) * 0.3,
       };
     }
@@ -133,7 +129,7 @@ export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
       if (through) {
         return {
           kind: 'strikethrough',
-          anchor: textAnchorFromRange(through),
+          anchor: textAnchorFromRange(through, root),
           recognitionConfidence: 0.7,
         };
       }
@@ -142,7 +138,7 @@ export function recognize(points: Point[], root: HTMLElement): RecognizedShape {
       if (above) {
         return {
           kind: 'underline',
-          anchor: textAnchorFromRange(above),
+          anchor: textAnchorFromRange(above, root),
           recognitionConfidence: 0.7,
         };
       }
