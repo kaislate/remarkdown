@@ -27,6 +27,7 @@
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
+  import ReattachBanner from './components/ReattachBanner.svelte';
   import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
   import { loadDocument } from './stores/doc';
   import { welcomeDocPath } from './stores/welcome';
@@ -41,6 +42,7 @@
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool, setMode } from './stores/tool';
   import { readerMode, exitReaderMode } from './stores/reader-mode';
+  import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
@@ -103,6 +105,16 @@
     if (e.key !== 'Escape') return;
     if (!get(readerMode)) return;
     exitReaderMode();
+  }
+
+  // ESC cancels an in-progress re-attach operation. Runs on the same
+  // keydown as onReaderModeEsc — both fire simultaneously, which is
+  // intentional: the user can exit reader mode and cancel a re-attach
+  // in one keystroke if both are active.
+  function onReattachEsc(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    if (!get(reattachTarget)) return;
+    cancelReattach();
   }
 
   // '?' toggles the welcome tutorial overlay. Skipped while focus is
@@ -217,6 +229,7 @@
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onToolShortcut);
     window.addEventListener('keydown', onReaderModeEsc);
+    window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
 
     // Startup-document precedence:
@@ -268,6 +281,7 @@
       window.removeEventListener('keydown', onZoomKey);
       window.removeEventListener('keydown', onToolShortcut);
       window.removeEventListener('keydown', onReaderModeEsc);
+      window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);
     }
   });
@@ -278,6 +292,7 @@
 <WelcomeOverlay />
 <Minimap />
 <TitleBar />
+<ReattachBanner />
 <GlassMenu />
 {#if !$settings.hideAnnotationControls}
   <ToolRail />

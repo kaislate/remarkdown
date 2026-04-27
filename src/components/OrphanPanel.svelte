@@ -1,6 +1,7 @@
 <script lang="ts">
   import { activeModal, closeModal } from '../stores/modals';
   import { orphanedAnnots, removeAnnotation } from '../stores/annots';
+  import { startReattach } from '../stores/reattach';
   import type { Annotation } from '../lib/schema';
 
   function excerpt(a: Annotation): string {
@@ -47,6 +48,14 @@
               </div>
               <div class="text">{excerpt(a)}</div>
               <div class="actions">
+                <button class="reattach" onclick={() => {
+                  startReattach({
+                    annotationId: a.id,
+                    snippet: excerpt(a).slice(0, 60),
+                    kind: a.type === 'drawing' ? a.shape.kind : undefined,
+                  });
+                  closeModal();
+                }}>Re-attach</button>
                 <button onclick={() => removeAnnotation(a.id)}>Delete</button>
               </div>
             </li>
@@ -147,4 +156,10 @@
     cursor: pointer;
   }
   .actions button:hover { color: #ff8080; border-color: #ff8080; }
+  .actions .reattach {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 0;
+  }
+  .actions .reattach:hover { filter: brightness(1.15); }
 </style>
