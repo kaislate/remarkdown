@@ -227,3 +227,21 @@
   white-space: pre-wrap;
   text-align: left;
 }
+
+/* Re-attach mode — when the user clicked "Re-attach" on an orphaned
+   annotation, the next text selection in the article becomes the new
+   anchor. The cursor flips to an I-beam regardless of active tool,
+   and the tool rail / color strip / re.marks pill / reader-mode toggle
+   are dimmed and pointer-events disabled so they can't interfere
+   with the selection. */
+body.reattach-mode .viewer,
+body.reattach-mode .viewer * {
+  cursor: text !important;
+}
+body.reattach-mode .rail,
+body.reattach-mode .strip,
+body.reattach-mode .notes-pill-wrap,
+body.reattach-mode .reader-mode-toggle {
+  pointer-events: none;
+  opacity: 0.4;
+}

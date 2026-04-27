@@ -1,11 +1,16 @@
 <script lang="ts">
   import { doc } from '../stores/doc';
-  import { currentViewerRoot } from '../stores/annots';
+  import { currentViewerRoot, annots, updateAnnotation } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
   import HighlightLayer from './HighlightLayer.svelte';
   import NoteLayer from './NoteLayer.svelte';
   import DrawLayer from './DrawLayer.svelte';
   import MermaidRenderer from './MermaidRenderer.svelte';
+  import { reattachTarget, cancelReattach } from '../stores/reattach';
+  import { createAnchor } from '../lib/anchoring';
+  import { addToast } from '../stores/toasts';
+  import { get } from 'svelte/store';
+  import type { Drawing } from '../lib/schema';
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -18,6 +23,99 @@
   $effect(() => {
     if (scrollEl) viewerScroll.set(scrollEl);
     return () => viewerScroll.set(null);
+  });
+
+  // Re-attach mode: while $reattachTarget is set, the next non-empty
+  // text selection inside the article commits a new anchor for that
+  // annotation. This intentionally listens at the article level
+  // regardless of the active tool — re-attach takes precedence over
+  // the tool rail (which is also disabled via the body.reattach-mode
+  // CSS).
+  $effect(() => {
+    const target = $reattachTarget;
+    if (!target || !articleEl) return;
+    const root = articleEl;
+
+    const onMouseUp = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return; // Empty selection — ignore (user can keep trying or press Esc).
+
+      // Validate the range start + end are inside an article block.
+      const startBlock = (range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.startContainer as Element)
+        : range.startContainer.parentElement
+      )?.closest('[data-block-id]') as HTMLElement | null;
+      const endBlock = (range.endContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.endContainer as Element)
+        : range.endContainer.parentElement
+      )?.closest('[data-block-id]') as HTMLElement | null;
+      if (!startBlock || !endBlock) {
+        addToast({
+          kind: 'warning',
+          message: 'Re-attach: select text inside the article. Press Esc to cancel.',
+        });
+        return;
+      }
+
+      const newAnchor = createAnchor(range, root);
+      if (!newAnchor) {
+        addToast({
+          kind: 'warning',
+          message: 'Re-attach: could not anchor to that selection. Try a different range.',
+        });
+        return;
+      }
+
+      // Find the annotation in the raw store and build the right patch
+      // depending on its type.
+      const all = get(annots);
+      const a = all.find((x) => x.id === target.annotationId);
+      if (!a) {
+        cancelReattach();
+        return;
+      }
+
+      const newBlockId = startBlock.getAttribute('data-block-id') ?? '';
+
+      updateAnnotation(target.annotationId, (current) => {
+        if (current.type === 'highlight' || current.type === 'note') {
+          return { ...current, anchor: newAnchor };
+        }
+        // Drawings — anchor structure varies by shape kind.
+        if (current.type === 'drawing') {
+          const d = current as Drawing;
+          const kind = d.shape.kind;
+          if (kind === 'circle' || kind === 'rectangle' || kind === 'underline' || kind === 'strikethrough') {
+            return { ...d, shape: { ...d.shape, anchor: newAnchor } };
+          }
+          if (kind === 'circle-empty') {
+            return {
+              ...d,
+              shape: { ...d.shape, anchor: { ...d.shape.anchor, blockId: newBlockId } },
+            };
+          }
+          if (kind === 'margin-bar' || kind === 'freehand') {
+            return {
+              ...d,
+              shape: { ...d.shape, anchor: { blockId: newBlockId } as never },
+            };
+          }
+          if (kind === 'freehand-legacy') {
+            return { ...d, shape: { ...d.shape, anchorBlock: newBlockId } };
+          }
+        }
+        return current;
+      });
+
+      sel.removeAllRanges();
+      cancelReattach();
+      addToast({ kind: 'info', message: 'Annotation re-attached.' });
+    };
+
+    root.addEventListener('mouseup', onMouseUp);
+    return () => root.removeEventListener('mouseup', onMouseUp);
   });
 
   // Delegated click handler for foldable callout chevron buttons.
