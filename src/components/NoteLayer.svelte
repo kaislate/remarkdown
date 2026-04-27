@@ -2,6 +2,7 @@
   import { get } from 'svelte/store';
   import { ulid } from 'ulid';
   import { tool } from '../stores/tool';
+  import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
   import {
     addAnnotation,
@@ -109,6 +110,7 @@
   // sure layout has settled, then bump resizeTick to recompute pins.
   $effect(() => {
     void $zoomLevel;
+    void $settings.articleWidth;
     if (typeof requestAnimationFrame === 'undefined') {
       resizeTick += 1;
       return;

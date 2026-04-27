@@ -36,11 +36,14 @@
     {
       "id": "01HP8DEFABCDEFGHJKMNPQRSTV",
       "type": "drawing",
-      "anchorBlock": "p:4",
-      "caption": "arrow pointing at 'dialogue'",
-      "strokes": [
-        { "color": "#d6336c", "width": 2, "points": [[12, 40], [13, 41], [20, 60]] }
-      ],
+      "shape": {
+        "kind": "freehand-legacy",
+        "anchorBlock": "p:4",
+        "captureZoom": 1.0,
+        "strokes": [
+          { "color": "#d6336c", "width": 2, "points": [[12, 40], [13, 41], [20, 60]] }
+        ]
+      },
       "createdAt": "2026-04-21T14:34:00Z",
       "updatedAt": "2026-04-21T14:34:00Z"
     }

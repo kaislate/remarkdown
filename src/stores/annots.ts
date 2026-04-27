@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { resolveAnchor } from '../lib/anchoring';
-import type { Annotation } from '../lib/schema';
+import type { Annotation, Drawing } from '../lib/schema';
 
 export interface ResolvedAnnotation {
   annotation: Annotation;
@@ -43,9 +43,29 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
   const orphanedIds = new Set<string>();
   for (const a of $annots) {
     if (a.type === 'drawing') {
-      const block = $root.querySelector(`[data-block-id="${CSS.escape(a.anchorBlock)}"]`);
-      if (block) resolved.push({ annotation: a, range: null as unknown as Range });
-      else orphanedIds.add(a.id);
+      const d = a as Drawing;
+      let resolves: boolean;
+      switch (d.shape.kind) {
+        case 'circle':
+        case 'rectangle':
+        case 'underline':
+        case 'strikethrough':
+          // TextAnchor shapes — resolve the same way highlights/notes do.
+          resolves = resolveAnchor(d.shape.anchor, $root) !== null;
+          break;
+        case 'circle-empty':
+        case 'margin-bar':
+        case 'freehand':
+          // BlockAnchor / BlockEmAnchor shapes — the referenced block must exist.
+          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchor.blockId)}"]`);
+          break;
+        case 'freehand-legacy':
+          // Pre-refactor shape: top-level anchorBlock field.
+          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchorBlock)}"]`);
+          break;
+      }
+      if (resolves) resolved.push({ annotation: d, range: null as unknown as Range });
+      else orphanedIds.add(d.id);
       continue;
     }
     const range = resolveAnchor(a.anchor, $root);

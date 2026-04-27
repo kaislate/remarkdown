@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ulid } from 'ulid';
+  import rough from 'roughjs';
   import { tool } from '../stores/tool';
   import { settings } from '../stores/settings';
   import {
@@ -8,14 +9,22 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { recognize, recognizeAsFreehand } from '../lib/drawing-recognize';
+  import { renderDrawing } from '../lib/drawing-render';
+  import { resolveAnchor } from '../lib/anchoring';
+  import { hitTestDrawing } from '../lib/drawing-hit-test';
+  import { zoomLevel } from '../stores/ui';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
   // tune it. Read at the moment startIdle() schedules its timer — changing the
   // setting affects the next idle cycle.
-  const HIT_TOLERANCE_PX = 12;
 
   type Point = [number, number];
+  let drawSvg = $state<SVGSVGElement | null>(null);
+  let stableLayer = $state<SVGGElement | null>(null);
+  let liveLayer = $state<SVGGElement | null>(null);
+  let resizeTick = $state(0);
   let drawing = $state(false);
   let currentStroke = $state<Point[]>([]);
   let pendingStrokes = $state<Stroke[]>([]);
@@ -34,48 +43,74 @@
     const root = $currentViewerRoot;
     if (!root) { pendingStrokes = []; return; }
 
-    // Compute centroid of all points across all strokes.
-    let sx = 0, sy = 0, n = 0;
-    for (const s of pendingStrokes) for (const [x, y] of s.points) { sx += x; sy += y; n += 1; }
-    const cx = n > 0 ? sx / n : 0;
-    const cy = n > 0 ? sy / n : 0;
-
-    // Find the block under the centroid by walking from the point. The SVG
-    // now spans the full canvas (wider than the text viewer), so convert the
-    // stroke-local centroid using the SVG's own bounding rect, not the viewer's.
+    // Stroke points are captured in SVG-LOCAL coordinates. recognize() needs
+    // VIEWPORT coordinates (because it queries getBoundingClientRect on text
+    // ranges + blocks, which return viewport coords). Translate via the SVG's
+    // own bounding rect.
     const svgEl = document.querySelector<SVGSVGElement>('svg.draw-overlay');
-    const sourceRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
-    let el: Element | null = null;
-    try { el = document.elementFromPoint(cx + sourceRect.left, cy + sourceRect.top); } catch {}
-    const block = el?.closest?.<HTMLElement>('[data-block-id]') ??
-      root.querySelector<HTMLElement>('[data-block-id]');
-    const blockId = block?.dataset.blockId ?? 'p:1';
+    const svgRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
 
     const now = new Date().toISOString();
-    const drawingAnnot: Drawing = {
-      id: ulid(),
-      type: 'drawing',
-      anchorBlock: blockId,
-      strokes: pendingStrokes,
-      createdAt: now,
-      updatedAt: now,
-    };
-    addAnnotation(drawingAnnot);
+    for (const stroke of pendingStrokes) {
+      const viewportPoints: Array<[number, number]> = stroke.points.map(
+        ([x, y]) => [x + svgRect.left, y + svgRect.top],
+      );
+      const result = $settings.autoTransformDrawings
+        ? recognize(viewportPoints, root)
+        : recognizeAsFreehand(viewportPoints, root, 1.0);
+
+      let shape: Drawing['shape'];
+      switch (result.kind) {
+        case 'circle':
+        case 'rectangle':
+        case 'underline':
+        case 'strikethrough':
+          shape = { kind: result.kind, anchor: result.anchor, color: stroke.color, width: stroke.width };
+          break;
+        case 'circle-empty':
+          shape = {
+            kind: 'circle-empty',
+            anchor: result.anchor,
+            radiusXEm: result.radiusXEm,
+            radiusYEm: result.radiusYEm,
+            color: stroke.color,
+            width: stroke.width,
+          };
+          break;
+        case 'margin-bar':
+          shape = { kind: 'margin-bar', anchor: result.anchor, color: stroke.color, width: stroke.width };
+          break;
+        case 'freehand':
+          shape = {
+            kind: 'freehand',
+            anchor: result.anchor,
+            points: result.points,
+            color: stroke.color,
+            width: stroke.width,
+          };
+          break;
+      }
+
+      const drawingAnnot: Drawing = {
+        id: ulid(),
+        type: 'drawing',
+        shape,
+        recognitionConfidence: result.recognitionConfidence,
+        createdAt: now,
+        updatedAt: now,
+      };
+      addAnnotation(drawingAnnot);
+    }
     pendingStrokes = [];
   }
 
   function eraseStrokeAt(clientX: number, clientY: number): boolean {
-    const svg = document.querySelector<SVGSVGElement>('svg.draw-overlay');
-    if (!svg) return false;
-    const rect = svg.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const root = $currentViewerRoot;
+    if (!root) return false;
     for (const d of existingDrawings) {
-      for (const s of d.strokes) {
-        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-          removeAnnotation(d.id);
-          return true;
-        }
+      if (hitTestDrawing(d, clientX, clientY, root, $zoomLevel)) {
+        removeAnnotation(d.id);
+        return true;
       }
     }
     return false;
@@ -116,6 +151,43 @@
     startIdle();
   }
 
+  // Existing drawings rendered from resolved annotations.
+  const existingDrawings = $derived(
+    $resolvedAnnots
+      .filter((r) => r.annotation.type === 'drawing')
+      .map((r) => r.annotation as Drawing),
+  );
+
+  function labelPositionFor(d: Drawing, root: HTMLElement, svg: SVGSVGElement): { x: number; y: number } | null {
+    const svg_r = svg.getBoundingClientRect();
+    let r: DOMRect | null = null;
+    switch (d.shape.kind) {
+      case 'circle':
+      case 'rectangle':
+      case 'underline':
+      case 'strikethrough': {
+        const range = resolveAnchor(d.shape.anchor, root);
+        if (range) r = range.getBoundingClientRect();
+        break;
+      }
+      case 'circle-empty':
+      case 'margin-bar':
+      case 'freehand': {
+        const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
+        if (block) r = block.getBoundingClientRect();
+        break;
+      }
+      case 'freehand-legacy': {
+        const block = root.querySelector<HTMLElement>(`[data-block-id="${(d.shape as { anchorBlock: string }).anchorBlock}"]`);
+        if (block) r = block.getBoundingClientRect();
+        break;
+      }
+    }
+    if (!r) return null;
+    // Small offset above the anchor's right edge — SVG-relative coordinates.
+    return { x: r.right - svg_r.left + 4, y: r.top - svg_r.top - 2 };
+  }
+
   // Re-finalize if tool changes away from draw while strokes pending.
   $effect(() => {
     if ($tool.mode !== 'draw' && pendingStrokes.length > 0) {
@@ -124,48 +196,101 @@
     }
   });
 
-  function pathD(points: Point[]): string {
-    if (points.length === 0) return '';
-    const [first, ...rest] = points;
-    return `M ${first[0]} ${first[1]} ` + rest.map(([x, y]) => `L ${x} ${y}`).join(' ');
-  }
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => { resizeTick += 1; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  });
 
-  // Existing drawings rendered from resolved annotations.
-  const existingDrawings = $derived(
-    $resolvedAnnots
-      .filter((r) => r.annotation.type === 'drawing')
-      .map((r) => r.annotation as Drawing),
-  );
+  // Stable layer: existing drawings + pending (already-released) strokes.
+  // Re-renders only when these or layout-affecting state changes.
+  $effect(() => {
+    void $zoomLevel;
+    void $settings.articleWidth;
+    void $settings.showDrawingRecognitionConfidence;
+    void $settings.drawingRoughness;
+    void $resolvedAnnots;
+    void resizeTick;
+    void pendingStrokes;
+    const svg = drawSvg;
+    const layer = stableLayer;
+    const root = $currentViewerRoot;
+    if (!svg || !layer || !root) return;
+    const id = requestAnimationFrame(() => {
+      while (layer.firstChild) layer.removeChild(layer.firstChild);
+      const rc = rough.svg(svg);
+      for (const d of existingDrawings) {
+        try {
+          const els = renderDrawing(rc, d, root, $zoomLevel, svg, $settings.drawingRoughness);
+          els.forEach((el) => layer.appendChild(el));
+        } catch { /* per-drawing error swallow */ }
+        if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
+          const pos = labelPositionFor(d, root, svg);
+          if (pos) {
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', String(pos.x));
+            text.setAttribute('y', String(pos.y));
+            text.setAttribute('class', 'confidence-overlay');
+            text.textContent = d.recognitionConfidence.toFixed(2);
+            layer.appendChild(text);
+          }
+        }
+      }
+      // Pending strokes (released but not yet recognized + saved).
+      for (const s of pendingStrokes) {
+        const pts = s.points as Array<[number, number]>;
+        if (pts.length < 2) continue;
+        const node = rc.curve(pts, {
+          stroke: s.color, strokeWidth: s.width,
+          roughness: $settings.drawingRoughness,
+          bowing: Math.min(1.4, $settings.drawingRoughness),
+          seed: 1,
+        });
+        layer.appendChild(node);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
-  function strokePointDistance(px: number, py: number, points: [number, number, ...number[]][]): number {
-    let min = Infinity;
-    for (const [x, y] of points) {
-      const d = Math.hypot(px - x, py - y);
-      if (d < min) min = d;
-    }
-    return min;
-  }
+  // Live layer: in-progress stroke only. Re-renders on every pointermove
+  // (which is what we want for the live preview), but doesn't touch the
+  // stable layer.
+  $effect(() => {
+    void drawing;
+    void currentStroke;
+    void $tool.drawColor;
+    void $settings.drawingRoughness;
+    const svg = drawSvg;
+    const layer = liveLayer;
+    if (!svg || !layer) return;
+    const id = requestAnimationFrame(() => {
+      while (layer.firstChild) layer.removeChild(layer.firstChild);
+      if (drawing && currentStroke.length >= 2) {
+        const rc = rough.svg(svg);
+        const node = rc.curve(currentStroke as Array<[number, number]>, {
+          stroke: $tool.drawColor, strokeWidth: 2,
+          roughness: $settings.drawingRoughness,
+          bowing: Math.min(1.4, $settings.drawingRoughness),
+          seed: 1,
+        });
+        layer.appendChild(node);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
   function onContextMenu(e: MouseEvent): void {
-    const svg = document.querySelector('svg.draw-overlay') as SVGSVGElement | null;
-    if (!svg) return;
-    // Bound the search to the SVG's full extent — drawings can sit anywhere
-    // on the canvas (including margins that aren't part of the text column),
-    // and they should still be deletable from there.
-    const rect = svg.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right ||
-        e.clientY < rect.top || e.clientY > rect.bottom) return;
-
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    if ($tool.mode !== 'draw' && $tool.mode !== 'eraser') return;
+    const root = $currentViewerRoot;
+    if (!root) return;
     for (const d of existingDrawings) {
-      for (const s of d.strokes) {
-        if (strokePointDistance(x, y, s.points as [number, number, ...number[]][]) <= HIT_TOLERANCE_PX) {
-          e.preventDefault();
-          menuForId = d.id;
-          menuPos = { x: e.clientX, y: e.clientY };
-          return;
-        }
+      if (hitTestDrawing(d, e.clientX, e.clientY, root, $zoomLevel)) {
+        e.preventDefault();
+        e.stopPropagation();
+        menuForId = d.id;
+        menuPos = { x: e.clientX, y: e.clientY };
+        return;
       }
     }
   }
@@ -203,6 +328,7 @@
 </script>
 
 <svg
+  bind:this={drawSvg}
   class="draw-overlay"
   class:active={$tool.mode === 'draw'}
   role="presentation"
@@ -212,17 +338,8 @@
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
 >
-  {#each existingDrawings as d (d.id)}
-    {#each d.strokes as s, i (i)}
-      <path d={pathD(s.points as Point[])} stroke={s.color} stroke-width={s.width} fill="none" stroke-linecap="round" stroke-linejoin="round" />
-    {/each}
-  {/each}
-  {#each pendingStrokes as s, i (i)}
-    <path d={pathD(s.points as Point[])} stroke={s.color} stroke-width={s.width} fill="none" stroke-linecap="round" stroke-linejoin="round" />
-  {/each}
-  {#if drawing}
-    <path d={pathD(currentStroke)} stroke={$tool.drawColor} stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-  {/if}
+  <g bind:this={stableLayer}></g>
+  <g bind:this={liveLayer}></g>
 </svg>
 
 {#if menuForId}
@@ -269,4 +386,10 @@
     cursor: pointer;
   }
   .drawing-menu button:hover { background: var(--accent-soft); }
+  :global(.confidence-overlay) {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+  }
 </style>
