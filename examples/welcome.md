@@ -100,6 +100,67 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), Error> {
 
 ---
 
+## Diagrams
+
+Fenced code blocks tagged `mermaid` render as actual SVG diagrams. The same source language Obsidian, GitHub, Notion, and VS Code understand — flowcharts, sequence diagrams, state machines, and more.
+
+```mermaid
+flowchart TD
+    A[Open .md file] --> B{Has sidecar?}
+    B -->|Yes| C[Load annotations]
+    B -->|No| D[Empty state]
+    C --> E[Render article + highlights + re.marks]
+    D --> E
+    E --> F[You read + annotate]
+    F --> G[Auto-save sidecar JSON]
+    G --> F
+```
+
+A sequence diagram of the auto-update pipeline that brought you this build:
+
+```mermaid
+sequenceDiagram
+    participant App as remarkdown
+    participant GH as GitHub Releases
+    App->>GH: GET /releases/latest/download/latest.json
+    GH-->>App: manifest + minisign signature
+    App->>App: verify signature against baked-in pubkey
+    App-->>App: prompt "Update available"
+```
+
+Bad mermaid syntax falls back to a visible error message inside the diagram block — never crashes the article.
+
+---
+
+## Callouts
+
+Blockquotes prefixed with a `[!type]` directive on the first line render as themed boxes with an icon, header, and type-specific colour. The same syntax Obsidian and GitHub-flavoured markdown use.
+
+> [!tip] Try the keyboard shortcuts
+> Press `?` to toggle this tour, `Esc` to exit reader mode, and `1` / `2` / `3` / `4` / `5` to switch between Cursor, Highlight, re.mark, Draw, and Eraser tools.
+
+> [!info] About this document
+> `welcome.md` is regenerated under your OS app-data folder on each launch — unless you tick "Don't show welcome.md on launch" in Settings. Your annotations on this file persist in `welcome.md.remarkdown.json` next to it.
+
+> [!warning] Drawings are stored differently now
+> If you used draw mode on an earlier 0.5.x build, those strokes are migrated to a `freehand-legacy` shape that renders with a uniform-scale fallback. Drawings made from this version forward anchor to text/blocks and reflow correctly with zoom and edits.
+
+> [!example] What auto-transform does
+> Settings → Annotation → "Auto-transform drawings into shapes" is **off** by default — your strokes save as you drew them. Flip it on and the recognizer kicks in: closed loops around text become clean ellipses, lines under text become underlines, vertical margin marks become bars.
+
+> [!note]+ Foldable callouts (open)
+> Add a `+` after the type to make a callout that starts expanded but can be collapsed by clicking the chevron in its header. Useful when a section is helpful but optional.
+
+> [!info]- Foldable callouts (collapsed)
+> Add a `-` instead and the callout starts collapsed — handy for "click to learn more" details that would otherwise weigh down the surrounding flow. Click the chevron to expand.
+
+> [!quote]
+> The point of an annotation system is not that it preserves your marks in some database — it is that it makes the act of marking feel as light and incidental as making a note in the margin of a paperback.
+
+Other supported types: `success`, `question`, `failure`, `danger`, `bug`, `cite`, `abstract` (and aliases like `done`, `help`, `error`, `summary`, `tldr`). Each gets its own icon and colour.
+
+---
+
 ## Math
 
 Inline math reads naturally — Euler's identity is $e^{i\pi} + 1 = 0$, and the standard normal distribution has density $\varphi(x) = \tfrac{1}{\sqrt{2\pi}} e^{-x^2/2}$.
