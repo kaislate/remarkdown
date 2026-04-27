@@ -4,6 +4,7 @@
   import { getVersion } from '@tauri-apps/api/app';
   import { derivePreReleaseLabel } from '../lib/prerelease';
   import { openFileDialog } from '../lib/tauri-api';
+  import { availableUpdate } from '../stores/updates';
   import { loadDocument } from '../stores/doc';
   import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
   import { orphanedAnnots, annots } from '../stores/annots';
@@ -132,10 +133,16 @@
       </button>
       <button
         role="menuitem"
-        class="item"
+        class="item update-check"
+        class:has-update={$availableUpdate !== null}
         onclick={() => { open = false; openModal({ kind: 'check-update' }); }}
       >
-        Check for updates…
+        {#if $availableUpdate}
+          <span class="update-label">Update available — v{$availableUpdate.version}</span>
+          <span class="update-shine" aria-hidden="true"></span>
+        {:else}
+          Check for updates…
+        {/if}
       </button>
       <button
         role="menuitem"
@@ -430,6 +437,55 @@
     opacity: 0.5;
   }
   .item[disabled]:hover { background: transparent; }
+
+  /* When an update is waiting for the user, the "Check for updates…"
+     menu item flips to "Update available — vX.Y.Z" in accent purple
+     with a periodic diagonal shine sweep — same visual language as the
+     BETA pin. position:relative + overflow:hidden contain the shine
+     pseudo-band; the inner .update-shine element rides under the text
+     via a lower z-index. */
+  .item.update-check.has-update {
+    position: relative;
+    overflow: hidden;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .item.update-check.has-update:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .item.update-check .update-label {
+    position: relative;
+    z-index: 2;
+  }
+  .item.update-check .update-shine {
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      rgba(139, 127, 255, 0)   0%,
+      rgba(139, 127, 255, 0.45) 50%,
+      rgba(139, 127, 255, 0)   100%
+    );
+    transform: skewX(-18deg);
+    z-index: 1;
+    pointer-events: none;
+    animation: update-shine 3.4s ease-in-out infinite;
+  }
+  @keyframes update-shine {
+    0%   { left: -60%; }
+    35%  { left: 130%; }
+    100% { left: 130%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .item.update-check .update-shine {
+      animation: none;
+      opacity: 0;
+    }
+  }
   /* Destructive items (Clear all annotations) hint at their consequence
      by warming the text on hover — same pattern as the Delete button in
      the orphan panel. */

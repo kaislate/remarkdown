@@ -33,6 +33,7 @@
   import { ensureWelcomeDoc } from './lib/tauri-api';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
+  import { availableUpdate } from './stores/updates';
   import { openModal } from './stores/modals';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -146,6 +147,10 @@
     try {
       const update = await checkForUpdate();
       if (!update) return;
+      // Persist the "update available" signal for the session so the
+      // hamburger menu can flip its "Check for updates…" item into a
+      // styled "Update available — vX" affordance.
+      availableUpdate.set({ version: update.version });
       addToast({
         kind: 'info',
         message: `Update available: v${update.version}`,

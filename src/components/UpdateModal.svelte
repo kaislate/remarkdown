@@ -1,5 +1,6 @@
 <script lang="ts">
   import { activeModal, closeModal } from '../stores/modals';
+  import { availableUpdate } from '../stores/updates';
   import { check, type Update } from '@tauri-apps/plugin-updater';
   import { getVersion } from '@tauri-apps/api/app';
 
@@ -38,8 +39,15 @@
       const update = await check();
       if (update) {
         st = { kind: 'available', update };
+        // Sync the global "update available" signal so the hamburger menu
+        // flips to its accent-coloured affordance for the rest of the
+        // session — even if the user closes this modal without installing.
+        availableUpdate.set({ version: update.version });
       } else {
         st = { kind: 'up-to-date' };
+        // The user is on the latest — wipe any stale signal that may have
+        // been set by an earlier session start.
+        availableUpdate.set(null);
       }
     } catch (e) {
       st = { kind: 'error', message: (e as Error).message ?? String(e) };
