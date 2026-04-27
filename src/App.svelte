@@ -158,6 +158,9 @@
           label: 'View',
           onClick: () => openModal({ kind: 'check-update' }),
         },
+        // Don't auto-dismiss — the user should see this until they
+        // either install the update or explicitly click ×.
+        persistent: true,
       });
     } catch {
       // Network down, manifest missing, signing problem, non-Tauri host —

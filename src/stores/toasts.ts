@@ -13,6 +13,11 @@ export interface Toast {
   kind: ToastKind;
   message: string;
   action?: ToastAction;
+  // Skips the kind-default auto-dismiss timer. The toast stays until the
+  // user clicks its × dismiss button, the action button, or the app
+  // restarts. Used for "Update available" — the user should always see
+  // the affordance, not have it slip away after 4 seconds.
+  persistent?: boolean;
   createdAt: number;
 }
 
@@ -28,12 +33,15 @@ export function addToast(t: {
   kind: ToastKind;
   message: string;
   action?: ToastAction;
+  persistent?: boolean;
 }): string {
   const id = ulid();
   const toast: Toast = { ...t, id, createdAt: Date.now() };
   toasts.update((list) => [...list, toast]);
-  const ms = AUTO_DISMISS_MS[t.kind];
-  if (ms) setTimeout(() => dismissToast(id), ms);
+  if (!t.persistent) {
+    const ms = AUTO_DISMISS_MS[t.kind];
+    if (ms) setTimeout(() => dismissToast(id), ms);
+  }
   return id;
 }
 
