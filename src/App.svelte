@@ -167,7 +167,7 @@
         kind: 'info',
         message: `Update available: v${update.version}`,
         action: {
-          label: 'View',
+          label: 'View changes',
           onClick: () => openModal({ kind: 'check-update' }),
         },
         // Don't auto-dismiss — the user should see this until they

@@ -3,6 +3,8 @@
   import { availableUpdate } from '../stores/updates';
   import { check, type Update } from '@tauri-apps/plugin-updater';
   import { getVersion } from '@tauri-apps/api/app';
+  import { fetchNewerReleases } from '../lib/release-notes';
+  import { render as renderMarkdown } from '../lib/MarkdownRenderer';
 
   // The state machine that drives every visible variation of the modal.
   // Centralising it in one tagged union keeps the template's `{:else if}`
@@ -24,6 +26,7 @@
   let currentVersion = $state('—');
   let st: UpdateState = $state({ kind: 'idle' });
   let initialised = false;
+  let changelogHtml = $state<{ version: string; name: string; html: string; publishedAt: string }[] | null>(null);
 
   async function fetchCurrentVersion(): Promise<void> {
     try {
@@ -35,6 +38,7 @@
 
   async function runCheck(): Promise<void> {
     st = { kind: 'checking' };
+    changelogHtml = null;
     try {
       const update = await check();
       if (update) {
@@ -43,6 +47,10 @@
         // flips to its accent-coloured affordance for the rest of the
         // session — even if the user closes this modal without installing.
         availableUpdate.set({ version: update.version });
+        // Fetch the aggregated changelog in the background so the modal
+        // can show every version between current and latest, not just
+        // the one Tauri returned.
+        void fetchAndRenderChangelog();
       } else {
         st = { kind: 'up-to-date' };
         // The user is on the latest — wipe any stale signal that may have
@@ -52,6 +60,22 @@
     } catch (e) {
       st = { kind: 'error', message: (e as Error).message ?? String(e) };
     }
+  }
+
+  async function fetchAndRenderChangelog() {
+    if (currentVersion === '—' || currentVersion === 'unknown') return;
+    const entries = await fetchNewerReleases(currentVersion);
+    if (!entries) return;
+    // Render each body as HTML in parallel.
+    const rendered = await Promise.all(
+      entries.map(async (e) => ({
+        version: e.version,
+        name: e.name,
+        publishedAt: e.publishedAt,
+        html: e.body ? (await renderMarkdown(e.body)).html : '',
+      })),
+    );
+    changelogHtml = rendered;
   }
 
   async function install(): Promise<void> {
@@ -161,7 +185,22 @@
             <span class="label">New version</span>
             <code class="value highlight">{st.update.version}</code>
           </div>
-          {#if st.update.body}
+          {#if changelogHtml && changelogHtml.length > 0}
+            <div class="changelog">
+              <div class="notes-label">
+                What's new {#if changelogHtml.length > 1}(showing {changelogHtml.length} releases){/if}
+              </div>
+              {#each changelogHtml as entry (entry.version)}
+                <div class="changelog-entry">
+                  <header class="changelog-header">
+                    <code class="changelog-version">{entry.version}</code>
+                    <span class="changelog-date">{new Date(entry.publishedAt).toLocaleDateString()}</span>
+                  </header>
+                  <div class="changelog-body md-rendered">{@html entry.html}</div>
+                </div>
+              {/each}
+            </div>
+          {:else if st.update.body}
             <div class="notes">
               <div class="notes-label">Release notes</div>
               <pre>{st.update.body}</pre>
@@ -308,6 +347,76 @@
     white-space: pre-wrap;
     max-height: 200px;
     overflow-y: auto;
+  }
+
+  .changelog {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  .changelog-entry {
+    border-left: 2px solid var(--accent-soft);
+    padding-left: 12px;
+  }
+  .changelog-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .changelog-version {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .changelog-date {
+    color: var(--fg-2);
+    font-size: 11px;
+  }
+  .changelog-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-1);
+  }
+  .changelog-body :global(h1),
+  .changelog-body :global(h2),
+  .changelog-body :global(h3) {
+    margin: 10px 0 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg-0);
+  }
+  .changelog-body :global(p) {
+    margin: 6px 0;
+  }
+  .changelog-body :global(ul),
+  .changelog-body :global(ol) {
+    margin: 6px 0;
+    padding-left: 22px;
+  }
+  .changelog-body :global(li) {
+    margin: 2px 0;
+  }
+  .changelog-body :global(code) {
+    background: var(--bg-2);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .changelog-body :global(pre) {
+    background: var(--bg-2);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    overflow-x: auto;
   }
 
   .progress {
