@@ -3,6 +3,7 @@ import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
+import { calloutsPlugin } from './markdown-it-callouts';
 
 export interface RenderResult {
   html: string;
@@ -18,7 +19,8 @@ const md = new MarkdownIt({
 })
   .use(footnote)
   .use(taskLists, { enabled: true, label: false })
-  .use(katex.default ?? katex);
+  .use(katex.default ?? katex)
+  .use(calloutsPlugin);
 
 // Preload common languages lazily the first time render() is called.
 const SUPPORTED_LANGS = [
@@ -34,6 +36,9 @@ const LANG_ALIASES: Record<string, string> = {
   'f#': 'fsharp',
 };
 
+// Matches fenced mermaid blocks specifically (before Shiki touches them).
+const mermaidFenceRe = /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g;
+
 const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g;
 
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -45,6 +50,24 @@ function getHighlighter(): Promise<Highlighter> {
     });
   }
   return highlighterPromise;
+}
+
+/**
+ * Replace mermaid fenced blocks with placeholder divs BEFORE Shiki runs.
+ * The mermaid source is HTML-entity-encoded and stored in data-mermaid so it
+ * survives the data attribute without breaking HTML parsing.
+ */
+function extractMermaidBlocks(html: string): string {
+  if (!html.includes('language-mermaid')) return html;
+  return html.replace(mermaidFenceRe, (_m, body) => {
+    const source = decodeEntities(body);
+    const encoded = source
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return `<div class="mermaid-block" data-mermaid="${encoded}"></div>`;
+  });
 }
 
 async function highlightFences(html: string): Promise<string> {
@@ -143,7 +166,8 @@ function rewriteImageSrcs(html: string, opts: RenderOptions): string {
 
 export async function render(markdown: string, options: RenderOptions = {}): Promise<RenderResult> {
   const rawHtml = md.render(markdown);
-  const highlightedHtml = await highlightFences(rawHtml);
+  const withMermaid = extractMermaidBlocks(rawHtml);
+  const highlightedHtml = await highlightFences(withMermaid);
   const withImages = rewriteImageSrcs(highlightedHtml, options);
   const { html, blocks } = tagTopLevelBlocks(withImages);
   const plaintext = extractPlaintext(html);

@@ -5,6 +5,7 @@
   import HighlightLayer from './HighlightLayer.svelte';
   import NoteLayer from './NoteLayer.svelte';
   import DrawLayer from './DrawLayer.svelte';
+  import MermaidRenderer from './MermaidRenderer.svelte';
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -17,6 +18,31 @@
   $effect(() => {
     if (scrollEl) viewerScroll.set(scrollEl);
     return () => viewerScroll.set(null);
+  });
+
+  // Delegated click handler for foldable callout chevron buttons.
+  $effect(() => {
+    const root = articleEl;
+    if (!root) return;
+    const onClick = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement)?.closest?.('.callout-fold') as HTMLButtonElement | null;
+      if (!btn) return;
+      const callout = btn.closest('.callout');
+      const body = callout?.querySelector<HTMLElement>('.callout-body');
+      if (!body) return;
+      const open = !body.hasAttribute('hidden');
+      if (open) {
+        body.setAttribute('hidden', '');
+        btn.textContent = '▸';
+        btn.setAttribute('aria-label', 'Expand');
+      } else {
+        body.removeAttribute('hidden');
+        btn.textContent = '▾';
+        btn.setAttribute('aria-label', 'Collapse');
+      }
+    };
+    root.addEventListener('click', onClick);
+    return () => root.removeEventListener('click', onClick);
   });
 </script>
 
@@ -31,6 +57,7 @@
         <article class="viewer md-rendered" bind:this={articleEl}>
           {@html $doc.html}
         </article>
+        <MermaidRenderer {articleEl} />
         <HighlightLayer />
         <NoteLayer />
       </div>

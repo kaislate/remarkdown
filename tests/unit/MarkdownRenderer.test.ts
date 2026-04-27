@@ -106,6 +106,98 @@ describe('MarkdownRenderer.render (image src rewriting)', () => {
   });
 });
 
+describe('MarkdownRenderer.render (mermaid)', () => {
+  it('mermaid fence produces a .mermaid-block div with encoded data-mermaid attr', async () => {
+    const src = '```mermaid\nflowchart TD\n    A[Start] --> B{Decision}\n```\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/class="mermaid-block"/);
+    expect(html).toMatch(/data-mermaid="/);
+    // Source content should be encoded inside the attribute.
+    expect(html).toContain('flowchart TD');
+  });
+
+  it('mermaid fence is NOT processed by Shiki (no shiki class present)', async () => {
+    const src = '```mermaid\nsequenceDiagram\n    A->>B: Hello\n```\n';
+    const { html } = await render(src);
+    expect(html).not.toMatch(/class="shiki/);
+    expect(html).not.toMatch(/language-mermaid/);
+  });
+
+  it('special chars in mermaid source survive round-trip through the data attr', async () => {
+    const src = '```mermaid\ngraph LR\n    A["<Node>"] --> B\n```\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/mermaid-block/);
+    // Verify the data attribute value is present and the placeholder was created.
+    expect(html).toMatch(/data-mermaid=/);
+    // The attribute (as read from DOM via DOMParser) should contain the original source.
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const el = doc.querySelector<HTMLElement>('.mermaid-block');
+    expect(el).not.toBeNull();
+    const source = el?.dataset.mermaid ?? '';
+    expect(source).toContain('<Node>');
+    expect(source).toContain('graph LR');
+  });
+});
+
+describe('MarkdownRenderer.render (callouts)', () => {
+  it('> [!note] produces callout-note div with default title "Note"', async () => {
+    const src = '> [!note]\n> Body text\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/class="callout callout-note"/);
+    expect(html).toMatch(/data-callout="note"/);
+    expect(html).toContain('Note');
+    // Should not render a plain blockquote.
+    expect(html).not.toMatch(/<blockquote/);
+  });
+
+  it('> [!warning] Custom title produces callout with custom title', async () => {
+    const src = '> [!warning] Be careful here\n> Body\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/class="callout callout-warning"/);
+    expect(html).toContain('Be careful here');
+    expect(html).not.toContain('Warning');
+  });
+
+  it('> [!tip]+ produces foldable callout that starts open', async () => {
+    const src = '> [!tip]+\n> Body\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/class="callout callout-tip"/);
+    // Fold button should be present.
+    expect(html).toMatch(/class="callout-fold"/);
+    // Body should NOT have hidden attr when starting open.
+    expect(html).not.toMatch(/callout-body"[^>]*hidden/);
+    expect(html).not.toMatch(/callout-body hidden/);
+    // Chevron pointing down = open state.
+    expect(html).toContain('▾');
+  });
+
+  it('> [!info]- produces foldable callout that starts closed', async () => {
+    const src = '> [!info]-\n> Body\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/class="callout callout-info"/);
+    expect(html).toMatch(/class="callout-fold"/);
+    // Body should have hidden attr.
+    expect(html).toMatch(/callout-body"[^>]*hidden/);
+    // Chevron pointing right = closed state.
+    expect(html).toContain('▸');
+  });
+
+  it('regular blockquote without [!type] still renders as <blockquote>', async () => {
+    const src = '> Just a regular quote\n';
+    const { html } = await render(src);
+    expect(html).toMatch(/<blockquote/);
+    expect(html).not.toContain('callout');
+  });
+
+  it('callout body content renders after stripping the marker line', async () => {
+    const src = '> [!note]\n> This is the body\n';
+    const { html } = await render(src);
+    expect(html).toContain('This is the body');
+    // Marker itself should not appear in output.
+    expect(html).not.toContain('[!note]');
+  });
+});
+
 describe('MarkdownRenderer.render (regression fixes)', () => {
   it('highlights all occurrences of a repeated identical code fence', async () => {
     const src = '```ts\nconst x = 1;\n```\n\n```ts\nconst x = 1;\n```';

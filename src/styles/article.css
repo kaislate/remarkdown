@@ -82,3 +82,148 @@
   border-top: 1px solid var(--glass-border);
   margin: 2em 0;
 }
+
+/* ──────────────────────────────────────────────────────
+   Callouts  (Obsidian-style)
+   ────────────────────────────────────────────────────── */
+
+.callout {
+  border-left: 4px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-2, rgba(255,255,255,0.04));
+  margin: 1em 0;
+  overflow: hidden;
+}
+
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.55em 0.9em;
+  font-family: var(--font-sans);
+  font-size: 0.88em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.callout-icon {
+  font-size: 1em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.callout-title {
+  flex: 1;
+}
+
+.callout-fold {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.9em;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.callout-fold:hover {
+  opacity: 1;
+}
+
+.callout-body {
+  padding: 0.1em 0.9em 0.7em;
+  color: var(--fg-1);
+}
+.callout-body > :first-child { margin-top: 0; }
+.callout-body > :last-child  { margin-bottom: 0; }
+
+.callout-body[hidden] {
+  display: none;
+}
+
+/* Pre-block inside a callout: slightly adjust to fit the box */
+.callout .mermaid-error {
+  color: var(--fg-1);
+  font-size: 0.82em;
+  white-space: pre-wrap;
+}
+
+/* Type colours — border + icon/header colour */
+.callout-note,
+.callout-info {
+  border-left-color: #6db8ff;
+  color: #6db8ff;
+}
+.callout-tip,
+.callout-hint,
+.callout-success,
+.callout-done {
+  border-left-color: #6ee7a8;
+  color: #6ee7a8;
+}
+.callout-question,
+.callout-help,
+.callout-faq {
+  border-left-color: #ffd36e;
+  color: #ffd36e;
+}
+.callout-warning,
+.callout-caution,
+.callout-attention {
+  border-left-color: #ffa86e;
+  color: #ffa86e;
+}
+.callout-failure,
+.callout-fail,
+.callout-missing,
+.callout-danger,
+.callout-error,
+.callout-bug {
+  border-left-color: #ff7a7a;
+  color: #ff7a7a;
+}
+.callout-example {
+  border-left-color: #c8a8ff;
+  color: #c8a8ff;
+}
+.callout-quote,
+.callout-cite,
+.callout-abstract,
+.callout-summary,
+.callout-tldr {
+  border-left-color: #a0a0a0;
+  color: #a0a0a0;
+}
+
+/* Body text should keep the document's normal foreground colour */
+.callout-body {
+  color: var(--fg-0);
+}
+
+/* ──────────────────────────────────────────────────────
+   Mermaid diagram blocks
+   ────────────────────────────────────────────────────── */
+
+.mermaid-block {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  background: var(--bg-2);
+  border: 1px solid #ff7a7a;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #ff7a7a;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  white-space: pre-wrap;
+  text-align: left;
+}
