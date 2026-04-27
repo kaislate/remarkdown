@@ -1,10 +1,11 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { docEpoch, replaceAll } from './annots';
+import { docEpoch, replaceAll, orphanedAnnots } from './annots';
 import { addToast } from './toasts';
 import { openModal } from './modals';
+import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
 
 export interface DocState {
@@ -21,6 +22,8 @@ export interface DocState {
 
 export const doc = writable<DocState | null>(null);
 
+let currentDispose: (() => Promise<void>) | null = null;
+
 export async function loadDocument(path: string): Promise<void> {
   let r;
   try {
@@ -35,6 +38,14 @@ export async function loadDocument(path: string): Promise<void> {
     }
     return;
   }
+
+  // Skip reload if content is unchanged — prevents loops when the watcher
+  // fires on our own writes or no-op touches.
+  const current = get(doc);
+  if (current && current.path === r.path && current.sha256 === r.sha256) {
+    return;
+  }
+
   const { html, plaintext, blocks } = await render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
@@ -64,6 +75,35 @@ export async function loadDocument(path: string): Promise<void> {
     sidecarRaw: r.sidecarRaw,
   });
   docEpoch.update((e) => e + 1);
+
+  // Cancel previous watcher (if any) and install a new one for this path.
+  if (currentDispose) {
+    await currentDispose();
+    currentDispose = null;
+  }
+  currentDispose = await installFileWatcher(path, () => {
+    void reloadCurrent(path);
+  });
+}
+
+async function reloadCurrent(path: string): Promise<void> {
+  // Capture orphan-set BEFORE reload so we can compute deltas.
+  const before = new Set(get(orphanedAnnots).map((a) => a.id));
+  await loadDocument(path);
+  // After reload, derived stores re-partition. Compare orphan sets.
+  const after = new Set(get(orphanedAnnots).map((a) => a.id));
+  let reanchored = 0;
+  for (const id of before) if (!after.has(id)) reanchored += 1;
+  let newOrphans = 0;
+  for (const id of after) if (!before.has(id)) newOrphans += 1;
+  if (reanchored > 0 || newOrphans > 0) {
+    addToast({
+      kind: 'info',
+      message: `File reloaded — ${reanchored} re-anchored, ${newOrphans} orphaned.`,
+    });
+  } else {
+    addToast({ kind: 'info', message: 'File reloaded from disk.' });
+  }
 }
 
 export function clearDocument(): void {

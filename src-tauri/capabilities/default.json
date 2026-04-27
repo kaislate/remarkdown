@@ -16,6 +16,13 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:window:allow-set-focus",
-    "updater:default"
+    "updater:default",
+    {
+      "identifier": "fs:allow-watch",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-unwatch"
+    }
   ]
 }
