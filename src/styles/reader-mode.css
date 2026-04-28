@@ -13,7 +13,9 @@ body.reader-mode .notes-pill-wrap,
 body.reader-mode .dismiss,
 body.reader-mode .minimap,
 body.reader-mode .minimap-toggle,
-body.reader-mode .zoom-rail {
+body.reader-mode .zoom-rail,
+body.reader-mode .toc-button,
+body.reader-mode .toc-popover {
   display: none !important;
 }
 

@@ -25,6 +25,7 @@
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
+  import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
@@ -302,6 +303,7 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<TocButton />
 <NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />
