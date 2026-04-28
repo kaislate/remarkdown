@@ -117,6 +117,51 @@
           </div>
 
           <div class="row">
+            <label for="setting-open-focus">Open new documents in Focus mode</label>
+            <input
+              id="setting-open-focus"
+              type="checkbox"
+              checked={$settings.openInFocusMode}
+              onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+        </section>
+
+        <section>
+          <h3>Startup &amp; files</h3>
+
+          <div class="row">
+            <label for="setting-open-last">Reopen last file on launch</label>
+            <input
+              id="setting-open-last"
+              type="checkbox"
+              checked={$settings.openLastOnStartup}
+              onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
+            <label for="setting-show-welcome">Show welcome.md on launch</label>
+            <input
+              id="setting-show-welcome"
+              type="checkbox"
+              checked={!$settings.dontShowWelcomeOnLaunch}
+              onchange={(e) => updateSettings({ dontShowWelcomeOnLaunch: !(e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row" class:dim={$settings.dontShowWelcomeOnLaunch}>
+            <label for="setting-show-tutorial">Show tutorial overlay on welcome.md</label>
+            <input
+              id="setting-show-tutorial"
+              type="checkbox"
+              disabled={$settings.dontShowWelcomeOnLaunch}
+              checked={!$settings.welcomeTutorialDismissed}
+              onchange={(e) => updateSettings({ welcomeTutorialDismissed: !(e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
             <label for="setting-max-recent">Max recent files</label>
             <div class="slider-cell">
               <input
@@ -142,110 +187,27 @@
           </div>
 
           <div class="row">
-            <label for="setting-open-last">Reopen last file on launch</label>
-            <input
-              id="setting-open-last"
-              type="checkbox"
-              checked={$settings.openLastOnStartup}
-              onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <div class="row">
-            <label for="setting-open-focus">Open new documents in Focus mode</label>
-            <input
-              id="setting-open-focus"
-              type="checkbox"
-              checked={$settings.openInFocusMode}
-              onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <div class="row">
-            <label for="setting-auto-update">Check for updates on launch</label>
-            <input
-              id="setting-auto-update"
-              type="checkbox"
-              checked={$settings.autoCheckForUpdates}
-              onchange={(e) => updateSettings({ autoCheckForUpdates: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <label class="row checkbox-row">
-            <input
-              type="checkbox"
-              checked={$settings.receivePrereleaseUpdates}
-              onchange={(e) => updateSettings({ receivePrereleaseUpdates: (e.currentTarget as HTMLInputElement).checked })}
-            />
-            <span class="row-label">
-              Receive pre-release updates
-              <span class="hint">
-                Show beta / RC builds in the Update modal's changelog. Auto-install
-                of pre-releases is not yet supported — download manually from the
-                <a href="https://github.com/kaislate/remarkdown/releases" target="_blank" rel="noopener">Releases page</a>.
-              </span>
-            </span>
-          </label>
-
-          <div class="row">
-            <label for="setting-show-welcome">Show welcome.md on launch</label>
-            <input
-              id="setting-show-welcome"
-              type="checkbox"
-              checked={!$settings.dontShowWelcomeOnLaunch}
-              onchange={(e) => updateSettings({ dontShowWelcomeOnLaunch: !(e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <div class="row">
-            <label for="setting-show-tutorial">Show tutorial overlay on welcome.md</label>
-            <input
-              id="setting-show-tutorial"
-              type="checkbox"
-              checked={!$settings.welcomeTutorialDismissed}
-              onchange={(e) => updateSettings({ welcomeTutorialDismissed: !(e.currentTarget as HTMLInputElement).checked })}
-            />
+            <div>
+              <label for="setting-save-debounce">Sidecar save debounce</label>
+              <div class="hint">how long to wait after a change before writing the sidecar JSON</div>
+            </div>
+            <div class="slider-cell">
+              <input
+                id="setting-save-debounce"
+                type="range"
+                min="100"
+                max="2000"
+                step="50"
+                value={$settings.saveDebounceMs}
+                oninput={(e) => updateSettings({ saveDebounceMs: Number((e.currentTarget as HTMLInputElement).value) })}
+              />
+              <span class="value">{$settings.saveDebounceMs}ms</span>
+            </div>
           </div>
         </section>
 
         <section>
-          <h3>Annotation</h3>
-
-          <div class="row">
-            <label for="setting-hide-controls">Hide annotation controls</label>
-            <input
-              id="setting-hide-controls"
-              type="checkbox"
-              checked={$settings.hideAnnotationControls}
-              onchange={(e) => updateSettings({ hideAnnotationControls: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <div class="row">
-            <div>
-              <label for="setting-drawing-confidence">Show drawing recognition confidence</label>
-              <div class="hint">developer / threshold-tuning aid</div>
-            </div>
-            <input
-              id="setting-drawing-confidence"
-              type="checkbox"
-              checked={$settings.showDrawingRecognitionConfidence}
-              onchange={(e) => updateSettings({ showDrawingRecognitionConfidence: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-
-          <div class="row">
-            <div>
-              <label for="setting-auto-transform">Auto-transform drawings into shapes</label>
-              <div class="hint">recognize circles / rectangles / underlines</div>
-            </div>
-            <input
-              id="setting-auto-transform"
-              type="checkbox"
-              checked={$settings.autoTransformDrawings}
-              onchange={(e) => updateSettings({ autoTransformDrawings: (e.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
+          <h3>Highlights &amp; re.marks</h3>
 
           <div class="row">
             <span class="row-label">Default highlight color</span>
@@ -264,54 +226,13 @@
           </div>
 
           <div class="row">
-            <span class="row-label">Default ink color</span>
-            <div class="swatches" role="radiogroup" aria-label="Default ink color">
-              {#each DRAW_COLORS as c}
-                <button
-                  class="swatch"
-                  class:selected={$settings.defaultInkColor === c}
-                  style:background={c}
-                  aria-label={c}
-                  aria-pressed={$settings.defaultInkColor === c}
-                  onclick={() => updateSettings({ defaultInkColor: c })}
-                ></button>
-              {/each}
-            </div>
-          </div>
-
-          <div class="row">
-            <div>
-              <label for="setting-drawing-roughness">Drawing roughness</label>
-              <div class="hint">0 = clean / 3 = very sketchy</div>
-            </div>
-            <div class="slider-cell">
-              <input
-                id="setting-drawing-roughness"
-                type="range"
-                min="0"
-                max="3"
-                step="0.1"
-                value={$settings.drawingRoughness}
-                oninput={(e) => updateSettings({ drawingRoughness: parseFloat((e.currentTarget as HTMLInputElement).value) })}
-              />
-              <span class="value">{$settings.drawingRoughness.toFixed(1)}</span>
-            </div>
-          </div>
-
-          <div class="row">
-            <label for="setting-draw-idle">Drawing idle finalize (ms)</label>
-            <div class="slider-cell">
-              <input
-                id="setting-draw-idle"
-                type="range"
-                min="500"
-                max="10000"
-                step="250"
-                value={$settings.drawIdleFinalizeMs}
-                oninput={(e) => updateSettings({ drawIdleFinalizeMs: Number((e.currentTarget as HTMLInputElement).value) })}
-              />
-              <span class="value">{($settings.drawIdleFinalizeMs / 1000).toFixed(2)}s</span>
-            </div>
+            <label for="setting-hide-controls">Hide annotation controls</label>
+            <input
+              id="setting-hide-controls"
+              type="checkbox"
+              checked={$settings.hideAnnotationControls}
+              onchange={(e) => updateSettings({ hideAnnotationControls: (e.currentTarget as HTMLInputElement).checked })}
+            />
           </div>
 
           <div class="row">
@@ -339,23 +260,114 @@
         </section>
 
         <section>
-          <h3>Save behaviour</h3>
+          <h3>Drawing</h3>
 
           <div class="row">
-            <label for="setting-save-debounce">Save debounce (ms)</label>
-            <div class="slider-cell">
-              <input
-                id="setting-save-debounce"
-                type="range"
-                min="100"
-                max="2000"
-                step="50"
-                value={$settings.saveDebounceMs}
-                oninput={(e) => updateSettings({ saveDebounceMs: Number((e.currentTarget as HTMLInputElement).value) })}
-              />
-              <span class="value">{$settings.saveDebounceMs}ms</span>
+            <span class="row-label">Default ink color</span>
+            <div class="swatches" role="radiogroup" aria-label="Default ink color">
+              {#each DRAW_COLORS as c}
+                <button
+                  class="swatch"
+                  class:selected={$settings.defaultInkColor === c}
+                  style:background={c}
+                  aria-label={c}
+                  aria-pressed={$settings.defaultInkColor === c}
+                  onclick={() => updateSettings({ defaultInkColor: c })}
+                ></button>
+              {/each}
             </div>
           </div>
+
+          <div class="row">
+            <div>
+              <label for="setting-auto-transform">Auto-transform drawings into shapes</label>
+              <div class="hint">recognize circles / rectangles / underlines</div>
+            </div>
+            <input
+              id="setting-auto-transform"
+              type="checkbox"
+              checked={$settings.autoTransformDrawings}
+              onchange={(e) => updateSettings({ autoTransformDrawings: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="setting-drawing-roughness">Drawing roughness</label>
+              <div class="hint">0 = clean / 3 = very sketchy</div>
+            </div>
+            <div class="slider-cell">
+              <input
+                id="setting-drawing-roughness"
+                type="range"
+                min="0"
+                max="3"
+                step="0.1"
+                value={$settings.drawingRoughness}
+                oninput={(e) => updateSettings({ drawingRoughness: parseFloat((e.currentTarget as HTMLInputElement).value) })}
+              />
+              <span class="value">{$settings.drawingRoughness.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <label for="setting-draw-idle">Drawing idle finalize</label>
+            <div class="slider-cell">
+              <input
+                id="setting-draw-idle"
+                type="range"
+                min="500"
+                max="10000"
+                step="250"
+                value={$settings.drawIdleFinalizeMs}
+                oninput={(e) => updateSettings({ drawIdleFinalizeMs: Number((e.currentTarget as HTMLInputElement).value) })}
+              />
+              <span class="value">{($settings.drawIdleFinalizeMs / 1000).toFixed(2)}s</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="setting-drawing-confidence">Show drawing recognition confidence</label>
+              <div class="hint">developer / threshold-tuning aid</div>
+            </div>
+            <input
+              id="setting-drawing-confidence"
+              type="checkbox"
+              checked={$settings.showDrawingRecognitionConfidence}
+              onchange={(e) => updateSettings({ showDrawingRecognitionConfidence: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+        </section>
+
+        <section>
+          <h3>Updates</h3>
+
+          <div class="row">
+            <label for="setting-auto-update">Check for updates on launch</label>
+            <input
+              id="setting-auto-update"
+              type="checkbox"
+              checked={$settings.autoCheckForUpdates}
+              onchange={(e) => updateSettings({ autoCheckForUpdates: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <label class="row checkbox-row">
+            <input
+              type="checkbox"
+              checked={$settings.receivePrereleaseUpdates}
+              onchange={(e) => updateSettings({ receivePrereleaseUpdates: (e.currentTarget as HTMLInputElement).checked })}
+            />
+            <span class="row-label">
+              Receive pre-release updates
+              <span class="hint">
+                Show beta / RC builds in the Update modal's changelog. Auto-install
+                of pre-releases is not yet supported — download manually from the
+                <a href="https://github.com/kaislate/remarkdown/releases" target="_blank" rel="noopener">Releases page</a>.
+              </span>
+            </span>
+          </label>
         </section>
       </div>
 
@@ -420,7 +432,6 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 18px;
     /* Push the scrollbar further away from the controls so the thumb
        doesn't visually crowd values + sliders on the right edge. */
     padding-right: 16px;
@@ -428,16 +439,28 @@
   section {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    /* Each section after the first carries its own padding-top + a
+       hairline separator. This reads as one cohesive panel rather than
+       a bag of unrelated rows, and the divider gives the eye a clean
+       resting line between groups. */
+    padding-top: 22px;
+    margin-top: 22px;
+    border-top: 1px solid var(--glass-border);
+  }
+  section:first-child {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: 0;
   }
   h3 {
-    margin: 0 0 4px;
+    margin: 0 0 6px;
     font-family: var(--font-sans);
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--fg-2);
+    letter-spacing: 0.1em;
+    color: var(--fg-1);
   }
 
   .row {

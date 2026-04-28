@@ -24,12 +24,19 @@ describe('SettingsModal', () => {
     expect(document.querySelector('.settings-panel')).toBeNull();
   });
 
-  it('renders the panel with all five top-level sections when opened', () => {
+  it('renders the panel with all six top-level sections when opened', () => {
     openModal({ kind: 'settings' });
     render(SettingsModal);
     expect(document.querySelector('.settings-panel')).not.toBeNull();
     const headings = Array.from(document.querySelectorAll('section h3')).map((h) => h.textContent);
-    expect(headings).toEqual(['Appearance', 'Reading', 'Annotation', 'Save behaviour']);
+    expect(headings).toEqual([
+      'Appearance',
+      'Reading',
+      'Startup & files',
+      'Highlights & re.marks',
+      'Drawing',
+      'Updates',
+    ]);
   });
 
   it('clicking the scrim closes the modal', async () => {
