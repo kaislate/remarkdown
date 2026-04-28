@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
+  import { currentViewerRoot } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
   import { minimapShown, toggleMinimap } from '../stores/ui';
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
@@ -24,6 +25,12 @@
   let indicatorHeight = $state(20);
 
   let dragging = $state(false);
+
+  // We mirror the live article DOM (post mermaid + any other JS-driven
+  // transforms) rather than re-rendering $doc.html. That way the minimap
+  // visually matches what the user is actually scrolling through and the
+  // indicator lines up with the right region.
+  let mirroredHtml = $state('');
 
   function updateLayout(): void {
     const scroll = $viewerScroll;
@@ -92,6 +99,23 @@
 
   onMount(() => {
     let currentScrollEl: HTMLElement | null = null;
+    let currentArticleEl: HTMLElement | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function snapshotArticle(): void {
+      if (!currentArticleEl) return;
+      mirroredHtml = currentArticleEl.innerHTML;
+      // Recompute the indicator after the new HTML lays out in the clone.
+      requestAnimationFrame(() => requestAnimationFrame(updateLayout));
+    }
+
+    function scheduleSnapshot(): void {
+      if (snapshotTimer) clearTimeout(snapshotTimer);
+      // ~120ms debounce coalesces the burst of mutations from a sequence
+      // of mermaid renders (each diagram fires several mutations).
+      snapshotTimer = setTimeout(snapshotArticle, 120);
+    }
 
     const unsubScroll = viewerScroll.subscribe((el) => {
       if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
@@ -101,6 +125,28 @@
         updateLayout();
         requestAnimationFrame(updateLayout);
       }
+    });
+
+    const unsubArticle = currentViewerRoot.subscribe((el) => {
+      if (mutationObserver) {
+        mutationObserver.disconnect();
+        mutationObserver = null;
+      }
+      currentArticleEl = el;
+      if (!el) {
+        mirroredHtml = '';
+        return;
+      }
+      // Initial snapshot, then keep it in sync with subsequent mutations
+      // (mermaid swap, future transforms).
+      snapshotArticle();
+      mutationObserver = new MutationObserver(scheduleSnapshot);
+      mutationObserver.observe(el, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true,
+      });
     });
 
     const unsubDoc = doc.subscribe(() => {
@@ -127,10 +173,13 @@
     return () => {
       if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
       window.removeEventListener('resize', updateLayout);
+      if (mutationObserver) mutationObserver.disconnect();
+      if (snapshotTimer) clearTimeout(snapshotTimer);
       unsubDoc();
       unsubShown();
       unsubScroll();
       unsubReader();
+      unsubArticle();
     };
   });
 </script>
@@ -154,7 +203,7 @@
         class="minimap-content md-rendered"
         style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: content-box;"
       >
-        {@html $doc.html}
+        {@html mirroredHtml}
       </div>
       <div
         class="viewport-indicator"
