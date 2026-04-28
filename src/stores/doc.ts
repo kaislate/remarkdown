@@ -9,6 +9,8 @@ import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
 import { getProgressFor } from './reading-progress';
 import { viewerScroll } from './viewport';
+import { settings } from './settings';
+import { readerMode } from './reader-mode';
 
 export interface DocState {
   path: string;
@@ -48,6 +50,12 @@ export async function loadDocument(path: string): Promise<void> {
     return;
   }
 
+  // Detect "user opened a new doc" vs "current doc reloaded after an
+  // external edit" — only the former should auto-enter Focus mode if
+  // the user has that setting on. Edit-reload keeps the current chrome
+  // state so the file watcher doesn't yank the UI from under the user.
+  const isNewDocOpen = !current || current.path !== r.path;
+
   const { html, plaintext, blocks } = await render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
@@ -77,6 +85,10 @@ export async function loadDocument(path: string): Promise<void> {
     sidecarRaw: r.sidecarRaw,
   });
   docEpoch.update((e) => e + 1);
+
+  if (isNewDocOpen && get(settings).openInFocusMode) {
+    readerMode.set(true);
+  }
 
   // Restore scroll position from saved reading progress.
   const progress = getProgressFor(path);

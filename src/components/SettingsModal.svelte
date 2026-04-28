@@ -152,6 +152,16 @@
           </div>
 
           <div class="row">
+            <label for="setting-open-focus">Open new documents in Focus mode</label>
+            <input
+              id="setting-open-focus"
+              type="checkbox"
+              checked={$settings.openInFocusMode}
+              onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
             <label for="setting-auto-update">Check for updates on launch</label>
             <input
               id="setting-auto-update"
