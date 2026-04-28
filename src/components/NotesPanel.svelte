@@ -164,15 +164,17 @@
 {/if}
 
 <style>
-  /* Sits above the ZoomControls pill (bottom:22, ~38px tall) with a
-     small gap. The popup expands UPWARD from the pill.
+  /* Sits beside the ToC button (left:144, width:38, +8px gap = 190).
+     Same vertical level (bottom:68) so the two read as a "navigation
+     tools" cluster above the bottom-left zoom + Focus stack. The popup
+     expands UPWARD from the pill.
      z-index 110 puts the wrap above WelcomeDismiss (z:100) so the
      expanding popup doesn't get visually covered by the dismiss text
      when both are visible at the same time. */
   .notes-pill-wrap {
     position: fixed;
     bottom: 68px;
-    left: 22px;
+    left: 190px;
     z-index: 110;
     display: flex;
     flex-direction: column;
@@ -184,8 +186,11 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 14px;
-    height: 30px;
+    /* Match the ToC button's 38px height so the two pills sit on the
+       same baseline. Padding tuned to keep the wordmark optically
+       centred at the new height. */
+    padding: 8px 16px;
+    height: 38px;
     background: var(--glass-fill);
     border: 1px solid var(--glass-border);
     color: var(--fg-1);
@@ -211,8 +216,45 @@
     line-height: 1;
     color: inherit;
   }
+  /* The dot lives as a typographic period at rest (the literal "."
+     character coloured with --accent). On hover the period fades out
+     and a ::before pseudo morphs into the same round, glowing circle
+     used by .note-pin in the document — same accent fill, same purple
+     halo box-shadow. The shared visual language tells the user this
+     button is "where your re.marks live". */
   .brand-dot {
     color: var(--accent);
+    position: relative;
+    display: inline-block;
+    transition: color 0.15s ease;
+  }
+  .brand-dot::before {
+    content: '';
+    position: absolute;
+    /* Anchor near the baseline so the circle lands where the period
+       was instead of floating in the line's vertical centre. */
+    bottom: 0.1em;
+    left: 50%;
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 999px;
+    background: var(--accent);
+    transform: translateX(-50%) scale(0);
+    opacity: 0;
+    box-shadow: 0 1px 3px rgba(139, 127, 255, 0.4);
+    transition:
+      transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+      opacity 0.15s ease,
+      box-shadow 0.2s ease;
+    pointer-events: none;
+  }
+  .pill:hover .brand-dot {
+    color: transparent;
+  }
+  .pill:hover .brand-dot::before {
+    transform: translateX(-50%) scale(1.3);
+    opacity: 1;
+    box-shadow: 0 2px 8px rgba(139, 127, 255, 0.7);
   }
   .count {
     font-family: var(--font-sans);
