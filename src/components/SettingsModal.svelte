@@ -161,6 +161,22 @@
             />
           </div>
 
+          <label class="row checkbox-row">
+            <input
+              type="checkbox"
+              checked={$settings.receivePrereleaseUpdates}
+              onchange={(e) => updateSettings({ receivePrereleaseUpdates: (e.currentTarget as HTMLInputElement).checked })}
+            />
+            <span class="row-label">
+              Receive pre-release updates
+              <span class="hint">
+                Show beta / RC builds in the Update modal's changelog. Auto-install
+                of pre-releases is not yet supported — download manually from the
+                <a href="https://github.com/kaislate/remarkdown/releases" target="_blank" rel="noopener">Releases page</a>.
+              </span>
+            </span>
+          </label>
+
           <div class="row">
             <label for="setting-show-welcome">Show welcome.md on launch</label>
             <input
@@ -431,6 +447,20 @@
     font-size: 12px;
     color: var(--fg-2);
     margin-top: 2px;
+  }
+  .hint a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .hint a:hover {
+    text-decoration: underline;
+  }
+  .checkbox-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 10px;
+    cursor: pointer;
   }
 
   /* Custom-styled form controls so the panel reads as one cohesive

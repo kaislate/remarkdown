@@ -28,6 +28,7 @@ export const SettingsSchema = z.object({
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
   autoCheckForUpdates: z.boolean(),
+  receivePrereleaseUpdates: z.boolean(),
 
   // Annotation
   defaultHighlightColor: z
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,
   autoCheckForUpdates: true,
+  receivePrereleaseUpdates: false,
   defaultHighlightColor: HIGHLIGHT_COLORS[0],
   defaultInkColor: DRAW_COLORS[0],
   showDrawingRecognitionConfidence: false,

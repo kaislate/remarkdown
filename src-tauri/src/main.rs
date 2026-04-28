@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod reading_progress;
 mod recent;
 mod settings;
 mod sidecar;
@@ -23,6 +24,8 @@ fn main() {
             commands::backup_corrupt_sidecar,
             commands::load_settings,
             commands::save_settings,
+            commands::load_reading_progress,
+            commands::save_reading_progress,
             commands::ensure_welcome_doc,
         ])
         .run(tauri::generate_context!())

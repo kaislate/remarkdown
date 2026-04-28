@@ -7,6 +7,8 @@ import { addToast } from './toasts';
 import { openModal } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
+import { getProgressFor } from './reading-progress';
+import { viewerScroll } from './viewport';
 
 export interface DocState {
   path: string;
@@ -75,6 +77,22 @@ export async function loadDocument(path: string): Promise<void> {
     sidecarRaw: r.sidecarRaw,
   });
   docEpoch.update((e) => e + 1);
+
+  // Restore scroll position from saved reading progress.
+  const progress = getProgressFor(path);
+  if (progress && progress.scrollRatio > 0.001) {
+    // Defer two animation frames so the article renders + computes layout.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scrollEl = get(viewerScroll);
+        if (!scrollEl) return;
+        const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+        if (max > 0) {
+          scrollEl.scrollTop = max * progress.scrollRatio;
+        }
+      });
+    });
+  }
 
   // Cancel previous watcher (if any) and install a new one for this path.
   if (currentDispose) {

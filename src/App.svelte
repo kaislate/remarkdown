@@ -25,6 +25,7 @@
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
+  import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
@@ -37,6 +38,7 @@
   import { availableUpdate } from './stores/updates';
   import { openModal } from './stores/modals';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
+  import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
@@ -224,6 +226,7 @@
     disposeArticleWidth = unsubWidth;
 
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
+    try { await refreshReadingProgress(); } catch { /* ignore */ }
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
@@ -300,6 +303,7 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<TocButton />
 <NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />

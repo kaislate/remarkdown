@@ -5,6 +5,7 @@
   import { getVersion } from '@tauri-apps/api/app';
   import { fetchNewerReleases } from '../lib/release-notes';
   import { render as renderMarkdown } from '../lib/MarkdownRenderer';
+  import { settings } from '../stores/settings';
 
   // The state machine that drives every visible variation of the modal.
   // Centralising it in one tagged union keeps the template's `{:else if}`
@@ -26,7 +27,7 @@
   let currentVersion = $state('—');
   let st: UpdateState = $state({ kind: 'idle' });
   let initialised = false;
-  let changelogHtml = $state<{ version: string; name: string; html: string; publishedAt: string }[] | null>(null);
+  let changelogHtml = $state<{ version: string; name: string; html: string; publishedAt: string; prerelease: boolean }[] | null>(null);
 
   async function fetchCurrentVersion(): Promise<void> {
     try {
@@ -64,7 +65,7 @@
 
   async function fetchAndRenderChangelog() {
     if (currentVersion === '—' || currentVersion === 'unknown') return;
-    const entries = await fetchNewerReleases(currentVersion);
+    const entries = await fetchNewerReleases(currentVersion, $settings.receivePrereleaseUpdates);
     if (!entries) return;
     // Render each body as HTML in parallel.
     const rendered = await Promise.all(
@@ -72,6 +73,7 @@
         version: e.version,
         name: e.name,
         publishedAt: e.publishedAt,
+        prerelease: e.prerelease,
         html: e.body ? (await renderMarkdown(e.body)).html : '',
       })),
     );
@@ -195,6 +197,9 @@
                   <header class="changelog-header">
                     <code class="changelog-version">{entry.version}</code>
                     <span class="changelog-date">{new Date(entry.publishedAt).toLocaleDateString()}</span>
+                    {#if entry.prerelease}
+                      <span class="changelog-prerelease-badge">pre-release</span>
+                    {/if}
                   </header>
                   <div class="changelog-body md-rendered">{@html entry.html}</div>
                 </div>
@@ -380,6 +385,18 @@
   .changelog-date {
     color: var(--fg-2);
     font-size: 11px;
+  }
+  .changelog-prerelease-badge {
+    background: linear-gradient(110deg, var(--accent), #b59cff);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 7px 3px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    box-shadow: 0 1px 4px rgba(139, 127, 255, 0.3);
   }
   .changelog-body {
     font-size: 13px;

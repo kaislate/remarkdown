@@ -2,6 +2,7 @@
   import { doc } from '../stores/doc';
   import { currentViewerRoot, annots, updateAnnotation } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
+  import { recordProgress } from '../stores/reading-progress';
   import HighlightLayer from './HighlightLayer.svelte';
   import NoteLayer from './NoteLayer.svelte';
   import DrawLayer from './DrawLayer.svelte';
@@ -23,6 +24,21 @@
   $effect(() => {
     if (scrollEl) viewerScroll.set(scrollEl);
     return () => viewerScroll.set(null);
+  });
+
+  // Track reading progress on every scroll event while a doc is open.
+  $effect(() => {
+    const el = scrollEl;
+    const currentDoc = $doc;
+    if (!el || !currentDoc) return;
+    const onScroll = () => {
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) return; // no scrollable content yet
+      const ratio = el.scrollTop / max;
+      recordProgress(currentDoc.path, ratio);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
   });
 
   // Re-attach mode: while $reattachTarget is set, the next non-empty
