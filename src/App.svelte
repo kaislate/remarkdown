@@ -22,6 +22,7 @@
   import Minimap from './components/Minimap.svelte';
   import Splash from './components/Splash.svelte';
   import TitleBar from './components/TitleBar.svelte';
+  import MouseCursor from './components/MouseCursor.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
@@ -295,6 +296,7 @@
 <WelcomeOverlay />
 <Minimap />
 <TitleBar />
+<MouseCursor />
 <ReattachBanner />
 <GlassMenu />
 {#if !$settings.hideAnnotationControls}
