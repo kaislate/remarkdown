@@ -12,8 +12,9 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 
   /* X-cursor overlay animation tokens. */
-  --animation-fast:    0.3s cubic-bezier(0.7, 0, 0.3, 1);
-  --animation-overlay: 0.5s cubic-bezier(0.7, 0, 0.2, 1);
+  --animation-fast:     0.3s cubic-bezier(0.7, 0, 0.3, 1);
+  --animation-fast-out: 0.15s cubic-bezier(0.7, 0, 0.3, 1);
+  --animation-overlay:  0.5s cubic-bezier(0.7, 0, 0.2, 1);
   --cursor-size: clamp(3.5rem, 4vw, 4.5rem);
   --cursor-icon-size: clamp(1.1rem, 1.5vw, 1.6rem);
   --cursor-pressed-scale: 1.5;
@@ -22,6 +23,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --animation-fast: 0s;
+    --animation-fast-out: 0s;
     --animation-overlay: 0s;
   }
 }

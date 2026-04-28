@@ -72,20 +72,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: width var(--animation-fast), height var(--animation-fast);
+    transition: width var(--animation-fast-out), height var(--animation-fast-out);
   }
   .mouse-cursor :global(.cursor-icon) {
     width: 0;
     height: 0;
-    transition: width var(--animation-fast), height var(--animation-fast);
+    transition: width var(--animation-fast-out), height var(--animation-fast-out);
   }
   .mouse-cursor.active {
     width: var(--cursor-size);
     height: var(--cursor-size);
+    transition: width var(--animation-fast), height var(--animation-fast);
   }
   .mouse-cursor.active :global(.cursor-icon) {
     width: var(--cursor-icon-size);
     height: var(--cursor-icon-size);
+    transition: width var(--animation-fast), height var(--animation-fast);
   }
   .mouse-cursor.active.pressed {
     width: calc(var(--cursor-size) * var(--cursor-pressed-scale));
