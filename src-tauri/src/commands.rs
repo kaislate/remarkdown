@@ -133,6 +133,16 @@ pub fn save_settings(app: tauri::AppHandle, json: String) -> Result<(), CommandE
 }
 
 #[tauri::command]
+pub fn load_reading_progress(app: tauri::AppHandle) -> Result<Option<String>, CommandError> {
+    crate::reading_progress::load_json(&app)
+}
+
+#[tauri::command]
+pub fn save_reading_progress(app: tauri::AppHandle, json: String) -> Result<(), CommandError> {
+    crate::reading_progress::save_json(&app, &json)
+}
+
+#[tauri::command]
 pub fn ensure_welcome_doc(app: tauri::AppHandle) -> Result<String, CommandError> {
     let p = crate::welcome::ensure(&app)?;
     Ok(p.to_string_lossy().into_owned())

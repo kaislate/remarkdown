@@ -37,6 +37,7 @@
   import { availableUpdate } from './stores/updates';
   import { openModal } from './stores/modals';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
+  import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
@@ -224,6 +225,7 @@
     disposeArticleWidth = unsubWidth;
 
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
+    try { await refreshReadingProgress(); } catch { /* ignore */ }
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);

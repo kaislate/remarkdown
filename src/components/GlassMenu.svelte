@@ -7,6 +7,7 @@
   import { availableUpdate } from '../stores/updates';
   import { loadDocument } from '../stores/doc';
   import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
+  import { readingProgress } from '../stores/reading-progress';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
@@ -175,6 +176,11 @@
             <span class="recent-name">
               {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
             </span>
+            {#if ($readingProgress.documents[path]?.scrollRatio ?? 0) > 0.01}
+              <span class="recent-progress">
+                {Math.round($readingProgress.documents[path].scrollRatio * 100)}% read
+              </span>
+            {/if}
             <button
               class="recent-remove"
               aria-label={`Remove ${basename(path)} from recents`}
@@ -530,6 +536,14 @@
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .recent-progress {
+    font-size: 11px;
+    color: var(--fg-2);
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
     white-space: nowrap;
   }
   .recent-row.missing .recent-name {

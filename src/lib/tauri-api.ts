@@ -68,6 +68,14 @@ export async function saveSettingsJson(json: string): Promise<void> {
   await invoke('save_settings', { json });
 }
 
+export async function loadReadingProgressJson(): Promise<string | null> {
+  return await invoke<string | null>('load_reading_progress');
+}
+
+export async function saveReadingProgressJson(json: string): Promise<void> {
+  await invoke('save_reading_progress', { json });
+}
+
 export async function ensureWelcomeDoc(): Promise<string> {
   return await invoke<string>('ensure_welcome_doc');
 }
