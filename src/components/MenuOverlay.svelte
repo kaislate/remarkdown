@@ -1,7 +1,16 @@
 <script lang="ts">
-  import { setCursorActive, setCursorPressed } from '../stores/cursor';
+  import { setCursorActive, setCursorPressed, collapseCursor } from '../stores/cursor';
 
   let { open = false, onclose }: { open?: boolean; onclose?: () => void } = $props();
+
+  // Collapse the X-cursor at click time, not on the next mousemove.
+  // onmouseleave only fires once the pointer moves off the element, so
+  // a stationary click would otherwise leave the cursor visible until
+  // the user wiggles the mouse.
+  function handleClick() {
+    collapseCursor();
+    onclose?.();
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -13,7 +22,7 @@
   onmouseleave={() => { setCursorActive(false); setCursorPressed(false); }}
   onmousedown={() => setCursorPressed(true)}
   onmouseup={() => setCursorPressed(false)}
-  onclick={onclose}
+  onclick={handleClick}
   aria-hidden="true"
 ></div>
 
