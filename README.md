@@ -15,7 +15,7 @@
 
 </div>
 
-![Status: Beta](https://img.shields.io/badge/status-0.5.0--beta-2ea44f)
+![Status: Beta](https://img.shields.io/badge/status-0.5.3--beta-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
@@ -23,11 +23,13 @@
 
 ---
 
-## 🎉 0.5.0 Beta — Public Beta Launch
+## 🎉 0.5.3 Beta — latest
 
-**remarkdown 0.5.0-beta is the first public beta.** It ships every v1 reader + annotation feature, the full error-recovery matrix, a hand-drawn welcome tutorial, the new **re.marks side panel**, and — for the first time — **in-app auto-update** so future betas land without you having to manually reinstall. Stable enough for daily reading; bug reports very welcome.
+**0.5.3-beta** adds **per-document reading progress**, a **table-of-contents popover** for navigating long docs, an **aggregated changelog** in the update modal so you can see what you're getting when multiple versions behind, a **dimmed backdrop + X-cursor** when the hamburger menu is open, and an **orbiting dot animation** on the re.marks pill that passes in front of and behind the wordmark. Plus fixes for mermaid diagrams in the minimap, an always-up-to-date welcome screen, and snappier cursor dismissal. Full notes on the [release page](../../releases/latest).
 
-> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull this beta on its own. **Download the 0.5.0-beta installer from the [Releases page](../../releases/latest) and run it once** — every release after this one will arrive automatically via the in-app updater.
+Earlier in the 0.5 line: drawings now anchor to text and survive zoom (0.5.1), mermaid + Obsidian-style callouts + orphan re-attach + file watcher arrived in 0.5.2.
+
+> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull these betas on its own. **Download the latest installer from the [Releases page](../../releases/latest) and run it once** — every release after this one will arrive automatically via the in-app updater.
 
 ---
 
@@ -55,16 +57,22 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 ### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
 - **📝 re.marks** (sticky-note style) anchored to the right margin of the chosen word, with click-off-to-close popovers and punctuation-aware word boundary detection
-- **📋 re.marks side panel** — pop-up pill above the zoom controls opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop). Click an entry to jump.
-- **✏️ Freehand drawings** with SVG strokes, 5 ink colors, auto-finalized after 3 seconds of idle
+- **📋 re.marks side panel** — bottom-left pill (next to the Table of Contents button) opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop). Click an entry to jump. The wordmark's dot orbits around it on hover.
+- **✏️ Drawings anchored to text** — freehand SVG strokes that follow text reflow + zoom; opt-in **auto-transform** turns closed loops around words into ellipses, lines under text into underlines, vertical margin lines into margin bars, etc.; **drawing roughness slider** in Settings (0 = crisp, 3 = very sketchy)
 - **🧹 Eraser tool** — single-click delete for any highlight, re.mark, or drawing without confirmation
 - **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
-- **👻 Orphan panel** — when an edit moves a phrase beyond recognition, the annotation goes to an "orphaned" list instead of being lost
+- **👻 Orphan panel + re-attach** — when an edit moves a phrase beyond recognition, the annotation goes to an "orphaned" list. Each orphan has a **Re-attach** button — click it, then select the new location in the article and the annotation snaps to it
 
 ### Reading
 - **📂 Drag-drop** any `.md` file from Explorer onto the window to open it
-- **🕘 Open Recent** menu with missing-file detection and grey-out
-- **🗺 VS Code-style minimap** in the right gutter for long-document navigation
+- **🕘 Open Recent** menu with missing-file detection, grey-out, and per-document **reading progress %**
+- **📑 Reading progress** — scroll position is remembered per file; reopen a doc and you land where you left off
+- **🗂 Table-of-contents popover** — pill above the Focus toggle lists every `h1`–`h4`; click an entry to jump
+- **🗺 VS Code-style minimap** in the right gutter for long-document navigation; mirrors the live article DOM so mermaid + callouts show up at the right scale
+- **🧩 Mermaid diagrams** — fenced ` ```mermaid ` blocks render as SVG; lazy-loaded so the bundle stays small
+- **💬 Obsidian-style callouts** — blockquotes prefixed with `[!type]` render as themed boxes (`note`, `info`, `tip`, `warning`, `danger`, `bug`, `quote`, `abstract`, etc.); foldable variants `[!type]+` / `[!type]-`
+- **👁 File watcher** — edit the open file in another editor and remarkdown reloads within ~1s; surviving annotations stay anchored, others go to the Orphan panel
+- **📖 Reader mode** — toggle a clean reading view that hides every chrome layer; title-bar drag + resize grip stay invisibly clickable
 - **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
 - **🌓 Dark or light liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
 - **🪞 Vertical filename watermark** in the left margin (extreme size, low opacity, fades toward the article column)
@@ -96,7 +104,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 ### Storage & resilience
 - **💾 Atomic sidecar writes** with configurable debounced saves; retry with exponential backoff on write failures; synchronous flush on window close
 - **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- **🧪 Battle-tested** — 320+ Vitest unit/component tests, 6 Rust tests, 6 Playwright E2E scenarios, zero `svelte-check` warnings
+- **🧪 Battle-tested** — 390+ Vitest unit/component tests, Rust tests, Playwright E2E scenarios, zero `svelte-check` warnings
 
 ---
 
@@ -195,31 +203,30 @@ Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cut
 
 ## 🗺 Roadmap
 
-### ✅ 0.5.0 Beta (current)
-- Reader MVP with Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
+### ✅ Shipped through 0.5.3-beta
+- Reader MVP — Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
 - All four annotation types (highlight, re.mark, drawing, eraser) with save/load round-trip
-- **re.marks side panel** with configurable sentence-context (1-5 sentences, paragraph-stop)
-- Anchoring with orphan detection and panel
-- Full error matrix and resilience: UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- Drag-and-drop file opening, Open Recent menu, minimap, zoom, frameless window, splash screen
-- 18-setting Settings panel with persistent preferences and live apply
-- Dark and light themes
-- Vertical filename watermark in the left margin
-- **Hand-drawn welcome tutorial** overlay with rough.js arrows, dismissible per-session or forever
-- **In-app auto-update** with manual + auto-check, Ed25519-signed installers
-- **Animated BETA pin** + hamburger hover morph + bottom-right resize grip with double-click reset
-- Playwright E2E coverage of the spec scenarios
-- 320+ Vitest tests, 6 Rust tests, 0 svelte-check warnings
+- Drawings **anchored to text** with optional auto-shape recognition + roughness slider
+- **re.marks side panel** with configurable sentence-context, animated wordmark, ToC-adjacent placement
+- **Mermaid** diagrams + **Obsidian-style callouts** with foldable variants
+- Anchoring with **orphan detection + re-attach** UI
+- **File watcher** — external edits reload within ~1s; survivors stay anchored
+- **Per-document reading progress** + **Table-of-contents popover** for navigation
+- **In-app auto-update** with manual + auto-check, Ed25519-signed installers, **aggregated multi-version changelog**
+- **Reader mode** that hides every chrome layer; minimap; zoom; frameless window; splash
+- **Hamburger backdrop + X-cursor**, hand-drawn welcome tutorial, animated BETA pin, hover wordmark morph
+- 20-setting Settings panel with persistent preferences and live apply
+- Dark and light themes; full error matrix (UTF-8 toast, corrupt-sidecar backup, write-retry, 2 MB warning)
+- 390+ Vitest tests, 6 Rust tests, Playwright E2E coverage of the spec scenarios, 0 svelte-check warnings
 
 ### 🔮 Post-beta (deferred)
-- **Re-attach** orphaned annotations to their new locations
-- **File watcher** for external edits while reading
+- **Edit mode** — slash-command for headings/lists, drag-and-drop mermaid diagrams + inline images. *"a markdown editor for people who don't know what markdown is"*
+- **Pre-release channel** — wire up the auto-updater so opt-in users actually receive pre-release builds (currently only changelog filtering is implemented)
 - **Undo/redo** action log
 - **Per-doc asset protocol scope** tightening (security hardening)
-- **Mermaid** diagrams, Obsidian-style callouts, wiki-links
+- **Wiki-links** — `[[link]]` syntax across vault-style folders
 - **PDF/HTML export** with baked-in annotations
 - **Cross-document commands** — *"summarize highlights across these N files"*
-- **Pre-release channel** — opt-in to receive next-version betas via the auto-updater
 - **Collaboration** — real-time sync / multi-user annotations
 
 ---
@@ -227,10 +234,10 @@ Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cut
 ## 🧪 Testing
 
 ```bash
-npm test              # 320+ Vitest unit + component tests
+npm test              # 390+ Vitest unit + component tests
 npm run check         # svelte-check (0 errors, 0 warnings)
-npm run test:e2e      # 6 Playwright end-to-end scenarios
-cd src-tauri && cargo test   # 6 Rust tests
+npm run test:e2e      # Playwright end-to-end scenarios
+cd src-tauri && cargo test   # Rust tests
 ```
 
 ---
