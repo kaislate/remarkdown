@@ -10,6 +10,22 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-serif: 'Charter', 'Georgia', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* X-cursor overlay animation tokens. */
+  --animation-fast:     0.3s cubic-bezier(0.7, 0, 0.3, 1);
+  --animation-fast-out: 0.15s cubic-bezier(0.7, 0, 0.3, 1);
+  --animation-overlay:  0.5s cubic-bezier(0.7, 0, 0.2, 1);
+  --cursor-size: clamp(3.5rem, 4vw, 4.5rem);
+  --cursor-icon-size: clamp(1.1rem, 1.5vw, 1.6rem);
+  --cursor-pressed-scale: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animation-fast: 0s;
+    --animation-fast-out: 0s;
+    --animation-overlay: 0s;
+  }
 }
 
 /* Dark theme — applied when <html data-theme="dark"> (or no attribute,
@@ -60,6 +76,13 @@
 
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-fill: rgba(0, 0, 0, 0.03);
+}
+
+/* Light-theme override for the menu overlay backdrop. The dark-theme
+   rgba literal in MenuOverlay.svelte approximates #0b0a12; on light
+   we switch to a warm-paper tint so the dim feels cohesive. */
+:root[data-theme='light'] .menu-overlay {
+  background-color: rgba(250, 248, 243, 0.7);
 }
 
 html {

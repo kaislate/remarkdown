@@ -7,6 +7,7 @@ import Minimap from '../../src/components/Minimap.svelte';
 import { doc } from '../../src/stores/doc';
 import { viewerScroll } from '../../src/stores/viewport';
 import { minimapShown } from '../../src/stores/ui';
+import { currentViewerRoot } from '../../src/stores/annots';
 
 function docState(html: string) {
   return {
@@ -27,8 +28,9 @@ beforeEach(() => {
   doc.set(null);
   viewerScroll.set(null);
   minimapShown.set(true);
+  currentViewerRoot.set(null);
 });
-afterEach(() => { document.body.innerHTML = ''; });
+afterEach(() => { document.body.innerHTML = ''; currentViewerRoot.set(null); });
 
 describe('Minimap', () => {
   it('does not render when no doc is loaded', () => {
@@ -47,6 +49,16 @@ describe('Minimap', () => {
   it('renders a scaled clone of the doc html inside the minimap', () => {
     render(Minimap);
     flushSync(() => doc.set(docState('<p data-block-id="p:1">this is visible in minimap</p>')));
+
+    // The minimap mirrors the live article DOM (post mermaid + other
+    // JS-driven transforms), not raw $doc.html. Stand up a dummy article
+    // element and point the currentViewerRoot store at it; the snapshot
+    // runs synchronously inside the store's subscribe callback.
+    const article = document.createElement('article');
+    article.innerHTML = '<p data-block-id="p:1">this is visible in minimap</p>';
+    document.body.appendChild(article);
+    flushSync(() => currentViewerRoot.set(article));
+
     const content = document.querySelector('.minimap-content') as HTMLElement;
     expect(content).not.toBeNull();
     expect(content.textContent).toContain('this is visible in minimap');

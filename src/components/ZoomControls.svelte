@@ -41,7 +41,11 @@
     left: 22px;
     display: flex;
     align-items: stretch;
-    padding: 4px;
+    /* Vertical padding is 3px (not 4) so the rail's outer height
+       matches the 38px ToC / Focus / re.marks pills. The horizontal
+       4px stays so the rounded pill ends still look proportional.
+       Math: btn (30) + 3+3 padding + 1+1 border = 38. */
+    padding: 3px 4px;
     z-index: 100;
   }
   .btn {

@@ -11,6 +11,7 @@
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
+  import MenuOverlay from './MenuOverlay.svelte';
 
   let open = $state(false);
 
@@ -82,6 +83,8 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
+
+<MenuOverlay open={open} onclose={() => open = false} />
 
 <div class="menu-root">
   <button class="hamburger glass" aria-label="Menu" aria-expanded={open} onclick={toggle}>
@@ -422,6 +425,7 @@
     padding: 6px;
     display: flex;
     flex-direction: column;
+    z-index: 100;
   }
   .item {
     background: transparent;

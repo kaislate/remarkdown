@@ -95,7 +95,7 @@
   function onDocClick(e: MouseEvent) {
     if (!open) return;
     const target = e.target as HTMLElement | null;
-    if (target?.closest?.('.notes-pill-wrap')) return;
+    if (target?.closest?.('.notes-pill-wrap, .notes-popup-wrap')) return;
     open = false;
   }
 
@@ -114,7 +114,24 @@
 
 {#if $doc !== null}
   <div class="notes-pill-wrap">
-    {#if open}
+    <button
+      class="pill glass glass-pill"
+      aria-label={open
+        ? 'Close re.marks panel'
+        : `Open re.marks panel (${notes.length} ${notes.length === 1 ? 'note' : 'notes'})`}
+      aria-expanded={open}
+      title={`re.marks (${notes.length})`}
+      onclick={() => (open = !open)}
+    >
+      <span class="wordmark">re<span class="brand-dot">.</span>marks</span>
+      {#if notes.length > 0}
+        <span class="count">{notes.length}</span>
+      {/if}
+    </button>
+  </div>
+
+  {#if open}
+    <div class="notes-popup-wrap">
       <div class="popup glass" role="dialog" aria-label="re.marks">
         <header>
           <h3>re<span class="brand-dot">.</span>marks{notes.length > 0 ? ` (${notes.length})` : ''}</h3>
@@ -144,48 +161,47 @@
           </ul>
         {/if}
       </div>
-    {/if}
-
-    <button
-      class="pill glass glass-pill"
-      aria-label={open
-        ? 'Close re.marks panel'
-        : `Open re.marks panel (${notes.length} ${notes.length === 1 ? 'note' : 'notes'})`}
-      aria-expanded={open}
-      title={`re.marks (${notes.length})`}
-      onclick={() => (open = !open)}
-    >
-      <span class="wordmark">re<span class="brand-dot">.</span>marks</span>
-      {#if notes.length > 0}
-        <span class="count">{notes.length}</span>
-      {/if}
-    </button>
-  </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
-  /* Sits above the ZoomControls pill (bottom:22, ~38px tall) with a
-     small gap. The popup expands UPWARD from the pill.
+  /* Sits to the LEFT of the ToC button (left:144), with an 8px gap.
+     We anchor the pill's RIGHT edge at 136px from the viewport's left
+     so the gap stays consistent regardless of how wide the wordmark +
+     count grow. Same vertical level (bottom:68) so the two read as a
+     "navigation tools" cluster above the bottom-left zoom + Focus
+     stack.
      z-index 110 puts the wrap above WelcomeDismiss (z:100) so the
      expanding popup doesn't get visually covered by the dismiss text
      when both are visible at the same time. */
   .notes-pill-wrap {
     position: fixed;
     bottom: 68px;
+    right: calc(100% - 136px);
+    z-index: 110;
+  }
+  /* The popup is wider (360px) than the gap between the pill and the
+     left edge of the screen, so it can't expand straight up from the
+     pill without clipping. Instead, anchor it at the same x as the
+     zoom controls (left:22) and float it above the pill row. */
+  .notes-popup-wrap {
+    position: fixed;
+    /* pill bottom 68 + pill height 38 + 8px gap = 114 */
+    bottom: 114px;
     left: 22px;
     z-index: 110;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
   }
 
   .pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 14px;
-    height: 30px;
+    /* Match the ToC button's 38px height so the two pills sit on the
+       same baseline. Padding tuned to keep the wordmark optically
+       centred at the new height. */
+    padding: 8px 16px;
+    height: 38px;
     background: var(--glass-fill);
     border: 1px solid var(--glass-border);
     color: var(--fg-1);
@@ -202,8 +218,18 @@
   }
   /* "re.marks" wordmark — same typography + accent dot as the re.md
      mark next to the hamburger, just shorter. Consistent brand
-     vocabulary for "the place your annotations live". */
+     vocabulary for "the place your annotations live".
+
+     inline-block + position:relative gives the orbiting dot a
+     containing block to position against. isolation: isolate creates
+     a stacking context so the orbit's z-index:-1 stays ABOVE the
+     pill's glass background (which lives outside this context) but
+     BELOW the inline letters of "re.marks" — that's how the dot can
+     pass behind the text without falling out the back of the pill. */
   .wordmark {
+    display: inline-block;
+    position: relative;
+    isolation: isolate;
     font-family: var(--font-sans);
     font-size: 14px;
     font-weight: 600;
@@ -211,8 +237,73 @@
     line-height: 1;
     color: inherit;
   }
+  /* At rest the dot is the literal "." character. On hover (or while
+     the popup is open) the period fades out and a ::after pseudo on
+     .wordmark takes its place — orbiting the entire word, passing in
+     front of the text on the lower half of the orbit and behind it
+     on the upper half. */
   .brand-dot {
     color: var(--accent);
+    transition: color 0.2s ease;
+  }
+  .pill:hover .brand-dot,
+  .pill[aria-expanded='true'] .brand-dot {
+    color: transparent;
+  }
+
+  /* Orbiting dot. The animation always runs but is paused at rest
+     and only fades in on hover/open, so the pill is dormant when not
+     interacted with and the dot picks up at a sensible orbit
+     position when the user re-hovers. */
+  .wordmark::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 1px 3px rgba(139, 127, 255, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    animation:
+      orbit 4.5s linear infinite paused,
+      orbitDepth 4.5s steps(2, jump-none) infinite paused;
+  }
+  .pill:hover .wordmark::after,
+  .pill[aria-expanded='true'] .wordmark::after {
+    opacity: 1;
+    animation-play-state: running, running;
+  }
+
+  /* Elliptical orbit (rx=40, ry≈9) traced by an animated transform
+     chain. The trick: scaleY(0.225) on the OUTSIDE squashes the
+     rotation into an ellipse so the orbit fits inside the pill's
+     38px height; scaleY(4.44) on the INSIDE pre-stretches the dot
+     so it ends up a perfect circle once the outer squash applies.
+     The two cancel for axis-aligned points and the dot's bounding
+     box stays a constant 8x8 throughout the orbit. */
+  @keyframes orbit {
+    from { transform: scaleY(0.225) rotate(0deg)   translate(40px, 0) rotate(0deg)   scaleY(4.44); }
+    to   { transform: scaleY(0.225) rotate(360deg) translate(40px, 0) rotate(-360deg) scaleY(4.44); }
+  }
+
+  /* Depth flip at the side crossings of the orbit. Going clockwise
+     from 3 o'clock:
+       0% .. 50%  — front half (passes through 6 o'clock, below text)
+       50% .. 100% — back half (passes through 12 o'clock, above text)
+     `steps(2, jump-none)` gives a clean discrete jump at exactly 50%
+     instead of integer-interpolating z-index across the whole cycle. */
+  @keyframes orbitDepth {
+    0%   { z-index: 2; }
+    100% { z-index: -1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wordmark::after { animation: none; }
   }
   .count {
     font-family: var(--font-sans);
