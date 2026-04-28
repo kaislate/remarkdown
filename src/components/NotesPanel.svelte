@@ -95,7 +95,7 @@
   function onDocClick(e: MouseEvent) {
     if (!open) return;
     const target = e.target as HTMLElement | null;
-    if (target?.closest?.('.notes-pill-wrap')) return;
+    if (target?.closest?.('.notes-pill-wrap, .notes-popup-wrap')) return;
     open = false;
   }
 
@@ -114,7 +114,24 @@
 
 {#if $doc !== null}
   <div class="notes-pill-wrap">
-    {#if open}
+    <button
+      class="pill glass glass-pill"
+      aria-label={open
+        ? 'Close re.marks panel'
+        : `Open re.marks panel (${notes.length} ${notes.length === 1 ? 'note' : 'notes'})`}
+      aria-expanded={open}
+      title={`re.marks (${notes.length})`}
+      onclick={() => (open = !open)}
+    >
+      <span class="wordmark">re<span class="brand-dot">.</span>marks</span>
+      {#if notes.length > 0}
+        <span class="count">{notes.length}</span>
+      {/if}
+    </button>
+  </div>
+
+  {#if open}
+    <div class="notes-popup-wrap">
       <div class="popup glass" role="dialog" aria-label="re.marks">
         <header>
           <h3>re<span class="brand-dot">.</span>marks{notes.length > 0 ? ` (${notes.length})` : ''}</h3>
@@ -144,42 +161,36 @@
           </ul>
         {/if}
       </div>
-    {/if}
-
-    <button
-      class="pill glass glass-pill"
-      aria-label={open
-        ? 'Close re.marks panel'
-        : `Open re.marks panel (${notes.length} ${notes.length === 1 ? 'note' : 'notes'})`}
-      aria-expanded={open}
-      title={`re.marks (${notes.length})`}
-      onclick={() => (open = !open)}
-    >
-      <span class="wordmark">re<span class="brand-dot">.</span>marks</span>
-      {#if notes.length > 0}
-        <span class="count">{notes.length}</span>
-      {/if}
-    </button>
-  </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
-  /* Sits beside the ToC button (left:144, width:38, +8px gap = 190).
-     Same vertical level (bottom:68) so the two read as a "navigation
-     tools" cluster above the bottom-left zoom + Focus stack. The popup
-     expands UPWARD from the pill.
+  /* Sits to the LEFT of the ToC button (left:144), with an 8px gap.
+     We anchor the pill's RIGHT edge at 136px from the viewport's left
+     so the gap stays consistent regardless of how wide the wordmark +
+     count grow. Same vertical level (bottom:68) so the two read as a
+     "navigation tools" cluster above the bottom-left zoom + Focus
+     stack.
      z-index 110 puts the wrap above WelcomeDismiss (z:100) so the
      expanding popup doesn't get visually covered by the dismiss text
      when both are visible at the same time. */
   .notes-pill-wrap {
     position: fixed;
     bottom: 68px;
-    left: 190px;
+    right: calc(100% - 136px);
     z-index: 110;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  }
+  /* The popup is wider (360px) than the gap between the pill and the
+     left edge of the screen, so it can't expand straight up from the
+     pill without clipping. Instead, anchor it at the same x as the
+     zoom controls (left:22) and float it above the pill row. */
+  .notes-popup-wrap {
+    position: fixed;
+    /* pill bottom 68 + pill height 38 + 8px gap = 114 */
+    bottom: 114px;
+    left: 22px;
+    z-index: 110;
   }
 
   .pill {
