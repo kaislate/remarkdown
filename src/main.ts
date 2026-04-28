@@ -1,6 +1,7 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import { flushSave } from './lib/save';
+import { installE2EBridge } from './lib/e2e-debug-bridge';
 
 const app = mount(App, { target: document.getElementById('app')! });
 
@@ -13,5 +14,7 @@ if (import.meta.env.MODE !== 'e2e') {
     flushSave().catch(() => {});
   });
 }
+
+installE2EBridge();
 
 export default app;

@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  findEnclosedText,
-  findTextLineAbove,
   findTextLineThrough,
   findBlockBeside,
   findBlockAtPoint,
 } from '../../src/lib/drawing-anchor-finders';
 import type { BBox } from '../../src/lib/drawing-geometry';
+
+// findEnclosedText happy-path coverage lives in tests/e2e/drawing-recognition.spec.ts —
+// jsdom doesn't implement Range layout for getBoundingClientRect at the character
+// level, so meaningful tests need a real browser.
 
 function makeRoot(html: string): HTMLElement {
   const root = document.createElement('div');
@@ -17,15 +19,6 @@ function makeRoot(html: string): HTMLElement {
 
 beforeEach(() => {
   document.body.innerHTML = '';
-});
-
-describe('findEnclosedText', () => {
-  // jsdom does not implement layout for Range.getBoundingClientRect(), which
-  // means we cannot meaningfully test character-level enclosure in unit tests.
-  // This function is exercised by integration tests in Task 3 (recognize) and
-  // Task 5 (render) where end-to-end fixtures use real text-anchor resolution.
-  it.todo('returns the text that lies fully inside the bbox (deferred — needs jsdom layout or browser env)');
-  it.todo('returns null when no text falls fully inside (deferred — needs jsdom layout or browser env)');
 });
 
 describe('findBlockBeside', () => {

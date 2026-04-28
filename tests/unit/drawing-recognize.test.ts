@@ -5,14 +5,9 @@ import type { Point } from '../../src/lib/drawing-geometry';
 beforeEach(() => { document.body.innerHTML = ''; });
 
 describe('recognize', () => {
-  // The "circle around text" and "underline below text" cases depend on
-  // findEnclosedText / findTextLineAbove returning non-null Ranges, which
-  // require Range.getBoundingClientRect / getClientRects to return
-  // meaningful rects — jsdom doesn't implement that. These cases are
-  // deferred to integration tests in Tasks 5/8/9 where the recognizer
-  // runs against the real browser DOM.
-  it.todo('classifies a closed loop around text as kind: "circle" (deferred — needs browser env)');
-  it.todo('classifies a horizontal line as "underline" when sitting below text (deferred — needs browser env)');
+  // "circle" and "underline" cases are exercised in tests/e2e/drawing-recognition.spec.ts —
+  // they depend on Range.getBoundingClientRect / getClientRects returning
+  // meaningful rects, which jsdom doesn't implement.
 
   it('classifies a tiny scribble as kind: "freehand"', () => {
     const root = document.createElement('div');

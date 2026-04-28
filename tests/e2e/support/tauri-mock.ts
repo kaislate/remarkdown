@@ -1,6 +1,18 @@
 // tests/e2e/support/tauri-mock.ts
 // A localStorage-backed stand-in for @tauri-apps/api/core used by Playwright E2E.
 
+// Stub classes required by @tauri-apps/plugin-fs (which imports from @tauri-apps/api/core
+// via the vite alias). These are never actually called in the browser mock — they just
+// need to exist so the build doesn't fail with "not exported" errors.
+export class Resource {
+  protected rid!: number;
+  async close(): Promise<void> { /* no-op */ }
+}
+export class Channel<T = unknown> {
+  id: number = 0;
+  onmessage: (response: T) => void = () => { /* no-op */ };
+}
+
 interface Doc { markdown: string; sidecar_raw: string | null; sha256: string; bytes: number; }
 
 function docKey(path: string): string { return `rmd-doc::${path}`; }
