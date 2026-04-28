@@ -218,8 +218,18 @@
   }
   /* "re.marks" wordmark — same typography + accent dot as the re.md
      mark next to the hamburger, just shorter. Consistent brand
-     vocabulary for "the place your annotations live". */
+     vocabulary for "the place your annotations live".
+
+     inline-block + position:relative gives the orbiting dot a
+     containing block to position against. isolation: isolate creates
+     a stacking context so the orbit's z-index:-1 stays ABOVE the
+     pill's glass background (which lives outside this context) but
+     BELOW the inline letters of "re.marks" — that's how the dot can
+     pass behind the text without falling out the back of the pill. */
   .wordmark {
+    display: inline-block;
+    position: relative;
+    isolation: isolate;
     font-family: var(--font-sans);
     font-size: 14px;
     font-weight: 600;
@@ -227,45 +237,73 @@
     line-height: 1;
     color: inherit;
   }
-  /* The dot lives as a typographic period at rest (the literal "."
-     character coloured with --accent). On hover the period fades out
-     and a ::before pseudo morphs into the same round, glowing circle
-     used by .note-pin in the document — same accent fill, same purple
-     halo box-shadow. The shared visual language tells the user this
-     button is "where your re.marks live". */
+  /* At rest the dot is the literal "." character. On hover (or while
+     the popup is open) the period fades out and a ::after pseudo on
+     .wordmark takes its place — orbiting the entire word, passing in
+     front of the text on the lower half of the orbit and behind it
+     on the upper half. */
   .brand-dot {
     color: var(--accent);
-    position: relative;
-    display: inline-block;
-    transition: color 0.15s ease;
+    transition: color 0.2s ease;
   }
-  .brand-dot::before {
-    content: '';
-    position: absolute;
-    /* Anchor near the baseline so the circle lands where the period
-       was instead of floating in the line's vertical centre. */
-    bottom: 0.1em;
-    left: 50%;
-    width: 0.7em;
-    height: 0.7em;
-    border-radius: 999px;
-    background: var(--accent);
-    transform: translateX(-50%) scale(0);
-    opacity: 0;
-    box-shadow: 0 1px 3px rgba(139, 127, 255, 0.4);
-    transition:
-      transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-      opacity 0.15s ease,
-      box-shadow 0.2s ease;
-    pointer-events: none;
-  }
-  .pill:hover .brand-dot {
+  .pill:hover .brand-dot,
+  .pill[aria-expanded='true'] .brand-dot {
     color: transparent;
   }
-  .pill:hover .brand-dot::before {
-    transform: translateX(-50%) scale(1.3);
+
+  /* Orbiting dot. The animation always runs but is paused at rest
+     and only fades in on hover/open, so the pill is dormant when not
+     interacted with and the dot picks up at a sensible orbit
+     position when the user re-hovers. */
+  .wordmark::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 1px 3px rgba(139, 127, 255, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    animation:
+      orbit 4.5s linear infinite paused,
+      orbitDepth 4.5s steps(2, jump-none) infinite paused;
+  }
+  .pill:hover .wordmark::after,
+  .pill[aria-expanded='true'] .wordmark::after {
     opacity: 1;
-    box-shadow: 0 2px 8px rgba(139, 127, 255, 0.7);
+    animation-play-state: running, running;
+  }
+
+  /* Elliptical orbit (rx=40, ry≈9) traced by an animated transform
+     chain. The trick: scaleY(0.225) on the OUTSIDE squashes the
+     rotation into an ellipse so the orbit fits inside the pill's
+     38px height; scaleY(4.44) on the INSIDE pre-stretches the dot
+     so it ends up a perfect circle once the outer squash applies.
+     The two cancel for axis-aligned points and the dot's bounding
+     box stays a constant 8x8 throughout the orbit. */
+  @keyframes orbit {
+    from { transform: scaleY(0.225) rotate(0deg)   translate(40px, 0) rotate(0deg)   scaleY(4.44); }
+    to   { transform: scaleY(0.225) rotate(360deg) translate(40px, 0) rotate(-360deg) scaleY(4.44); }
+  }
+
+  /* Depth flip at the side crossings of the orbit. Going clockwise
+     from 3 o'clock:
+       0% .. 50%  — front half (passes through 6 o'clock, below text)
+       50% .. 100% — back half (passes through 12 o'clock, above text)
+     `steps(2, jump-none)` gives a clean discrete jump at exactly 50%
+     instead of integer-interpolating z-index across the whole cycle. */
+  @keyframes orbitDepth {
+    0%   { z-index: 2; }
+    100% { z-index: -1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wordmark::after { animation: none; }
   }
   .count {
     font-family: var(--font-sans);
