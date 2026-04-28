@@ -185,6 +185,13 @@
 </script>
 
 {#if $doc !== null}
+  <!-- Peek-zone for popout-in-Focus-mode. Always present; CSS only
+       activates it when body.minimap-popout is set. Sits just outside
+       the minimap's right edge with an 8px overlap so the user can
+       move their pointer from the peek strip onto the revealed
+       minimap without losing :hover. -->
+  <div class="minimap-peek-zone" aria-hidden="true"></div>
+
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="minimap glass"
@@ -335,5 +342,37 @@
 
   @media (max-width: 900px) {
     .minimap, .minimap-toggle { display: none; }
+  }
+
+  /* Peek-zone — invisible by default. Activates only when the body has
+     the minimap-popout class (= reader-mode + the popout setting both
+     on). The geometry (right:0, width:24) overlaps the minimap's right
+     edge (right:16, so x-range ends at viewport-16) by 8px, giving the
+     user a hover-continuous transition from the peek strip onto the
+     revealed minimap. */
+  .minimap-peek-zone {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    pointer-events: none;
+    z-index: 84;
+  }
+  :global(body.minimap-popout) .minimap-peek-zone {
+    pointer-events: auto;
+  }
+
+  /* Popout state: keep the minimap mounted (reader-mode.css won't
+     display:none it when minimap-popout is also set) but slide it
+     fully off the right edge plus the gutter, then bring it back when
+     either the peek zone or the minimap itself is hovered. The CSS
+     transition on transform was already declared on .minimap above. */
+  :global(body.minimap-popout) .minimap {
+    transform: translateX(calc(100% + 24px));
+  }
+  :global(body.minimap-popout) .minimap-peek-zone:hover ~ .minimap,
+  :global(body.minimap-popout) .minimap:hover {
+    transform: translateX(0);
   }
 </style>

@@ -98,7 +98,20 @@
   const unsubReaderMode = readerMode.subscribe((on) => {
     if (typeof document === 'undefined') return;
     document.body.classList.toggle('reader-mode', on);
+    syncMinimapPopoutClass();
   });
+
+  // body.minimap-popout is the combined signal (reader-mode AND the
+  // setting both on). reader-mode.css uses it to keep the minimap
+  // mounted but slid offscreen, with a peek-zone trigger sliding it
+  // back in on hover. Both inputs feed this — re-sync whenever either
+  // changes.
+  function syncMinimapPopoutClass() {
+    if (typeof document === 'undefined') return;
+    const on = get(readerMode) && get(settings).minimapPopoutInFocusMode;
+    document.body.classList.toggle('minimap-popout', on);
+  }
+  const unsubMinimapPopout = settings.subscribe(syncMinimapPopoutClass);
 
   // ESC exits reader mode. Other ESC handlers (modal close, popover
   // close, menu close) live in their own components and run on the
@@ -281,6 +294,7 @@
     unsubTool();
     unsubTheme();
     unsubReaderMode();
+    unsubMinimapPopout();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
       window.removeEventListener('keydown', onToolShortcut);

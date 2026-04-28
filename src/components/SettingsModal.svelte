@@ -125,6 +125,19 @@
               onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
             />
           </div>
+
+          <div class="row">
+            <div>
+              <label for="setting-minimap-popout">Minimap popout in Focus mode</label>
+              <div class="hint">hover the right edge of the screen to reveal the minimap while reading</div>
+            </div>
+            <input
+              id="setting-minimap-popout"
+              type="checkbox"
+              checked={$settings.minimapPopoutInFocusMode}
+              onchange={(e) => updateSettings({ minimapPopoutInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
         </section>
 
         <section>

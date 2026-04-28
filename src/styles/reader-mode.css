@@ -11,11 +11,18 @@ body.reader-mode .rail,
 body.reader-mode .strip,
 body.reader-mode .notes-pill-wrap,
 body.reader-mode .dismiss,
-body.reader-mode .minimap,
 body.reader-mode .minimap-toggle,
 body.reader-mode .zoom-rail,
 body.reader-mode .toc-button,
 body.reader-mode .toc-popover {
+  display: none !important;
+}
+
+/* Minimap is hidden by default in reader mode. The popout class
+   (set when reader-mode + the minimapPopoutInFocusMode setting are
+   both on) keeps it mounted so the peek-zone slide-in can reveal it
+   on hover — see Minimap.svelte for the popout transitions. */
+body.reader-mode:not(.minimap-popout) .minimap {
   display: none !important;
 }
 
