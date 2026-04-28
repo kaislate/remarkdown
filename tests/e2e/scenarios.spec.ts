@@ -86,10 +86,10 @@ test('3. a note persists across reload with body intact', async ({ page }) => {
   await page.getByRole('menuitem', { name: /open…/i }).click();
   await page.getByRole('heading', { level: 1 }).waitFor();
 
-  await page.getByRole('radio', { name: /note/i }).click();
+  await page.getByRole('radio', { name: /re\.mark/i }).click();
   await page.locator('p[data-block-id]').first().click();
 
-  const popover = page.getByRole('dialog', { name: /note/i });
+  const popover = page.getByRole('dialog', { name: /re\.mark/i });
   await popover.waitFor();
   const textarea = popover.getByRole('textbox');
   await textarea.fill('this is my note');
@@ -127,7 +127,9 @@ test('4. a drawing persists', async ({ page }) => {
   );
   const drawing = sidecar.annotations.find((a: any) => a.type === 'drawing');
   expect(drawing).toBeTruthy();
-  expect(drawing.strokes.length).toBeGreaterThan(0);
+  expect(drawing.shape).toBeTruthy();
+  expect(drawing.shape.kind).toBe('freehand');
+  expect(drawing.shape.points.length).toBeGreaterThan(0);
 });
 
 test('5. external edit to the markdown orphans a highlight', async ({ page }) => {
