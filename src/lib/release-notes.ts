@@ -14,10 +14,12 @@ export interface ReleaseEntry {
   name: string;          // human-readable title (falls back to tag_name)
   body: string;          // raw markdown release notes
   publishedAt: string;   // ISO 8601 date
+  prerelease: boolean;
 }
 
 export async function fetchNewerReleases(
   currentVersion: string,
+  includePrereleases: boolean = false,
 ): Promise<ReleaseEntry[] | null> {
   try {
     const res = await fetch(
@@ -36,14 +38,16 @@ export async function fetchNewerReleases(
     if (!Array.isArray(releases)) return null;
 
     return releases
-      .filter((r) => !r.draft && isStrictlyNewer(r.tag_name, currentVersion))
+      .filter((r) => !r.draft)
+      .filter((r) => includePrereleases || !r.prerelease)
+      .filter((r) => isStrictlyNewer(r.tag_name, currentVersion))
       .map((r) => ({
         version: r.tag_name,
         name: r.name?.trim() || r.tag_name,
         body: (r.body ?? '').trim(),
         publishedAt: r.published_at,
+        prerelease: r.prerelease ?? false,
       }))
-      // GitHub returns descending by published_at; keep that — newest at top.
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
   } catch {
     return null;

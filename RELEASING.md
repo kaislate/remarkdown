@@ -170,19 +170,42 @@ directly in a browser:
 https://github.com/kaislate/remarkdown/releases/latest/download/latest.json
 ```
 
-## Pre-release channel (deferred)
+## Pre-release channel (full implementation TBD)
 
-Once we add channel switching (planned for a later iteration), the
-release process will gain a parallel manifest:
+The `receivePrereleaseUpdates` setting (added in 0.5.x) currently only affects
+which releases appear in the Update modal's aggregated changelog. Auto-installing
+pre-release builds via the in-app updater requires either:
 
-- `latest.json` → stable channel
-- `latest-prerelease.json` → pre-release channel
+### Option A: Maintained `latest-prerelease` tag
 
-Pre-releases would be created with `gh release create --prerelease`
-and would attach `latest-prerelease.json` instead of `latest.json`.
-GitHub's `/latest/` redirect skips pre-releases, so stable users
-won't see them. Users who opt in via in-app settings will fetch the
-pre-release manifest URL instead.
+1. After every pre-release cut (e.g., `v1.1.0-beta`), force-update a moving
+   `latest-prerelease` git tag to point at the same commit:
+   ```
+   git tag -f latest-prerelease v1.1.0-beta
+   git push origin latest-prerelease --force
+   ```
+2. Configure `tauri.conf.json` `plugins.updater.endpoints` with both URLs:
+   ```jsonc
+   "endpoints": [
+     "https://github.com/kaislate/remarkdown/releases/download/latest-prerelease/latest.json",
+     "https://github.com/kaislate/remarkdown/releases/latest/download/latest.json"
+   ]
+   ```
+3. Tauri tries them in order; the first valid newer manifest wins. **Note:** this
+   means ALL users would see pre-releases by default — to honour the user's setting,
+   we'd need a custom Rust command that picks the appropriate URL.
+
+### Option B: Custom Rust update command
+
+Bypass `tauri-plugin-updater`'s `check()` entirely and implement our own:
+1. Custom `check_for_update_with_channel(channel: &str)` Rust command
+2. Fetches the appropriate manifest URL (stable vs prerelease) using `reqwest`
+3. Verifies signatures with `minisign-verify`
+4. Returns a manifest the frontend installs via the existing plugin's `Update.downloadAndInstall`
+   (or a parallel custom install command)
+
+Option B is cleaner but ~2x the engineering work. Defer until a stable v1.0
+ships and we have actual stable users wanting to opt into pre-releases.
 
 ## Troubleshooting
 
