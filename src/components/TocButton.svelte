@@ -114,10 +114,13 @@
 {/if}
 
 <style>
+  /* Stacked above the reader-mode (Focus) toggle at left:144, bottom:22.
+     Same x so the two pills line up vertically; offset bottom by the
+     toggle height (38) plus a small gap (8) = 68px above the bottom. */
   .toc-button {
     position: fixed;
-    bottom: 22px;
-    left: 196px;
+    bottom: 68px;
+    left: 144px;
     width: 38px;
     height: 38px;
     display: grid;
@@ -149,9 +152,13 @@
     cursor: default;
   }
 
+  /* Popover floats above the button (which sits at bottom:68 + height:38
+     = top edge at bottom:106). Offset 10px above the button so the
+     glass border doesn't kiss the pill. Anchored at left:22 so the
+     popover spans the same edge as the zoom + re.marks pills below. */
   .toc-popover {
     position: fixed;
-    bottom: 70px;
+    bottom: 116px;
     left: 22px;
     z-index: 110;
     width: min(340px, calc(100vw - 44px));
