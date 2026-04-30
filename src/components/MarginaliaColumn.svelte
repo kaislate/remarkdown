@@ -47,6 +47,12 @@
   interface Card {
     note: Note;
     y: number;
+    /** Distance in px from the anchor's right edge (= where the
+     *  in-document .note-pin lives) to the card's left edge. The
+     *  connector line + travelling pulse span this whole distance,
+     *  so the user sees the animation traveling from the pin in the
+     *  text all the way over to the card. */
+    connectorWidth: number;
     anchorText: string;
   }
 
@@ -68,9 +74,13 @@
         } catch {
           rangeRect = new DOMRect(0, 0, 0, 0);
         }
+        // Floor at 32 so an anchor that ends very close to the
+        // text-frame's right edge still gets a visible connector.
+        const gap = Math.max(32, containerRect.left - rangeRect.right);
         return {
           note,
           y: rangeRect.top - containerRect.top,
+          connectorWidth: gap,
           anchorText: note.anchor.text,
         };
       });
@@ -127,7 +137,7 @@
       <div
         class="note-card"
         class:editing
-        style:top="{card.y - DOT_OFFSET}px"
+        style="top: {card.y - DOT_OFFSET}px; --connector-width: {card.connectorWidth}px;"
         onclick={() => { if (!editing) startEditing(card.note.id); }}
         title={editing ? '' : 'Click to edit'}
       >
@@ -193,15 +203,20 @@
     gap: 8px;
     transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
   }
-  /* Connector line — a static horizontal segment from the text-frame's
-     right edge to the card's accent dot. Drawn via ::before so we don't
-     need a separate SVG layer. */
+  /* Connector line — a static horizontal segment that spans the FULL
+     gap from the in-document .note-pin (at the anchor's right edge) to
+     the card's accent dot. The width comes from the per-card
+     --connector-width custom property set on the .note-card itself
+     (computed in the derived cards from rangeRect.right and the
+     marginalia container's left). */
   .note-card::before {
     content: '';
     position: absolute;
-    left: -32px;
+    /* right:100% anchors to the card's left edge; the line then
+       extends leftward by --connector-width to reach the pin. */
+    right: 100%;
     top: 16px; /* dot center: padding-top 8 + dot margin-top 4 + dot half-height 4 */
-    width: 32px;
+    width: var(--connector-width, 32px);
     height: 1.5px;
     background: var(--accent);
     opacity: 0.4;
@@ -209,13 +224,17 @@
     pointer-events: none;
   }
   /* Traveling pulse — a glowing dot that walks the connector from the
-     anchor side to the card side, fading in at the start and out at
-     the end so the loop reset doesn't look like a snap. Hidden under
-     prefers-reduced-motion. */
+     anchor side (at the in-doc pin) to the card side, fading in at
+     the start and out at the end so the loop reset doesn't look like
+     a snap. Distance comes from the same --connector-width var.
+     Hidden under prefers-reduced-motion. */
   .note-card::after {
     content: '';
     position: absolute;
-    left: -32px;
+    /* Resting position: dot's left edge sits at the anchor end of the
+       connector (i.e., at the in-doc pin). Animation translates it
+       rightward by the connector's full width. */
+    left: calc(-1 * var(--connector-width, 32px));
     top: 13px;
     width: 6px;
     height: 6px;
@@ -226,10 +245,10 @@
     animation: connectorTravel 2.2s linear infinite;
   }
   @keyframes connectorTravel {
-    0%   { transform: translateX(0);   opacity: 0; }
+    0%   { transform: translateX(0);                              opacity: 0; }
     12%  { opacity: 1; }
     88%  { opacity: 1; }
-    100% { transform: translateX(32px); opacity: 0; }
+    100% { transform: translateX(var(--connector-width, 32px));   opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .note-card::after { display: none; }
