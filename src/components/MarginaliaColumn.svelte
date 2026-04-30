@@ -63,6 +63,19 @@
     if (!root || !container) return [];
 
     const containerRect = container.getBoundingClientRect();
+    // Compute the pin's visual centre from the article's font-size +
+    // the em offsets baked into NoteLayer's .note-pin CSS:
+    //   - position top = rangeRect.bottom (CSS top property)
+    //   - margin-top: -0.55em (shifts up)
+    //   - height: 0.7em (so half-height = 0.35em)
+    //   ⇒ visual centre Y = rangeRect.bottom - 0.55em + 0.35em
+    //                     = rangeRect.bottom - 0.2em
+    //   - position left = rangeRect.right
+    //   - margin-left: -0.35em + half-width 0.35em ⇒ centre X = rangeRect.right
+    // Doing the math here (not querySelector) means the orb lines up
+    // with the pin even before NoteLayer has flushed its render.
+    const articleFontSize = parseFloat(getComputedStyle(root).fontSize) || 17;
+    const pinCenterDy = articleFontSize * 0.2;
 
     return $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
@@ -74,25 +87,8 @@
         } catch {
           rangeRect = new DOMRect(0, 0, 0, 0);
         }
-        // For the connector start, prefer the actual rendered .note-pin
-        // element if we can find it — its visual centre is what the eye
-        // tracks, and computing it from rangeRect would require the
-        // em-offset math NoteLayer uses (margin-top: -0.55em, etc.).
-        // Fall back to the rangeRect's top-right when the pin isn't
-        // mounted yet (initial render race).
-        const pinEl = root.querySelector<HTMLElement>(
-          `.note-pin[data-id="${CSS.escape(note.id)}"]`,
-        );
-        let originX: number;
-        let originY: number;
-        if (pinEl) {
-          const pinRect = pinEl.getBoundingClientRect();
-          originX = pinRect.left + pinRect.width / 2;
-          originY = pinRect.top + pinRect.height / 2;
-        } else {
-          originX = rangeRect.right;
-          originY = rangeRect.top;
-        }
+        const originX = rangeRect.right;
+        const originY = rangeRect.bottom - pinCenterDy;
         // Floor at 32 so an anchor that ends very close to the
         // text-frame's right edge still gets a visible connector.
         const gap = Math.max(32, containerRect.left - originX);
