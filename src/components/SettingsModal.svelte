@@ -273,6 +273,19 @@
 
           <div class="row">
             <div>
+              <label for="setting-remark-stop-listitem">Cap context to a single bullet</label>
+              <div class="hint">re.marks anchored inside a list item show only that item, never adjacent bullets or earlier paragraphs</div>
+            </div>
+            <input
+              id="setting-remark-stop-listitem"
+              type="checkbox"
+              checked={$settings.remarkContextStopAtListItem}
+              onchange={(e) => updateSettings({ remarkContextStopAtListItem: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+
+          <div class="row">
+            <div>
               <label for="setting-marginalia">Marginalia column <span class="badge">prototype</span></label>
               <div class="hint">show re.marks as cards in the right margin (visible at viewports ≥ 1440px)</div>
             </div>

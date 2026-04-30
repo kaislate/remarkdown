@@ -19,7 +19,7 @@
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
   import { doc } from '../stores/doc';
-  import { buildSentenceContext } from '../lib/sentence-context';
+  import { contextFor } from '../lib/note-context';
   import type { Note } from '../lib/schema';
 
   let containerEl = $state<HTMLDivElement | null>(null);
@@ -68,55 +68,6 @@
    *  dotted-line look; lower = sparser stream. */
   const STREAM_DOTS = 5;
 
-  // Walk text nodes inside `block` until we hit `range.startContainer`,
-  // returning the cumulative character offset of the range's start
-  // within the block. Returns null if the start isn't found inside.
-  function anchorOffsetWithinBlock(range: Range, block: HTMLElement): number | null {
-    let acc = 0;
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-    let n = walker.nextNode();
-    while (n) {
-      if (n === range.startContainer) {
-        return acc + range.startOffset;
-      }
-      acc += (n as Text).data.length;
-      n = walker.nextNode();
-    }
-    return null;
-  }
-
-  // Build the display context for one re.mark — the anchor's sentence
-  // plus N-1 preceding ones, optionally crossing block boundaries.
-  // Mirrors NotesPanel.contextFor so the marginalia + the bottom-left
-  // panel show the same excerpt for a given re.mark.
-  function contextFor(range: Range): string {
-    const root = $currentViewerRoot;
-    if (!root) return '';
-    const startEl = (range.startContainer.nodeType === Node.TEXT_NODE
-      ? range.startContainer.parentElement
-      : (range.startContainer as Element));
-    const block = startEl?.closest<HTMLElement>('[data-block-id]');
-    if (!block) return '';
-    const anchorOffset = anchorOffsetWithinBlock(range, block);
-    if (anchorOffset === null) return block.textContent ?? '';
-
-    const blocks = $settings.remarkContextStopAtParagraph
-      ? [block]
-      : (() => {
-          const all = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
-          const idx = all.indexOf(block);
-          return idx < 0 ? [block] : all.slice(0, idx + 1);
-        })();
-    const blockTexts = blocks.map((b) => b.textContent ?? '');
-
-    return buildSentenceContext(
-      blockTexts,
-      anchorOffset,
-      $settings.remarkContextSentences,
-      $settings.remarkContextStopAtParagraph,
-    );
-  }
-
   const cards = $derived.by((): Card[] => {
     void resizeTick;
     const root = $currentViewerRoot;
@@ -159,9 +110,17 @@
           y: originY - containerRect.top,
           connectorWidth: gap,
           pinSize,
-          context: contextFor(r.range) || note.anchor.text,
+          context: contextFor(r.range, root, {
+            sentences: $settings.remarkContextSentences,
+            stopAtParagraph: $settings.remarkContextStopAtParagraph,
+            stopAtListItem: $settings.remarkContextStopAtListItem,
+          }) || note.anchor.text,
         };
-      });
+      })
+      // Sort by y so earlier (top-of-page) cards render later in the
+      // {#each}, which combined with the explicit z-index below means
+      // they overlay later cards when y-ranges collide.
+      .sort((a, b) => a.y - b.y);
   });
 
   // Inline-edit state — only one card can be in edit mode at a time.
@@ -208,14 +167,19 @@
 
 {#if $doc !== null && $settings.marginaliaEnabled}
   <div class="marginalia" bind:this={containerEl} aria-label="re.marks marginalia">
-    {#each cards as card (card.note.id)}
+    {#each cards as card, i (card.note.id)}
       {@const editing = editingId === card.note.id}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="note-card"
         class:editing
-        style="top: {card.y - DOT_OFFSET}px; --connector-width: {card.connectorWidth}px; --pin-size: {card.pinSize}px;"
+        style="
+          top: {card.y - DOT_OFFSET}px;
+          --connector-width: {card.connectorWidth}px;
+          --pin-size: {card.pinSize}px;
+          z-index: {editing ? 1000 : cards.length - i};
+        "
         onclick={() => { if (!editing) startEditing(card.note.id); }}
         title={editing ? '' : card.context}
       >

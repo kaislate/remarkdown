@@ -3,57 +3,17 @@
   import { viewerScroll } from '../stores/viewport';
   import { doc } from '../stores/doc';
   import { settings } from '../stores/settings';
-  import { buildSentenceContext } from '../lib/sentence-context';
+  import { contextFor as buildContext } from '../lib/note-context';
   import type { Note } from '../lib/schema';
 
   let open = $state(false);
 
-  // Compute the anchor's character offset within its containing block,
-  // by walking text nodes in the block until we hit the range's start.
-  function anchorOffsetWithinBlock(range: Range, block: HTMLElement): number | null {
-    let acc = 0;
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-    let n = walker.nextNode();
-    while (n) {
-      if (n === range.startContainer) {
-        return acc + range.startOffset;
-      }
-      acc += (n as Text).data.length;
-      n = walker.nextNode();
-    }
-    return null;
-  }
-
-  // Build the display context for a single re.mark: the anchor's
-  // sentence plus settings.remarkContextSentences-1 preceding ones.
-  // If remarkContextStopAtParagraph is false, the walk crosses block
-  // boundaries to fill the budget.
   function contextFor(range: Range): string {
-    const root = $currentViewerRoot;
-    if (!root) return '';
-    const startEl = (range.startContainer.nodeType === Node.TEXT_NODE
-      ? range.startContainer.parentElement
-      : (range.startContainer as Element));
-    const block = startEl?.closest<HTMLElement>('[data-block-id]');
-    if (!block) return '';
-    const anchorOffset = anchorOffsetWithinBlock(range, block);
-    if (anchorOffset === null) return block.textContent ?? '';
-
-    const blocks = $settings.remarkContextStopAtParagraph
-      ? [block]
-      : (() => {
-          const all = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
-          const idx = all.indexOf(block);
-          return idx < 0 ? [block] : all.slice(0, idx + 1);
-        })();
-    const blockTexts = blocks.map((b) => b.textContent ?? '');
-
-    return buildSentenceContext(
-      blockTexts,
-      anchorOffset,
-      $settings.remarkContextSentences,
-      $settings.remarkContextStopAtParagraph,
-    );
+    return buildContext(range, $currentViewerRoot, {
+      sentences: $settings.remarkContextSentences,
+      stopAtParagraph: $settings.remarkContextStopAtParagraph,
+      stopAtListItem: $settings.remarkContextStopAtListItem,
+    });
   }
 
   // Resolved notes only — orphaned notes live in their own panel and
