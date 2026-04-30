@@ -15,7 +15,7 @@
 
 </div>
 
-![Status: Beta](https://img.shields.io/badge/status-0.5.3--beta-2ea44f)
+![Status: Beta](https://img.shields.io/badge/status-0.5.4--beta-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
@@ -23,11 +23,11 @@
 
 ---
 
-## 🎉 0.5.3 Beta — latest
+## 🎉 0.5.4 Beta — latest
 
-**0.5.3-beta** adds **per-document reading progress**, a **table-of-contents popover** for navigating long docs, an **aggregated changelog** in the update modal so you can see what you're getting when multiple versions behind, a **dimmed backdrop + X-cursor** when the hamburger menu is open, and an **orbiting dot animation** on the re.marks pill that passes in front of and behind the wordmark. Plus fixes for mermaid diagrams in the minimap, an always-up-to-date welcome screen, and snappier cursor dismissal. Full notes on the [release page](../../releases/latest).
+**0.5.4-beta** adds a **right-margin marginalia column** that shows every re.mark as an editable liquid-glass card aligned with its anchor — click to edit in place, with a stream of luminous orbs that flows from the in-doc dot into the card. Cards push each other down to avoid collisions, and a configurable bullet-cap keeps re.marks anchored in list items from spilling context across other items. Also: **Open new documents in Focus mode**, **Minimap popout in Focus mode** with a hover-reveal peek zone, an entirely **redesigned title-bar** with colour-coded blooming hover orbs, and a **reorganized Settings panel** with 6 balanced sections.
 
-Earlier in the 0.5 line: drawings now anchor to text and survive zoom (0.5.1), mermaid + Obsidian-style callouts + orphan re-attach + file watcher arrived in 0.5.2.
+Earlier in the 0.5 line: per-doc reading progress + ToC popover + aggregated changelog + hamburger overlay (0.5.3); mermaid + Obsidian-style callouts + orphan re-attach + file watcher (0.5.2); drawings anchored to text, reader mode, drawing roughness slider (0.5.1).
 
 > ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull these betas on its own. **Download the latest installer from the [Releases page](../../releases/latest) and run it once** — every release after this one will arrive automatically via the in-app updater.
 
@@ -57,7 +57,8 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 ### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
 - **📝 re.marks** (sticky-note style) anchored to the right margin of the chosen word, with click-off-to-close popovers and punctuation-aware word boundary detection
-- **📋 re.marks side panel** — bottom-left pill (next to the Table of Contents button) opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop). Click an entry to jump. The wordmark's dot orbits around it on hover.
+- **📋 re.marks side panel** — bottom-left pill (next to the Table of Contents button) opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop, optional cap-to-bullet). Click an entry to jump. The wordmark's dot orbits around it on hover.
+- **📜 Marginalia column** [prototype] — right-margin liquid-glass cards, one per re.mark, vertically aligned with the anchor and showing the same sentence context. Click any card to edit in place; a stream of glowing dots flows from the in-doc pin into the card while editing. Push-down collision avoidance keeps cards readable even when re.marks cluster.
 - **✏️ Drawings anchored to text** — freehand SVG strokes that follow text reflow + zoom; opt-in **auto-transform** turns closed loops around words into ellipses, lines under text into underlines, vertical margin lines into margin bars, etc.; **drawing roughness slider** in Settings (0 = crisp, 3 = very sketchy)
 - **🧹 Eraser tool** — single-click delete for any highlight, re.mark, or drawing without confirmation
 - **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
@@ -72,7 +73,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 - **🧩 Mermaid diagrams** — fenced ` ```mermaid ` blocks render as SVG; lazy-loaded so the bundle stays small
 - **💬 Obsidian-style callouts** — blockquotes prefixed with `[!type]` render as themed boxes (`note`, `info`, `tip`, `warning`, `danger`, `bug`, `quote`, `abstract`, etc.); foldable variants `[!type]+` / `[!type]-`
 - **👁 File watcher** — edit the open file in another editor and remarkdown reloads within ~1s; surviving annotations stay anchored, others go to the Orphan panel
-- **📖 Reader mode** — toggle a clean reading view that hides every chrome layer; title-bar drag + resize grip stay invisibly clickable
+- **📖 Focus mode** — toggle a clean reading view that hides every chrome layer; title-bar drag + resize grip stay invisibly clickable. Optionally **open new documents straight into Focus mode** + **peek the minimap on hover** when active
 - **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
 - **🌓 Dark or light liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
 - **🪞 Vertical filename watermark** in the left margin (extreme size, low opacity, fades toward the article column)
@@ -84,6 +85,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 
 ### Window chrome
 - **🖱 Hamburger hover morph** — the wordmark animates from `re.md` → `remarkdown` whenever you hover the menu button (same choreography as the splash)
+- **🎨 Title-bar window controls** with colour-coded blooming hover orbs — amber for minimize, cyan for maximize, red for close — plus per-icon micro-animations (slide-down / scale / rotate)
 - **🔧 Bottom-right resize grip** — drag to resize, **double-click to reset to the default 1100×780**; double-click the title bar to toggle maximize
 - **🏷 Animated BETA pin** under the wordmark and on the splash, with glow-pulse + gradient drift + diagonal shine; auto-hides at 1.0+ stable
 
@@ -203,23 +205,26 @@ Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cut
 
 ## 🗺 Roadmap
 
-### ✅ Shipped through 0.5.3-beta
+### ✅ Shipped through 0.5.4-beta
 - Reader MVP — Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
 - All four annotation types (highlight, re.mark, drawing, eraser) with save/load round-trip
 - Drawings **anchored to text** with optional auto-shape recognition + roughness slider
 - **re.marks side panel** with configurable sentence-context, animated wordmark, ToC-adjacent placement
+- **Marginalia column** [prototype] — right-margin liquid-glass cards with click-to-edit + flowing-dot connector + push-down collision avoidance
 - **Mermaid** diagrams + **Obsidian-style callouts** with foldable variants
 - Anchoring with **orphan detection + re-attach** UI
 - **File watcher** — external edits reload within ~1s; survivors stay anchored
 - **Per-document reading progress** + **Table-of-contents popover** for navigation
 - **In-app auto-update** with manual + auto-check, Ed25519-signed installers, **aggregated multi-version changelog**
-- **Reader mode** that hides every chrome layer; minimap; zoom; frameless window; splash
-- **Hamburger backdrop + X-cursor**, hand-drawn welcome tutorial, animated BETA pin, hover wordmark morph
-- 20-setting Settings panel with persistent preferences and live apply
+- **Focus mode** — hides every chrome layer; optional auto-enter on doc open; optional minimap-popout-on-hover
+- Minimap, zoom, frameless window, splash
+- **Hamburger backdrop + X-cursor**, blooming title-bar control orbs, hand-drawn welcome tutorial, animated BETA pin, hover wordmark morph
+- 23-setting Settings panel (six sections, hairline separators) with persistent preferences and live apply
 - Dark and light themes; full error matrix (UTF-8 toast, corrupt-sidecar backup, write-retry, 2 MB warning)
-- 390+ Vitest tests, 6 Rust tests, Playwright E2E coverage of the spec scenarios, 0 svelte-check warnings
+- 390+ Vitest tests, Rust tests, Playwright E2E coverage of the spec scenarios, 0 svelte-check warnings
 
 ### 🔮 Post-beta (deferred)
+- **Marginalia polish** — measured (not estimated) card heights for tighter push-down, wide-doc / narrow-window adaptive layout, optional connector treatments
 - **Edit mode** — slash-command for headings/lists, drag-and-drop mermaid diagrams + inline images. *"a markdown editor for people who don't know what markdown is"*
 - **Pre-release channel** — wire up the auto-updater so opt-in users actually receive pre-release builds (currently only changelog filtering is implemented)
 - **Undo/redo** action log
