@@ -272,17 +272,15 @@
     color: var(--fg-1);
     display: flex;
     gap: 8px;
-    /* Multi-layer bevel + single offset drop shadow.
-       - Sharp 1px inset highlight on top-left = curve rim
-       - Soft 4px inset highlight = the curve's gradient inward
-       - Sharp 1px inset shadow on bottom-right = curve falling away
-       - Soft 6px inset shadow = the gradient inward
-       - Single offset (8px,12px) drop shadow with NO accent halo */
+    /* Soft bevel only — no sharp 1px rim lines (they read as a
+       stroke). Edges are defined by:
+       - the radial highlight + vignette in the background
+       - blurred inset shadows that fade smoothly inward
+       - the offset drop shadow giving depth.
+       No outline-like lines anywhere. */
     box-shadow:
-      inset 1px 1px 0 rgba(255, 255, 255, 0.24),
-      inset 3px 3px 8px rgba(255, 255, 255, 0.06),
-      inset -1px -1px 0 rgba(0, 0, 0, 0.32),
-      inset -3px -3px 10px rgba(0, 0, 0, 0.18),
+      inset 4px 4px 10px rgba(255, 255, 255, 0.10),
+      inset -4px -4px 12px rgba(0, 0, 0, 0.22),
       8px 12px 26px rgba(0, 0, 0, 0.55);
     transition:
       transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -345,29 +343,25 @@
   @media (prefers-reduced-motion: reduce) {
     .connector-stream { display: none; }
   }
-  /* Hover: lift up + left, brighten the rim highlight, deepen the
-     drop shadow. Bevel shape stays consistent. */
+  /* Hover: lift up + left, deepen the bevel + drop shadow.
+     Same no-lines treatment as default. */
   .note-card:hover {
     transform: translateX(-3px) translateY(-2px);
     box-shadow:
-      inset 1px 1px 0 rgba(255, 255, 255, 0.30),
-      inset 3px 3px 10px rgba(255, 255, 255, 0.08),
-      inset -1px -1px 0 rgba(0, 0, 0, 0.34),
-      inset -3px -3px 12px rgba(0, 0, 0, 0.20),
+      inset 4px 4px 12px rgba(255, 255, 255, 0.13),
+      inset -4px -4px 14px rgba(0, 0, 0, 0.24),
       10px 16px 32px rgba(0, 0, 0, 0.6);
   }
 
-  /* Editing: bigger lift, brighter rim, deeper drop shadow.
-     No accent border or halo glow — the writing surface inside the
-     card carries the 'live' signal instead. */
+  /* Editing: bigger lift, deeper drop shadow. No accent border or
+     halo glow — the writing surface inside the card carries the
+     'live' signal instead. */
   .note-card.editing {
     cursor: default;
     transform: translateX(-3px) translateY(-2px);
     box-shadow:
-      inset 1px 1px 0 rgba(255, 255, 255, 0.34),
-      inset 3px 3px 10px rgba(255, 255, 255, 0.10),
-      inset -1px -1px 0 rgba(0, 0, 0, 0.36),
-      inset -3px -3px 12px rgba(0, 0, 0, 0.22),
+      inset 4px 4px 12px rgba(255, 255, 255, 0.15),
+      inset -4px -4px 14px rgba(0, 0, 0, 0.26),
       12px 18px 36px rgba(0, 0, 0, 0.6);
   }
 
