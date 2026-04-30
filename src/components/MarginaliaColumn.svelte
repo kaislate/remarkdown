@@ -203,52 +203,70 @@
     gap: 8px;
     transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
   }
-  /* Connector line — a static horizontal segment that spans the FULL
-     gap from the in-document .note-pin (at the anchor's right edge) to
-     the card's accent dot. The width comes from the per-card
-     --connector-width custom property set on the .note-card itself
-     (computed in the derived cards from rangeRect.right and the
-     marginalia container's left). */
+  /* Connector baseline — a barely-there soft luminous trace from the
+     in-document .note-pin to the card. Replaces the hard 1.5px line
+     with a gradient that's strongest near the endpoints and fades in
+     the middle, plus a tiny blur for softness. Reads as a hint of a
+     path rather than a drawn line. */
   .note-card::before {
     content: '';
     position: absolute;
-    /* right:100% anchors to the card's left edge; the line then
-       extends leftward by --connector-width to reach the pin. */
     right: 100%;
-    top: 16px; /* dot center: padding-top 8 + dot margin-top 4 + dot half-height 4 */
+    top: 16px;
     width: var(--connector-width, 32px);
-    height: 1.5px;
-    background: var(--accent);
-    opacity: 0.4;
-    transition: opacity 0.18s ease, height 0.18s ease;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      rgba(139, 127, 255, 0.32) 0%,
+      rgba(139, 127, 255, 0.10) 50%,
+      rgba(139, 127, 255, 0.32) 100%
+    );
+    filter: blur(0.5px);
+    transition: opacity 0.25s ease, filter 0.25s ease;
     pointer-events: none;
   }
-  /* Traveling pulse — a glowing dot that walks the connector from the
-     anchor side (at the in-doc pin) to the card side, fading in at
-     the start and out at the end so the loop reset doesn't look like
-     a snap. Distance comes from the same --connector-width var.
+
+  /* Traveling orb — a small luminous sphere that drifts from the
+     in-document pin to the card. Multi-layered effect:
+       - radial-gradient bg = highlit sphere (3D look)
+       - negative-x box-shadows = comet trail in the wake
+       - positive-radius box-shadows = halo glow
+       - filter: blur = ethereal soft edges
+       - scale 0.5 → 1 → 0.5 in keyframes = breath / emergence
+       - ease-in-out = smooth, organic motion
      Hidden under prefers-reduced-motion. */
   .note-card::after {
     content: '';
     position: absolute;
-    /* Resting position: dot's left edge sits at the anchor end of the
-       connector (i.e., at the in-doc pin). Animation translates it
-       rightward by the connector's full width. */
     left: calc(-1 * var(--connector-width, 32px));
     top: 13px;
     width: 6px;
     height: 6px;
     border-radius: 999px;
-    background: var(--accent);
-    box-shadow: 0 0 8px rgba(139, 127, 255, 0.85);
+    background: radial-gradient(
+      circle at 32% 30%,
+      rgba(255, 255, 255, 0.95) 0%,
+      var(--accent) 38%,
+      rgba(139, 127, 255, 0.85) 100%
+    );
+    box-shadow:
+      /* Comet trail — negative x offsets fade out behind the orb */
+      -4px 0 6px 0 rgba(139, 127, 255, 0.5),
+      -10px 0 10px 0 rgba(139, 127, 255, 0.28),
+      -18px 0 14px 0 rgba(139, 127, 255, 0.14),
+      -28px 0 18px 0 rgba(139, 127, 255, 0.07),
+      /* Halo — symmetric depth glow around the orb */
+      0 0 6px rgba(139, 127, 255, 0.65),
+      0 0 16px rgba(139, 127, 255, 0.32);
+    filter: blur(0.4px);
     pointer-events: none;
-    animation: connectorTravel 2.2s linear infinite;
+    animation: connectorDrift 3s ease-in-out infinite;
   }
-  @keyframes connectorTravel {
-    0%   { transform: translateX(0);                              opacity: 0; }
-    12%  { opacity: 1; }
-    88%  { opacity: 1; }
-    100% { transform: translateX(var(--connector-width, 32px));   opacity: 0; }
+  @keyframes connectorDrift {
+    0%   { transform: translateX(0)                                                scale(0.4); opacity: 0; }
+    18%  { transform: translateX(calc(var(--connector-width, 32px) * 0.08))         scale(1);   opacity: 1; }
+    82%  { transform: translateX(calc(var(--connector-width, 32px) * 0.92))         scale(1);   opacity: 1; }
+    100% { transform: translateX(var(--connector-width, 32px))                      scale(0.4); opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .note-card::after { display: none; }
@@ -259,26 +277,42 @@
     transform: translateX(-2px);
   }
   .note-card:hover::before {
-    opacity: 1;
-    height: 2px;
+    /* Trace becomes more present on hover — still soft, just less
+       hidden. No sharp edges introduced. */
+    background: linear-gradient(
+      to right,
+      rgba(139, 127, 255, 0.55) 0%,
+      rgba(139, 127, 255, 0.25) 50%,
+      rgba(139, 127, 255, 0.55) 100%
+    );
   }
   .note-card:hover::after {
-    animation-duration: 1.4s;
+    animation-duration: 2s;
   }
   .note-card.editing {
     background: var(--bg-2);
     border-color: var(--accent-soft);
     cursor: default;
   }
+  /* Active editing — orbs travel ~3x faster and the trace brightens
+     a little further. Still gradient, never hard line. */
   .note-card.editing::before {
-    opacity: 1;
-    height: 2px;
+    background: linear-gradient(
+      to right,
+      rgba(139, 127, 255, 0.7) 0%,
+      rgba(139, 127, 255, 0.35) 50%,
+      rgba(139, 127, 255, 0.7) 100%
+    );
   }
-  /* While editing, the traveling pulse runs ~3x as fast and the dot
-     glows brighter — reads as 'this connection is active'. */
   .note-card.editing::after {
-    animation-duration: 0.7s;
-    box-shadow: 0 0 12px rgba(139, 127, 255, 1);
+    animation-duration: 1s;
+    box-shadow:
+      -4px 0 8px 0 rgba(139, 127, 255, 0.65),
+      -10px 0 12px 0 rgba(139, 127, 255, 0.4),
+      -18px 0 18px 0 rgba(139, 127, 255, 0.22),
+      -28px 0 22px 0 rgba(139, 127, 255, 0.12),
+      0 0 10px rgba(139, 127, 255, 0.85),
+      0 0 22px rgba(139, 127, 255, 0.45);
   }
 
   /* Inline-edit textarea — handwritten font like the popover so the
