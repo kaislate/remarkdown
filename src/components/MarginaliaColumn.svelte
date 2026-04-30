@@ -15,13 +15,11 @@
   // - No connection lines yet
   // - Read-only (no inline editing)
 
-  import { resolvedAnnots, currentViewerRoot } from '../stores/annots';
+  import { resolvedAnnots, currentViewerRoot, updateAnnotation } from '../stores/annots';
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
   import { doc } from '../stores/doc';
-  import { viewerScroll } from '../stores/viewport';
   import type { Note } from '../lib/schema';
-  import { get } from 'svelte/store';
 
   let containerEl = $state<HTMLDivElement | null>(null);
   let resizeTick = $state(0);
@@ -78,17 +76,35 @@
       });
   });
 
-  function jumpTo(y: number) {
-    const scrollEl = get(viewerScroll);
-    if (!scrollEl) return;
-    // y is the anchor's offset from .content top (computed when the
-    // cards array derives) — invariant of current scroll position. To
-    // park the anchor ~25% from the viewport top, set scrollTop to
-    // y - margin. Adding scrollEl.scrollTop on top would double-count
-    // the current scroll and overshoot past the anchor.
-    const margin = scrollEl.clientHeight * 0.25;
-    const targetScroll = y - margin;
-    scrollEl.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
+  // Inline-edit state — only one card can be in edit mode at a time.
+  let editingId = $state<string | null>(null);
+  let editingTextarea = $state<HTMLTextAreaElement | null>(null);
+
+  // Autofocus the textarea (and select-all) the moment edit mode opens
+  // for any card. The bind:this catches the textarea ref on mount.
+  $effect(() => {
+    void editingId;
+    if (editingTextarea) {
+      editingTextarea.focus();
+      editingTextarea.select();
+    }
+  });
+
+  function startEditing(noteId: string) {
+    editingId = noteId;
+  }
+
+  function commitAndExit() {
+    editingId = null;
+  }
+
+  function onEditKeydown(e: KeyboardEvent) {
+    // Enter (without Shift) or Escape commits + closes. Shift+Enter
+    // inserts a newline (default behaviour, no preventDefault).
+    if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) {
+      e.preventDefault();
+      (e.currentTarget as HTMLTextAreaElement).blur();
+    }
   }
 
   // Card top is offset upward by DOT_OFFSET so the card's accent dot
@@ -101,22 +117,39 @@
 {#if $doc !== null && $settings.marginaliaEnabled}
   <div class="marginalia" bind:this={containerEl} aria-label="re.marks marginalia">
     {#each cards as card (card.note.id)}
-      <button
+      {@const editing = editingId === card.note.id}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
         class="note-card"
+        class:editing
         style:top="{card.y - DOT_OFFSET}px"
-        onclick={() => jumpTo(card.y)}
-        title={card.anchorText}
+        onclick={() => { if (!editing) startEditing(card.note.id); }}
+        title={editing ? '' : 'Click to edit'}
       >
         <span class="dot" aria-hidden="true"></span>
         <div class="text">
           <div class="quote">{card.anchorText}</div>
-          {#if card.note.body}
+          {#if editing}
+            <textarea
+              bind:this={editingTextarea}
+              class="edit-input"
+              aria-label="Edit re.mark body"
+              placeholder="Write a re.mark…"
+              value={card.note.body}
+              oninput={(e) => updateAnnotation(card.note.id, (a) => ({ ...(a as Note), body: (e.currentTarget as HTMLTextAreaElement).value }))}
+              onblur={commitAndExit}
+              onkeydown={onEditKeydown}
+              onclick={(e) => e.stopPropagation()}
+              rows="3"
+            ></textarea>
+          {:else if card.note.body}
             <div class="body">{card.note.body}</div>
           {:else}
-            <div class="body empty">(empty re.mark)</div>
+            <div class="body empty">(empty re.mark — click to add)</div>
           {/if}
         </div>
-      </button>
+      </div>
     {/each}
   </div>
 {/if}
@@ -156,11 +189,9 @@
     gap: 8px;
     transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
   }
-  /* Connector line — a horizontal segment from the text-frame's right
-     edge to the card's accent dot. Drawn via ::before so we don't need
-     a separate SVG layer. The line's width (32px) matches the gap
-     between text-frame and marginalia, so it spans exactly the gutter
-     and meets the card's left edge. */
+  /* Connector line — a static horizontal segment from the text-frame's
+     right edge to the card's accent dot. Drawn via ::before so we don't
+     need a separate SVG layer. */
   .note-card::before {
     content: '';
     position: absolute;
@@ -169,10 +200,35 @@
     width: 32px;
     height: 1.5px;
     background: var(--accent);
-    opacity: 0.32;
-    transform-origin: right center;
+    opacity: 0.4;
     transition: opacity 0.18s ease, height 0.18s ease;
     pointer-events: none;
+  }
+  /* Traveling pulse — a glowing dot that walks the connector from the
+     anchor side to the card side, fading in at the start and out at
+     the end so the loop reset doesn't look like a snap. Hidden under
+     prefers-reduced-motion. */
+  .note-card::after {
+    content: '';
+    position: absolute;
+    left: -32px;
+    top: 13px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(139, 127, 255, 0.85);
+    pointer-events: none;
+    animation: connectorTravel 2.2s linear infinite;
+  }
+  @keyframes connectorTravel {
+    0%   { transform: translateX(0);   opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { transform: translateX(32px); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .note-card::after { display: none; }
   }
   .note-card:hover {
     background: var(--bg-2);
@@ -183,17 +239,52 @@
     opacity: 1;
     height: 2px;
   }
-  /* Subtle ambient pulse on the connector so the panel reads as
-     'alive' even before hover. Slow + low-contrast so it's atmosphere,
-     not distraction. */
-  @media (prefers-reduced-motion: no-preference) {
-    .note-card::before {
-      animation: connectorPulse 3.6s ease-in-out infinite;
-    }
+  .note-card:hover::after {
+    animation-duration: 1.4s;
   }
-  @keyframes connectorPulse {
-    0%, 100% { opacity: 0.28; }
-    50%      { opacity: 0.5; }
+  .note-card.editing {
+    background: var(--bg-2);
+    border-color: var(--accent-soft);
+    cursor: default;
+  }
+  .note-card.editing::before {
+    opacity: 1;
+    height: 2px;
+  }
+
+  /* Inline-edit textarea — handwritten font like the popover so the
+     edit experience feels continuous with the existing in-doc note
+     editor. Replaces .body when the card is in edit mode. */
+  .edit-input {
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--fg-0);
+    border: 1px solid var(--accent-soft);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family:
+      'Segoe Print',
+      'Patrick Hand',
+      'Architects Daughter',
+      'Kalam',
+      'Indie Flower',
+      'Comic Sans MS',
+      'Bradley Hand',
+      'Marker Felt',
+      cursive;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .edit-input::placeholder {
+    color: var(--fg-2);
+    font-weight: 500;
+  }
+  .edit-input:focus {
+    border-color: var(--accent);
   }
   .dot {
     width: 8px;
