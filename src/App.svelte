@@ -7,6 +7,7 @@
   import './styles/cursors.css';
   import './styles/scrollbars.css';
   import './styles/reader-mode.css';
+  import './styles/edit-mode.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';
@@ -48,7 +49,7 @@
   import { readerMode, exitReaderMode } from './stores/reader-mode';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
-  import { toggleEditMode } from './stores/edit-mode';
+  import { editMode, toggleEditMode } from './stores/edit-mode';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -101,6 +102,13 @@
     if (typeof document === 'undefined') return;
     document.body.classList.toggle('reader-mode', on);
     syncMinimapPopoutClass();
+  });
+
+  // Reflect the edit-mode store on body so edit-mode.css can hide
+  // annotation layers and apply edit mode styling.
+  const unsubEditMode = editMode.subscribe((on) => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('edit-mode', on);
   });
 
   // body.minimap-popout is the combined signal (reader-mode AND the
@@ -313,6 +321,7 @@
     unsubTool();
     unsubTheme();
     unsubReaderMode();
+    unsubEditMode();
     unsubMinimapPopout();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
