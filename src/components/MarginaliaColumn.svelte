@@ -45,6 +45,19 @@
     return () => cancelAnimationFrame(id);
   });
 
+  // After $resolvedAnnots changes, NoteLayer paints fresh .note-pin
+  // elements in the same Svelte tick. Defer two frames before
+  // recomputing card y so we can read the pins' actual bounding
+  // rects (more precise than the em-math fallback).
+  $effect(() => {
+    void $resolvedAnnots;
+    if (typeof requestAnimationFrame === 'undefined') return;
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => { resizeTick += 1; }),
+    );
+    return () => cancelAnimationFrame(id);
+  });
+
   interface Card {
     note: Note;
     /** The card's anchor y in container coords — exactly the in-doc
@@ -126,8 +139,24 @@
         } catch {
           rangeRect = new DOMRect(0, 0, 0, 0);
         }
-        const originX = rangeRect.right;
-        const originY = rangeRect.bottom - pinCenterDy;
+        // Prefer the actual rendered .note-pin's bounding rect — gives
+        // the exact visual centre, including any font-metrics rounding
+        // the em math doesn't capture. Fall back to em math if NoteLayer
+        // hasn't flushed yet (an extra effect above re-runs the derive
+        // two frames later, so we'll get the precise value on retry).
+        let originX: number;
+        let originY: number;
+        const pinEl = root.querySelector<HTMLElement>(
+          `.note-pin[data-id="${CSS.escape(note.id)}"]`,
+        );
+        if (pinEl) {
+          const pinRect = pinEl.getBoundingClientRect();
+          originX = pinRect.left + pinRect.width / 2;
+          originY = pinRect.top + pinRect.height / 2;
+        } else {
+          originX = rangeRect.right;
+          originY = rangeRect.bottom - pinCenterDy;
+        }
         // Floor at 32 so an anchor very close to the text-frame's
         // right edge still gets a visible connector.
         const gap = Math.max(32, containerRect.left - originX);
