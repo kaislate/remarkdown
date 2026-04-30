@@ -74,12 +74,31 @@
         } catch {
           rangeRect = new DOMRect(0, 0, 0, 0);
         }
+        // For the connector start, prefer the actual rendered .note-pin
+        // element if we can find it — its visual centre is what the eye
+        // tracks, and computing it from rangeRect would require the
+        // em-offset math NoteLayer uses (margin-top: -0.55em, etc.).
+        // Fall back to the rangeRect's top-right when the pin isn't
+        // mounted yet (initial render race).
+        const pinEl = root.querySelector<HTMLElement>(
+          `.note-pin[data-id="${CSS.escape(note.id)}"]`,
+        );
+        let originX: number;
+        let originY: number;
+        if (pinEl) {
+          const pinRect = pinEl.getBoundingClientRect();
+          originX = pinRect.left + pinRect.width / 2;
+          originY = pinRect.top + pinRect.height / 2;
+        } else {
+          originX = rangeRect.right;
+          originY = rangeRect.top;
+        }
         // Floor at 32 so an anchor that ends very close to the
         // text-frame's right edge still gets a visible connector.
-        const gap = Math.max(32, containerRect.left - rangeRect.right);
+        const gap = Math.max(32, containerRect.left - originX);
         return {
           note,
-          y: rangeRect.top - containerRect.top,
+          y: originY - containerRect.top,
           connectorWidth: gap,
           anchorText: note.anchor.text,
         };
@@ -203,28 +222,11 @@
     gap: 8px;
     transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
   }
-  /* Connector baseline — a barely-there soft luminous trace from the
-     in-document .note-pin to the card. Replaces the hard 1.5px line
-     with a gradient that's strongest near the endpoints and fades in
-     the middle, plus a tiny blur for softness. Reads as a hint of a
-     path rather than a drawn line. */
-  .note-card::before {
-    content: '';
-    position: absolute;
-    right: 100%;
-    top: 16px;
-    width: var(--connector-width, 32px);
-    height: 1px;
-    background: linear-gradient(
-      to right,
-      rgba(139, 127, 255, 0.32) 0%,
-      rgba(139, 127, 255, 0.10) 50%,
-      rgba(139, 127, 255, 0.32) 100%
-    );
-    filter: blur(0.5px);
-    transition: opacity 0.25s ease, filter 0.25s ease;
-    pointer-events: none;
-  }
+  /* No persistent baseline — the only visible connector is the
+     traveling orb itself, drifting from pin to card. The user's eye
+     traces the path each time the orb crosses, so a drawn line is
+     redundant + intrusive. (.note-card::before is intentionally not
+     defined; only ::after carries the visual.) */
 
   /* Traveling orb — a small luminous sphere that drifts from the
      in-document pin to the card. Multi-layered effect:
@@ -276,16 +278,7 @@
     border-color: var(--accent-soft);
     transform: translateX(-2px);
   }
-  .note-card:hover::before {
-    /* Trace becomes more present on hover — still soft, just less
-       hidden. No sharp edges introduced. */
-    background: linear-gradient(
-      to right,
-      rgba(139, 127, 255, 0.55) 0%,
-      rgba(139, 127, 255, 0.25) 50%,
-      rgba(139, 127, 255, 0.55) 100%
-    );
-  }
+  /* Hover: orb drifts a touch faster — invitation to interact. */
   .note-card:hover::after {
     animation-duration: 2s;
   }
@@ -294,16 +287,8 @@
     border-color: var(--accent-soft);
     cursor: default;
   }
-  /* Active editing — orbs travel ~3x faster and the trace brightens
-     a little further. Still gradient, never hard line. */
-  .note-card.editing::before {
-    background: linear-gradient(
-      to right,
-      rgba(139, 127, 255, 0.7) 0%,
-      rgba(139, 127, 255, 0.35) 50%,
-      rgba(139, 127, 255, 0.7) 100%
-    );
-  }
+  /* Editing: orb drifts ~3x as fast, halo + trail brighten. Reads as
+     'this connection is live'. */
   .note-card.editing::after {
     animation-duration: 1s;
     box-shadow:
