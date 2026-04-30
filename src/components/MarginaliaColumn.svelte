@@ -19,6 +19,7 @@
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
   import { doc } from '../stores/doc';
+  import { buildSentenceContext } from '../lib/sentence-context';
   import type { Note } from '../lib/schema';
 
   let containerEl = $state<HTMLDivElement | null>(null);
@@ -55,12 +56,66 @@
      *  the article's font-size since .note-pin uses 0.7em). The
      *  trailing dot in the stream grows to match this size. */
     pinSize: number;
-    anchorText: string;
+    /** Sentence(s) of context around the anchor, built via
+     *  buildSentenceContext using the same `remarkContextSentences`
+     *  + `remarkContextStopAtParagraph` settings as the bottom-left
+     *  re.marks panel. Falls back to the anchor's quoted text if
+     *  context can't be computed (e.g., anchor not inside a block). */
+    context: string;
   }
 
   /** How many dots ride the connector at once. Higher = more of a
    *  dotted-line look; lower = sparser stream. */
   const STREAM_DOTS = 5;
+
+  // Walk text nodes inside `block` until we hit `range.startContainer`,
+  // returning the cumulative character offset of the range's start
+  // within the block. Returns null if the start isn't found inside.
+  function anchorOffsetWithinBlock(range: Range, block: HTMLElement): number | null {
+    let acc = 0;
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let n = walker.nextNode();
+    while (n) {
+      if (n === range.startContainer) {
+        return acc + range.startOffset;
+      }
+      acc += (n as Text).data.length;
+      n = walker.nextNode();
+    }
+    return null;
+  }
+
+  // Build the display context for one re.mark — the anchor's sentence
+  // plus N-1 preceding ones, optionally crossing block boundaries.
+  // Mirrors NotesPanel.contextFor so the marginalia + the bottom-left
+  // panel show the same excerpt for a given re.mark.
+  function contextFor(range: Range): string {
+    const root = $currentViewerRoot;
+    if (!root) return '';
+    const startEl = (range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : (range.startContainer as Element));
+    const block = startEl?.closest<HTMLElement>('[data-block-id]');
+    if (!block) return '';
+    const anchorOffset = anchorOffsetWithinBlock(range, block);
+    if (anchorOffset === null) return block.textContent ?? '';
+
+    const blocks = $settings.remarkContextStopAtParagraph
+      ? [block]
+      : (() => {
+          const all = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
+          const idx = all.indexOf(block);
+          return idx < 0 ? [block] : all.slice(0, idx + 1);
+        })();
+    const blockTexts = blocks.map((b) => b.textContent ?? '');
+
+    return buildSentenceContext(
+      blockTexts,
+      anchorOffset,
+      $settings.remarkContextSentences,
+      $settings.remarkContextStopAtParagraph,
+    );
+  }
 
   const cards = $derived.by((): Card[] => {
     void resizeTick;
@@ -104,7 +159,7 @@
           y: originY - containerRect.top,
           connectorWidth: gap,
           pinSize,
-          anchorText: note.anchor.text,
+          context: contextFor(r.range) || note.anchor.text,
         };
       });
   });
@@ -162,7 +217,7 @@
         class:editing
         style="top: {card.y - DOT_OFFSET}px; --connector-width: {card.connectorWidth}px; --pin-size: {card.pinSize}px;"
         onclick={() => { if (!editing) startEditing(card.note.id); }}
-        title={editing ? '' : 'Click to edit'}
+        title={editing ? '' : card.context}
       >
         {#if editing}
           <!-- Stream of dots flowing from the card toward the in-doc
@@ -176,7 +231,7 @@
         {/if}
         <span class="dot" aria-hidden="true"></span>
         <div class="text">
-          <div class="quote">{card.anchorText}</div>
+          <div class="quote">{card.context}</div>
           {#if editing}
             <textarea
               bind:this={editingTextarea}
@@ -479,14 +534,18 @@
     flex-direction: column;
     gap: 4px;
   }
+  /* Sentence context — longer text now (full sentence(s) around the
+     anchor, not just the quoted word). 4-line clamp accommodates a
+     2-sentence setting comfortably; longer settings ellipsis at the
+     edge. The native title attr exposes the full text on hover. */
   .quote {
     color: var(--fg-2);
     font-size: 11px;
     font-style: italic;
-    line-height: 1.4;
+    line-height: 1.45;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
