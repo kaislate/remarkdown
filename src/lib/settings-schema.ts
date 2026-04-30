@@ -54,6 +54,9 @@ export const SettingsSchema = z.object({
   // re.marks panel — how much context to show with each entry.
   remarkContextSentences: z.number().int().min(1).max(5),
   remarkContextStopAtParagraph: z.boolean(),
+
+  // Right-margin marginalia column for re.marks (prototype).
+  marginaliaEnabled: z.boolean(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -84,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   drawIdleFinalizeMs: 3000,
   remarkContextSentences: 1,
   remarkContextStopAtParagraph: true,
+  marginaliaEnabled: false,
 };
 
 // Parse a JSON string from disk, falling back to defaults for any field that's

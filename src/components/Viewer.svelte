@@ -7,6 +7,7 @@
   import NoteLayer from './NoteLayer.svelte';
   import DrawLayer from './DrawLayer.svelte';
   import MermaidRenderer from './MermaidRenderer.svelte';
+  import MarginaliaColumn from './MarginaliaColumn.svelte';
   import { reattachTarget, cancelReattach } from '../stores/reattach';
   import { createAnchor } from '../lib/anchoring';
   import { addToast } from '../stores/toasts';
@@ -178,6 +179,9 @@
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->
       <DrawLayer />
+      <!-- Marginalia column lives in .content's right edge; only renders
+           when the marginaliaEnabled setting is on AND viewport ≥ 1440px. -->
+      <MarginaliaColumn />
     </div>
   {/if}
 </div>

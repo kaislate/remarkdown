@@ -270,6 +270,19 @@
               onchange={(e) => updateSettings({ remarkContextStopAtParagraph: (e.currentTarget as HTMLInputElement).checked })}
             />
           </div>
+
+          <div class="row">
+            <div>
+              <label for="setting-marginalia">Marginalia column <span class="badge">prototype</span></label>
+              <div class="hint">show re.marks as cards in the right margin (visible at viewports ≥ 1440px)</div>
+            </div>
+            <input
+              id="setting-marginalia"
+              type="checkbox"
+              checked={$settings.marginaliaEnabled}
+              onchange={(e) => updateSettings({ marginaliaEnabled: (e.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
         </section>
 
         <section>
@@ -493,6 +506,20 @@
     font-size: 12px;
     color: var(--fg-2);
     margin-top: 2px;
+  }
+  .badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
   }
   .hint a {
     color: var(--accent);
