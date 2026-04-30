@@ -47,26 +47,50 @@
 
   interface Card {
     note: Note;
-    y: number;
+    /** The card's anchor y in container coords — exactly the in-doc
+     *  pin's centre y. Doesn't move under push-down. */
+    anchorY: number;
+    /** The card's actual rendered y after push-down (>= anchorY). The
+     *  card is positioned with this value so its accent dot sits at
+     *  this y in container coords. Connector becomes diagonal when
+     *  displacedY != anchorY. */
+    displacedY: number;
     /** Distance in px from the anchor's right edge (= where the
-     *  in-document .note-pin lives) to the card's left edge. The
-     *  connector stream spans this whole distance. */
+     *  in-document .note-pin lives) to the card's left edge. */
     connectorWidth: number;
+    /** Hypotenuse length of the (diagonal) connector — the stream
+     *  dots travel this distance. Equals connectorWidth when the
+     *  card hasn't been pushed down. */
+    connectorLength: number;
+    /** Connector angle in degrees from horizontal. Positive when the
+     *  card is below the pin (slope downward from pin to card). */
+    connectorAngleDeg: number;
     /** Visual size in px of the in-document .note-pin (computed from
-     *  the article's font-size since .note-pin uses 0.7em). The
-     *  trailing dot in the stream grows to match this size. */
+     *  the article's font-size since .note-pin uses 0.7em). */
     pinSize: number;
-    /** Sentence(s) of context around the anchor, built via
-     *  buildSentenceContext using the same `remarkContextSentences`
-     *  + `remarkContextStopAtParagraph` settings as the bottom-left
-     *  re.marks panel. Falls back to the anchor's quoted text if
-     *  context can't be computed (e.g., anchor not inside a block). */
+    /** Sentence(s) of context around the anchor, see contextFor(). */
     context: string;
   }
 
   /** How many dots ride the connector at once. Higher = more of a
    *  dotted-line look; lower = sparser stream. */
   const STREAM_DOTS = 5;
+
+  /** Estimated per-card height for collision avoidance. Cards aren't
+   *  measured (would need a 2-pass render); this is a rough average
+   *  that covers the typical 4-line clamp + body. Used only to space
+   *  pushed-down cards; the real card may be a few px shorter or
+   *  taller without breaking the layout. */
+  const CARD_HEIGHT_EST = 86;
+  /** Minimum vertical gap between adjacent cards after push-down. */
+  const CARD_GAP = 8;
+  /** Card top is offset upward by DOT_OFFSET so the card's accent
+   *  dot (which is what the connector attaches to) sits at the
+   *  card's displacedY. Card padding-top (12) + dot margin-top (4)
+   *  + dot half-height (4) = 20 — but we use 16 to keep the dot
+   *  visually aligned with the in-doc pin centre regardless of
+   *  pin size. */
+  const DOT_OFFSET = 16;
 
   const cards = $derived.by((): Card[] => {
     void resizeTick;
@@ -90,7 +114,8 @@
     const pinCenterDy = articleFontSize * 0.2;
     const pinSize = articleFontSize * 0.7;
 
-    return $resolvedAnnots
+    // Pass 1: extract raw cards with anchor positions + context.
+    const raw = $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
       .map((r) => {
         const note = r.annotation as Note;
@@ -102,12 +127,12 @@
         }
         const originX = rangeRect.right;
         const originY = rangeRect.bottom - pinCenterDy;
-        // Floor at 32 so an anchor that ends very close to the
-        // text-frame's right edge still gets a visible connector.
+        // Floor at 32 so an anchor very close to the text-frame's
+        // right edge still gets a visible connector.
         const gap = Math.max(32, containerRect.left - originX);
         return {
           note,
-          y: originY - containerRect.top,
+          anchorY: originY - containerRect.top,
           connectorWidth: gap,
           pinSize,
           context: contextFor(r.range, root, {
@@ -117,10 +142,35 @@
           }) || note.anchor.text,
         };
       })
-      // Sort by y so earlier (top-of-page) cards render later in the
-      // {#each}, which combined with the explicit z-index below means
-      // they overlay later cards when y-ranges collide.
-      .sort((a, b) => a.y - b.y);
+      // Sort by anchor y ascending — push-down requires top-to-bottom.
+      .sort((a, b) => a.anchorY - b.anchorY);
+
+    // Pass 2: push-down. Walk top-to-bottom; if a card would overlap
+    // the previous one, shove it down. The connector then slopes
+    // diagonally from the pin (still at anchorY) to the card's accent
+    // dot (now at displacedY). Length + angle drive the rotated
+    // connector wrapper in CSS.
+    const out: Card[] = [];
+    let prevBottom = -Infinity;
+    for (const r of raw) {
+      const minDisplaced = prevBottom + CARD_GAP + DOT_OFFSET;
+      const displacedY = Math.max(r.anchorY, minDisplaced);
+      const delta = displacedY - r.anchorY;
+      const length = Math.sqrt(r.connectorWidth * r.connectorWidth + delta * delta);
+      const angleDeg = Math.atan2(delta, r.connectorWidth) * 180 / Math.PI;
+      out.push({
+        note: r.note,
+        anchorY: r.anchorY,
+        displacedY,
+        connectorWidth: r.connectorWidth,
+        connectorLength: length,
+        connectorAngleDeg: angleDeg,
+        pinSize: r.pinSize,
+        context: r.context,
+      });
+      prevBottom = (displacedY - DOT_OFFSET) + CARD_HEIGHT_EST;
+    }
+    return out;
   });
 
   // Inline-edit state — only one card can be in edit mode at a time.
@@ -158,11 +208,6 @@
     }
   }
 
-  // Card top is offset upward by DOT_OFFSET so the card's accent dot
-  // (which is what the connector line attaches to) sits at exactly the
-  // anchor's y. Card padding-top (8) + dot margin-top (4) + dot
-  // half-height (4) = 16.
-  const DOT_OFFSET = 16;
 </script>
 
 {#if $doc !== null && $settings.marginaliaEnabled}
@@ -175,8 +220,11 @@
         class="note-card"
         class:editing
         style="
-          top: {card.y - DOT_OFFSET}px;
+          top: {card.displacedY - DOT_OFFSET}px;
           --connector-width: {card.connectorWidth}px;
+          --connector-length: {card.connectorLength}px;
+          --connector-angle: {card.connectorAngleDeg}deg;
+          --connector-delta: {card.displacedY - card.anchorY}px;
           --pin-size: {card.pinSize}px;
           z-index: {editing ? 1000 : cards.length - i};
         "
@@ -302,6 +350,7 @@
       inset -4px -4px 12px rgba(0, 0, 0, 0.22),
       8px 12px 26px rgba(0, 0, 0, 0.55);
     transition:
+      top 0.32s cubic-bezier(0.34, 1.40, 0.64, 1),
       transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 0.28s ease;
   }
@@ -309,14 +358,19 @@
      gradient carries the brand identity without needing a hard line. */
   /* Connector stream — a flow of luminous dots from the card toward
      the in-document pin, mounted only while the card is in edit mode.
-     The wrapper spans the gap (right:100% + width:--connector-width).
-     Dots are absolutely positioned within and animated leftward. */
+     The wrapper is anchored at the pin's location in card-relative
+     coords (left = -connectorWidth, top = 16 - delta) and rotated
+     so its right end lands at the card's accent dot. When the card
+     hasn't been pushed down, delta = 0 and angle = 0 so the wrapper
+     is just a horizontal line — old behaviour preserved. */
   .connector-stream {
     position: absolute;
-    right: 100%;
-    top: 0;
-    bottom: 0;
-    width: var(--connector-width, 32px);
+    left: calc(-1 * var(--connector-width, 32px));
+    top: calc(16px - var(--connector-delta, 0px));
+    width: var(--connector-length, var(--connector-width, 32px));
+    height: 0;
+    transform: rotate(var(--connector-angle, 0deg));
+    transform-origin: left center;
     pointer-events: none;
   }
 
@@ -354,10 +408,10 @@
     animation-delay: calc(var(--phase, 0) * -2.4s);
   }
   @keyframes streamFlow {
-    0%   { transform: translateX(0)                                       scale(0.18); opacity: 0; }
-    8%   {                                                                              opacity: 1; }
-    92%  {                                                                              opacity: 1; }
-    100% { transform: translateX(calc(var(--connector-width, 32px) * -1)) scale(1);    opacity: 0; }
+    0%   { transform: translateX(0)                                                          scale(0.18); opacity: 0; }
+    8%   {                                                                                                opacity: 1; }
+    92%  {                                                                                                opacity: 1; }
+    100% { transform: translateX(calc(var(--connector-length, var(--connector-width, 32px)) * -1)) scale(1);    opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .connector-stream { display: none; }
