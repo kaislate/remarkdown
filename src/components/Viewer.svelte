@@ -175,13 +175,15 @@
         <MermaidRenderer {articleEl} />
         <HighlightLayer />
         <NoteLayer />
+        <!-- Marginalia hugs the text-frame's right edge (left:100% + 32px
+             gap) so the cards live in the close margin instead of pinned
+             to the screen edge. Inside text-frame because the cards'
+             y-coords are computed in text-frame coordinate space. -->
+        <MarginaliaColumn />
       </div>
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->
       <DrawLayer />
-      <!-- Marginalia column lives in .content's right edge; only renders
-           when the marginaliaEnabled setting is on AND viewport ≥ 1440px. -->
-      <MarginaliaColumn />
     </div>
   {/if}
 </div>

@@ -81,12 +81,21 @@
   function jumpTo(y: number) {
     const scrollEl = get(viewerScroll);
     if (!scrollEl) return;
-    // y is in container coords (which match article-top coords). Scroll
-    // so the anchor lands ~25% from the top of the viewport.
+    // y is the anchor's offset from .content top (computed when the
+    // cards array derives) — invariant of current scroll position. To
+    // park the anchor ~25% from the viewport top, set scrollTop to
+    // y - margin. Adding scrollEl.scrollTop on top would double-count
+    // the current scroll and overshoot past the anchor.
     const margin = scrollEl.clientHeight * 0.25;
-    const targetScroll = scrollEl.scrollTop + y - margin;
+    const targetScroll = y - margin;
     scrollEl.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
   }
+
+  // Card top is offset upward by DOT_OFFSET so the card's accent dot
+  // (which is what the connector line attaches to) sits at exactly the
+  // anchor's y. Card padding-top (8) + dot margin-top (4) + dot
+  // half-height (4) = 16.
+  const DOT_OFFSET = 16;
 </script>
 
 {#if $doc !== null && $settings.marginaliaEnabled}
@@ -94,7 +103,7 @@
     {#each cards as card (card.note.id)}
       <button
         class="note-card"
-        style:top="{card.y}px"
+        style:top="{card.y - DOT_OFFSET}px"
         onclick={() => jumpTo(card.y)}
         title={card.anchorText}
       >
@@ -116,26 +125,24 @@
   .marginalia {
     position: absolute;
     top: 0;
-    right: 0;
+    /* Sit just to the right of the text-frame with a 32px gap that
+       doubles as the connector-line track. left:100% means our left
+       edge lands at the text-frame's right edge; the 32px gap is
+       added via padding/margin trick — actually via margin-left so
+       the cards measure inside this 280px width. */
+    left: 100%;
+    margin-left: 32px;
     bottom: 0;
     width: 280px;
-    pointer-events: none;
-    /* Hide on narrower viewports — there isn't enough horizontal room
-       to clear the article column without overlap. The setting can be
-       on, the column simply waits for window width. */
-    display: none;
-  }
-  @media (min-width: 1440px) {
-    .marginalia {
-      display: block;
-    }
+    /* No display:none gate — clipping handles overflow at narrow
+       viewports gracefully. .scroll has overflow-x:hidden so anything
+       past the right edge of the scroll container is cropped. */
   }
 
   .note-card {
     position: absolute;
     left: 0;
     right: 0;
-    pointer-events: auto;
     background: var(--bg-1);
     border: 1px solid var(--glass-border);
     border-left: 3px solid var(--accent);
@@ -147,12 +154,46 @@
     color: var(--fg-1);
     display: flex;
     gap: 8px;
-    transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
+  }
+  /* Connector line — a horizontal segment from the text-frame's right
+     edge to the card's accent dot. Drawn via ::before so we don't need
+     a separate SVG layer. The line's width (32px) matches the gap
+     between text-frame and marginalia, so it spans exactly the gutter
+     and meets the card's left edge. */
+  .note-card::before {
+    content: '';
+    position: absolute;
+    left: -32px;
+    top: 16px; /* dot center: padding-top 8 + dot margin-top 4 + dot half-height 4 */
+    width: 32px;
+    height: 1.5px;
+    background: var(--accent);
+    opacity: 0.32;
+    transform-origin: right center;
+    transition: opacity 0.18s ease, height 0.18s ease;
+    pointer-events: none;
   }
   .note-card:hover {
     background: var(--bg-2);
     border-color: var(--accent-soft);
     transform: translateX(-2px);
+  }
+  .note-card:hover::before {
+    opacity: 1;
+    height: 2px;
+  }
+  /* Subtle ambient pulse on the connector so the panel reads as
+     'alive' even before hover. Slow + low-contrast so it's atmosphere,
+     not distraction. */
+  @media (prefers-reduced-motion: no-preference) {
+    .note-card::before {
+      animation: connectorPulse 3.6s ease-in-out infinite;
+    }
+  }
+  @keyframes connectorPulse {
+    0%, 100% { opacity: 0.28; }
+    50%      { opacity: 0.5; }
   }
   .dot {
     width: 8px;
