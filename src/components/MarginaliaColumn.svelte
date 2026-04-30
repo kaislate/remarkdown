@@ -264,8 +264,8 @@
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 0;
-    border-radius: 16px;
-    padding: 12px 14px 12px 18px; /* extra left for the accent rail */
+    border-radius: 18px;
+    padding: 12px 14px;
     font-family: var(--font-sans);
     text-align: left;
     cursor: pointer;
@@ -288,25 +288,8 @@
       transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 0.28s ease;
   }
-  /* Slim vertical accent rail along the left edge — brand identifier
-     for the re.mark system. No separate glow shadow now (we're
-     post-glow); the inset bevel highlight near the top combined with
-     the rail's own gradient gives it depth. */
-  .note-card::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 10px;
-    bottom: 10px;
-    width: 2px;
-    background: linear-gradient(
-      to bottom,
-      var(--accent) 0%,
-      rgba(139, 127, 255, 0.38) 100%
-    );
-    border-radius: 0 999px 999px 0;
-    pointer-events: none;
-  }
+  /* No left accent rail — the accent-purple wash in the background
+     gradient carries the brand identity without needing a hard line. */
   /* Connector stream — a flow of luminous dots from the card toward
      the in-document pin, mounted only while the card is in edit mode.
      The wrapper spans the gap (right:100% + width:--connector-width).
@@ -413,23 +396,29 @@
       linear-gradient(
         135deg,
         rgba(255, 255, 255, 0.02) 0%,
-        rgba(0, 0, 0, 0.10) 100%
+        rgba(0, 0, 0, 0.14) 100%
       ),
-      /* Warm dark base */
-      rgba(12, 10, 18, 0.55);
+      /* Deep warm-dark base — much darker than the card surface so
+         the depression contrast reads clearly. */
+      rgba(8, 6, 14, 0.78);
     color: var(--fg-0);
     caret-color: var(--accent);
     border: 0;
-    border-radius: 8px;
-    /* Inset depression: dark inset shadow on top + sides simulates
-       the surface dipping below the card; bottom highlight catches
-       the imagined light returning. No outer border. */
+    /* Highly rounded corners — feels like a pocket carved into the
+       cushion of the card. */
+    border-radius: 14px;
+    /* Deep inset depression. The shadows on top + both sides simulate
+       a real recess below the card surface; the bottom inset
+       highlight catches the imagined light returning from inside the
+       depression. No outer border. */
     box-shadow:
-      inset 0 2px 5px rgba(0, 0, 0, 0.4),
-      inset 1px 0 3px rgba(0, 0, 0, 0.22),
-      inset -1px 0 2px rgba(0, 0, 0, 0.18),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-    padding: 8px 10px;
+      inset 0 3px 6px rgba(0, 0, 0, 0.55),
+      inset 0 1px 2px rgba(0, 0, 0, 0.4),
+      inset 2px 0 4px rgba(0, 0, 0, 0.3),
+      inset -2px 0 3px rgba(0, 0, 0, 0.25),
+      inset 0 -2px 2px rgba(0, 0, 0, 0.2),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    padding: 10px 12px;
     font-family:
       'Segoe Print',
       'Patrick Hand',
@@ -461,10 +450,12 @@
   }
   .edit-input:focus {
     box-shadow:
-      inset 0 2px 6px rgba(0, 0, 0, 0.45),
-      inset 1px 0 3px rgba(0, 0, 0, 0.24),
-      inset -1px 0 2px rgba(0, 0, 0, 0.20),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 3px 7px rgba(0, 0, 0, 0.6),
+      inset 0 1px 2px rgba(0, 0, 0, 0.45),
+      inset 2px 0 4px rgba(0, 0, 0, 0.32),
+      inset -2px 0 3px rgba(0, 0, 0, 0.27),
+      inset 0 -2px 2px rgba(0, 0, 0, 0.22),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.10),
       /* Subtle accent-purple inner ring on focus, mimicking pen ink
          around the active writing area without a hard border */
       inset 0 0 0 1px rgba(139, 127, 255, 0.35);
