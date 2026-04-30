@@ -90,11 +90,16 @@
   const STREAM_DOTS = 5;
 
   /** Estimated per-card height for collision avoidance. Cards aren't
-   *  measured (would need a 2-pass render); this is a rough average
-   *  that covers the typical 4-line clamp + body. Used only to space
-   *  pushed-down cards; the real card may be a few px shorter or
-   *  taller without breaking the layout. */
+   *  measured (would need a 2-pass render); these are rough averages
+   *  that cover the typical clamp + body in the two states. Used
+   *  only to space pushed-down cards; the real card may be a few px
+   *  shorter or taller without breaking the layout. */
   const CARD_HEIGHT_EST = 86;
+  /** Edit-mode height estimate — accounts for the inset textarea
+   *  (min-height 60 + 20px padding) plus the quote line + gap. The
+   *  editing card pushes neighbours below it down by this much so
+   *  they stay visible while the user is writing. */
+  const CARD_HEIGHT_EDIT = 140;
   /** Minimum vertical gap between adjacent cards after push-down. */
   const CARD_GAP = 8;
   /** Card top is offset upward by DOT_OFFSET so the card's accent
@@ -198,7 +203,14 @@
         pinSize: r.pinSize,
         context: r.context,
       });
-      prevBottom = (displacedY - DOT_OFFSET) + CARD_HEIGHT_EST;
+      // Editing card carries the textarea so its rendered height is
+      // larger — use CARD_HEIGHT_EDIT for THIS card's contribution to
+      // prevBottom so the cards below get pushed clear of the textarea
+      // edges. editingId is a $state so this derive re-runs whenever
+      // the user enters or leaves edit mode, animating push-down via
+      // the existing top transition.
+      const heightEst = editingId === r.note.id ? CARD_HEIGHT_EDIT : CARD_HEIGHT_EST;
+      prevBottom = (displacedY - DOT_OFFSET) + heightEst;
     }
     return out;
   });
