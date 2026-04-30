@@ -49,12 +49,18 @@
     y: number;
     /** Distance in px from the anchor's right edge (= where the
      *  in-document .note-pin lives) to the card's left edge. The
-     *  connector line + travelling pulse span this whole distance,
-     *  so the user sees the animation traveling from the pin in the
-     *  text all the way over to the card. */
+     *  connector stream spans this whole distance. */
     connectorWidth: number;
+    /** Visual size in px of the in-document .note-pin (computed from
+     *  the article's font-size since .note-pin uses 0.7em). The
+     *  trailing dot in the stream grows to match this size. */
+    pinSize: number;
     anchorText: string;
   }
+
+  /** How many dots ride the connector at once. Higher = more of a
+   *  dotted-line look; lower = sparser stream. */
+  const STREAM_DOTS = 5;
 
   const cards = $derived.by((): Card[] => {
     void resizeTick;
@@ -76,6 +82,7 @@
     // with the pin even before NoteLayer has flushed its render.
     const articleFontSize = parseFloat(getComputedStyle(root).fontSize) || 17;
     const pinCenterDy = articleFontSize * 0.2;
+    const pinSize = articleFontSize * 0.7;
 
     return $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
@@ -96,6 +103,7 @@
           note,
           y: originY - containerRect.top,
           connectorWidth: gap,
+          pinSize,
           anchorText: note.anchor.text,
         };
       });
@@ -152,10 +160,20 @@
       <div
         class="note-card"
         class:editing
-        style="top: {card.y - DOT_OFFSET}px; --connector-width: {card.connectorWidth}px;"
+        style="top: {card.y - DOT_OFFSET}px; --connector-width: {card.connectorWidth}px; --pin-size: {card.pinSize}px;"
         onclick={() => { if (!editing) startEditing(card.note.id); }}
         title={editing ? '' : 'Click to edit'}
       >
+        {#if editing}
+          <!-- Stream of dots flowing from the card toward the in-doc
+               pin. Dots grow as they approach the pin (eventually
+               matching its size). Only mounted while editing. -->
+          <div class="connector-stream" aria-hidden="true">
+            {#each Array(STREAM_DOTS) as _, i}
+              <div class="stream-dot" style="--phase: {i / STREAM_DOTS};"></div>
+            {/each}
+          </div>
+        {/if}
         <span class="dot" aria-hidden="true"></span>
         <div class="text">
           <div class="quote">{card.anchorText}</div>
@@ -218,82 +236,70 @@
     gap: 8px;
     transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
   }
-  /* No persistent baseline — the only visible connector is the
-     traveling orb itself, drifting from pin to card. The user's eye
-     traces the path each time the orb crosses, so a drawn line is
-     redundant + intrusive. (.note-card::before is intentionally not
-     defined; only ::after carries the visual.) */
-
-  /* Traveling orb — a small luminous sphere that drifts from the
-     in-document pin to the card. Multi-layered effect:
-       - radial-gradient bg = highlit sphere (3D look)
-       - negative-x box-shadows = comet trail in the wake
-       - positive-radius box-shadows = halo glow
-       - filter: blur = ethereal soft edges
-       - scale 0.5 → 1 → 0.5 in keyframes = breath / emergence
-       - ease-in-out = smooth, organic motion
-     Hidden under prefers-reduced-motion. */
-  .note-card::after {
-    content: '';
+  /* Connector stream — a flow of luminous dots from the card toward
+     the in-document pin, mounted only while the card is in edit mode.
+     The wrapper spans the gap (right:100% + width:--connector-width).
+     Dots are absolutely positioned within and animated leftward. */
+  .connector-stream {
     position: absolute;
-    left: calc(-1 * var(--connector-width, 32px));
-    top: 13px;
-    width: 6px;
-    height: 6px;
+    right: 100%;
+    top: 0;
+    bottom: 0;
+    width: var(--connector-width, 32px);
+    pointer-events: none;
+  }
+
+  /* Each dot starts max-sized at the card edge and travels left
+     toward the pin. As it travels, scale grows from 0.18 to 1.0
+     (where 1.0 = .note-pin's actual size, set as --pin-size on the
+     parent card). The visual: dots GROW from card-side specks into
+     the pin-sized dot, then merge into the pin and vanish.
+     STREAM_DOTS instances are staggered via per-dot --phase so the
+     stream looks continuous. */
+  .stream-dot {
+    position: absolute;
+    /* Vertical: centre on the connector line (which sits at top:16
+       from card top — same y as the card's accent dot). */
+    top: calc(16px - var(--pin-size, 12px) / 2);
+    /* Initial position: dot's centre at the card's left edge. */
+    right: calc(var(--pin-size, 12px) / -2);
+    width: var(--pin-size, 12px);
+    height: var(--pin-size, 12px);
     border-radius: 999px;
     background: radial-gradient(
       circle at 32% 30%,
-      rgba(255, 255, 255, 0.95) 0%,
-      var(--accent) 38%,
+      rgba(255, 255, 255, 0.92) 0%,
+      var(--accent) 40%,
       rgba(139, 127, 255, 0.85) 100%
     );
     box-shadow:
-      /* Comet trail — negative x offsets fade out behind the orb */
-      -4px 0 6px 0 rgba(139, 127, 255, 0.5),
-      -10px 0 10px 0 rgba(139, 127, 255, 0.28),
-      -18px 0 14px 0 rgba(139, 127, 255, 0.14),
-      -28px 0 18px 0 rgba(139, 127, 255, 0.07),
-      /* Halo — symmetric depth glow around the orb */
-      0 0 6px rgba(139, 127, 255, 0.65),
-      0 0 16px rgba(139, 127, 255, 0.32);
-    filter: blur(0.4px);
-    pointer-events: none;
-    animation: connectorDrift 3s ease-in-out infinite;
+      0 0 6px rgba(139, 127, 255, 0.55),
+      0 0 14px rgba(139, 127, 255, 0.28);
+    filter: blur(0.35px);
+    animation: streamFlow 2.4s linear infinite;
+    /* Negative delay = animation has 'already been running' for
+       phase * duration when it starts. Spaces the dots evenly along
+       the connector. */
+    animation-delay: calc(var(--phase, 0) * -2.4s);
   }
-  @keyframes connectorDrift {
-    0%   { transform: translateX(0)                                                scale(0.4); opacity: 0; }
-    18%  { transform: translateX(calc(var(--connector-width, 32px) * 0.08))         scale(1);   opacity: 1; }
-    82%  { transform: translateX(calc(var(--connector-width, 32px) * 0.92))         scale(1);   opacity: 1; }
-    100% { transform: translateX(var(--connector-width, 32px))                      scale(0.4); opacity: 0; }
+  @keyframes streamFlow {
+    0%   { transform: translateX(0)                                       scale(0.18); opacity: 0; }
+    8%   {                                                                              opacity: 1; }
+    92%  {                                                                              opacity: 1; }
+    100% { transform: translateX(calc(var(--connector-width, 32px) * -1)) scale(1);    opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .note-card::after { display: none; }
+    .connector-stream { display: none; }
   }
   .note-card:hover {
     background: var(--bg-2);
     border-color: var(--accent-soft);
     transform: translateX(-2px);
   }
-  /* Hover: orb drifts a touch faster — invitation to interact. */
-  .note-card:hover::after {
-    animation-duration: 2s;
-  }
   .note-card.editing {
     background: var(--bg-2);
     border-color: var(--accent-soft);
     cursor: default;
-  }
-  /* Editing: orb drifts ~3x as fast, halo + trail brighten. Reads as
-     'this connection is live'. */
-  .note-card.editing::after {
-    animation-duration: 1s;
-    box-shadow:
-      -4px 0 8px 0 rgba(139, 127, 255, 0.65),
-      -10px 0 12px 0 rgba(139, 127, 255, 0.4),
-      -18px 0 18px 0 rgba(139, 127, 255, 0.22),
-      -28px 0 22px 0 rgba(139, 127, 255, 0.12),
-      0 0 10px rgba(139, 127, 255, 0.85),
-      0 0 22px rgba(139, 127, 255, 0.45);
   }
 
   /* Inline-edit textarea — handwritten font like the popover so the
