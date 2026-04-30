@@ -82,10 +82,14 @@
 
   // Autofocus the textarea (and select-all) the moment edit mode opens
   // for any card. The bind:this catches the textarea ref on mount.
+  // preventScroll is critical: the textarea sits at its card's
+  // anchor-y inside the scrolling article, so a default focus() would
+  // make the browser scroll the article to bring it into view —
+  // exactly the "click moved my scroll down" symptom this avoids.
   $effect(() => {
     void editingId;
     if (editingTextarea) {
-      editingTextarea.focus();
+      editingTextarea.focus({ preventScroll: true });
       editingTextarea.select();
     }
   });
@@ -250,6 +254,12 @@
   .note-card.editing::before {
     opacity: 1;
     height: 2px;
+  }
+  /* While editing, the traveling pulse runs ~3x as fast and the dot
+     glows brighter — reads as 'this connection is active'. */
+  .note-card.editing::after {
+    animation-duration: 0.7s;
+    box-shadow: 0 0 12px rgba(139, 127, 255, 1);
   }
 
   /* Inline-edit textarea — handwritten font like the popover so the
