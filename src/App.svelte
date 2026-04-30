@@ -25,6 +25,7 @@
   import MouseCursor from './components/MouseCursor.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
+  import EditModeToggle from './components/EditModeToggle.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
@@ -47,6 +48,7 @@
   import { readerMode, exitReaderMode } from './stores/reader-mode';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
+  import { toggleEditMode } from './stores/edit-mode';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -151,6 +153,22 @@
     toggleTutorial();
   }
 
+  function onEditModeKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key !== 'e' && e.key !== 'E') return;
+    // Skip while a text input or contenteditable is focused — typing
+    // Cmd+E inside a re.mark popover etc. shouldn't toggle the editor.
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    e.preventDefault();
+    toggleEditMode();
+  }
+
   function onZoomKey(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key === '+' || e.key === '=') { e.preventDefault(); increaseZoom(); }
@@ -248,6 +266,7 @@
     window.addEventListener('keydown', onReaderModeEsc);
     window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
+    window.addEventListener('keydown', onEditModeKey);
 
     // Startup-document precedence:
     //   1. If welcome is enabled (default), materialise it under app_data_dir
@@ -301,6 +320,7 @@
       window.removeEventListener('keydown', onReaderModeEsc);
       window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);
+      window.removeEventListener('keydown', onEditModeKey);
     }
   });
 </script>
@@ -319,6 +339,7 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<EditModeToggle />
 <TocButton />
 <NotesPanel />
 <WelcomeDismiss />
