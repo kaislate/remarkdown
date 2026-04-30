@@ -86,11 +86,12 @@
   const CARD_GAP = 8;
   /** Card top is offset upward by DOT_OFFSET so the card's accent
    *  dot (which is what the connector attaches to) sits at the
-   *  card's displacedY. Card padding-top (12) + dot margin-top (4)
-   *  + dot half-height (4) = 20 — but we use 16 to keep the dot
-   *  visually aligned with the in-doc pin centre regardless of
-   *  pin size. */
-  const DOT_OFFSET = 16;
+   *  card's displacedY in container coords.
+   *  Card padding-top (12) + dot margin-top (4) + dot half-height
+   *  (4) = 20. Keep this in sync with the .note-card padding rule
+   *  and the matching `top: calc(20px - …)` calls in
+   *  .connector-stream and .stream-dot below. */
+  const DOT_OFFSET = 20;
 
   const cards = $derived.by((): Card[] => {
     void resizeTick;
@@ -359,14 +360,16 @@
   /* Connector stream — a flow of luminous dots from the card toward
      the in-document pin, mounted only while the card is in edit mode.
      The wrapper is anchored at the pin's location in card-relative
-     coords (left = -connectorWidth, top = 16 - delta) and rotated
+     coords (left = -connectorWidth, top = 20 - delta) and rotated
      so its right end lands at the card's accent dot. When the card
      hasn't been pushed down, delta = 0 and angle = 0 so the wrapper
-     is just a horizontal line — old behaviour preserved. */
+     is just a horizontal line — old behaviour preserved.
+     The 20px = card padding-top (12) + dot margin-top (4) + dot
+     half-height (4); must match DOT_OFFSET in the script. */
   .connector-stream {
     position: absolute;
     left: calc(-1 * var(--connector-width, 32px));
-    top: calc(16px - var(--connector-delta, 0px));
+    top: calc(20px - var(--connector-delta, 0px));
     width: var(--connector-length, var(--connector-width, 32px));
     height: 0;
     transform: rotate(var(--connector-angle, 0deg));
@@ -385,7 +388,7 @@
     position: absolute;
     /* Vertical: centre on the connector line (which sits at top:16
        from card top — same y as the card's accent dot). */
-    top: calc(16px - var(--pin-size, 12px) / 2);
+    top: calc(20px - var(--pin-size, 12px) / 2);
     /* Initial position: dot's centre at the card's left edge. */
     right: calc(var(--pin-size, 12px) / -2);
     width: var(--pin-size, 12px);
