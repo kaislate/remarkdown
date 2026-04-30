@@ -386,9 +386,10 @@
      stream looks continuous. */
   .stream-dot {
     position: absolute;
-    /* Vertical: centre on the connector line (which sits at top:16
-       from card top — same y as the card's accent dot). */
-    top: calc(20px - var(--pin-size, 12px) / 2);
+    /* Vertical: dot's centre on the wrapper's axis (y=0 in wrapper
+       local coords, since the wrapper has height:0). top is
+       -pin-size/2 so the dot's centre lands on y=0. */
+    top: calc(var(--pin-size, 12px) / -2);
     /* Initial position: dot's centre at the card's left edge. */
     right: calc(var(--pin-size, 12px) / -2);
     width: var(--pin-size, 12px);
