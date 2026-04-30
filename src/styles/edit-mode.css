@@ -12,14 +12,6 @@ body.edit-mode .rail {
   display: none !important;
 }
 
-/* CSS Custom Highlight API: edit mode clears the highlights set so
-   no painted highlight rules remain on the article. The HighlightLayer
-   itself is unmounted by Viewer.svelte's branch, but the highlight
-   ranges live in CSS.highlights — clear them defensively. */
-body.edit-mode {
-  --hl-active: 0;
-}
-
 /* Subtle accent inset border on the editor surface so the user
    sees they're in edit mode without a heavy chrome change. */
 body.edit-mode .editor-surface {

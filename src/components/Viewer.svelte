@@ -167,8 +167,17 @@
     return () => root.removeEventListener('click', onClick);
   });
 
+  let pendingSave: Debounced<[string]> | null = null;
+
   $effect(() => {
     if ($editMode) {
+      // CSS Custom Highlight API ranges live in a global registry; the
+      // HighlightLayer component unmounts when entering edit mode but the
+      // ranges it registered persist. Clear them so they don't paint
+      // stale highlights over the editor surface.
+      if (typeof CSS !== 'undefined' && CSS.highlights) {
+        CSS.highlights.clear();
+      }
       void pauseFileWatcher();
     } else {
       // Flush any pending autosave so the file on disk reflects the
@@ -186,7 +195,6 @@
     }
   });
 
-  let pendingSave: Debounced<[string]> | null = null;
   $effect(() => {
     const currentDoc = $doc;
     if (!currentDoc) {
@@ -228,7 +236,9 @@
           <MarginaliaColumn />
         </div>
       {:else}
-        <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+        {#key $doc?.path}
+          <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+        {/key}
       {/if}
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->
