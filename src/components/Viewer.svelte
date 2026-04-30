@@ -14,7 +14,7 @@
   import { get } from 'svelte/store';
   import type { Drawing } from '../lib/schema';
   import { editMode } from '../stores/edit-mode';
-  import { pauseFileWatcher, resumeFileWatcher } from '../stores/doc';
+  import { pauseFileWatcher, resumeFileWatcher, loadDocument } from '../stores/doc';
   import Editor from './Editor.svelte';
   import { writeDocument } from '../lib/tauri-api';
   import { debounce } from '../lib/editor/debounce';
@@ -168,13 +168,21 @@
   });
 
   $effect(() => {
-    // editMode subscription — pause file watcher when entering edit mode,
-    // resume on exit. Without this, our own debounced writes would round-
-    // trip back through the file watcher and re-anchor mid-edit (jarring).
     if ($editMode) {
       void pauseFileWatcher();
     } else {
-      void resumeFileWatcher();
+      // Flush any pending autosave so the file on disk reflects the
+      // user's final edits, then reload the doc — re-renders article
+      // HTML from the new markdown and runs the existing re-anchor
+      // pipeline (annotations re-resolve, orphans go to the orphan
+      // panel via the standard flow).
+      pendingSave?.flush();
+      const currentDoc = get(doc);
+      if (currentDoc) {
+        void loadDocument(currentDoc.path).then(() => resumeFileWatcher());
+      } else {
+        void resumeFileWatcher();
+      }
     }
   });
 
