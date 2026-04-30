@@ -2783,7 +2783,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "remarkdown"
-version = "0.5.3-beta"
+version = "0.5.4-beta"
 dependencies = [
  "directories",
  "serde",
