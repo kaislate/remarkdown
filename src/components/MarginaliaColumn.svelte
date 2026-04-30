@@ -219,22 +219,83 @@
        past the right edge of the scroll container is cropped. */
   }
 
+  /* Liquid-glass card. Layered background:
+     1. radial highlight at top-left  → 'lit from above' rim glow
+     2. diagonal sheen 135deg          → caught-light gradient
+     3. accent-purple wash             → re.mark identity tint
+     4. translucent dark base          → carries text contrast
+     Backdrop-blur + saturate gives proper refractive glass; layered
+     box-shadows give a real bright top rim, dark bottom shadow, plus
+     a soft outer drop + accent halo so the card reads as floating in
+     front of the canvas instead of pasted onto it. */
   .note-card {
     position: absolute;
     left: 0;
     right: 0;
-    background: var(--bg-1);
-    border: 1px solid var(--glass-border);
-    border-left: 3px solid var(--accent);
-    border-radius: 6px;
-    padding: 8px 10px;
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(255, 255, 255, 0.14) 0%,
+        rgba(255, 255, 255, 0) 48%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.08) 0%,
+        rgba(255, 255, 255, 0.02) 32%,
+        rgba(0, 0, 0, 0.04) 68%,
+        rgba(0, 0, 0, 0.10) 100%
+      ),
+      linear-gradient(
+        140deg,
+        rgba(139, 127, 255, 0.10) 0%,
+        rgba(139, 127, 255, 0.03) 100%
+      ),
+      rgba(20, 18, 30, 0.55);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 10px 12px 10px 16px; /* extra left for the accent rail */
     font-family: var(--font-sans);
     text-align: left;
     cursor: pointer;
     color: var(--fg-1);
     display: flex;
     gap: 8px;
-    transition: background 0.12s ease, border-color 0.12s ease, transform 0.18s ease;
+    overflow: hidden; /* clip the rail's overflow + future shimmer */
+    box-shadow:
+      /* Inner rim highlight (top edge catches light) */
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      /* Inner shadow at the bottom for grounded depth */
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+      /* Outer drop — lifts the card off the canvas */
+      0 8px 24px rgba(0, 0, 0, 0.45),
+      /* Outer halo — subtle accent aura */
+      0 0 22px rgba(139, 127, 255, 0.10);
+    transition:
+      transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.28s ease,
+      box-shadow 0.28s ease;
+  }
+  /* Vertical accent rail along the left edge — a gradient from the
+     full accent at the top to a faint glow at the bottom, with its
+     own halo. Pseudo-element so it can sit inside the card's clipped
+     border-radius without showing harsh corners. */
+  .note-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    background: linear-gradient(
+      to bottom,
+      var(--accent) 0%,
+      rgba(139, 127, 255, 0.45) 100%
+    );
+    border-radius: 0 999px 999px 0;
+    box-shadow: 0 0 10px rgba(139, 127, 255, 0.55);
+    pointer-events: none;
   }
   /* Connector stream — a flow of luminous dots from the card toward
      the in-document pin, mounted only while the card is in edit mode.
@@ -291,25 +352,89 @@
   @media (prefers-reduced-motion: reduce) {
     .connector-stream { display: none; }
   }
+  /* Hover: lift, brighten highlight + halo. Background gradient
+     shifts subtly via accent-tint intensification. */
   .note-card:hover {
-    background: var(--bg-2);
-    border-color: var(--accent-soft);
-    transform: translateX(-2px);
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(255, 255, 255, 0.20) 0%,
+        rgba(255, 255, 255, 0) 52%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.10) 0%,
+        rgba(255, 255, 255, 0.03) 32%,
+        rgba(0, 0, 0, 0.04) 68%,
+        rgba(0, 0, 0, 0.10) 100%
+      ),
+      linear-gradient(
+        140deg,
+        rgba(139, 127, 255, 0.16) 0%,
+        rgba(139, 127, 255, 0.06) 100%
+      ),
+      rgba(20, 18, 30, 0.62);
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateX(-3px) translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.26),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+      0 14px 32px rgba(0, 0, 0, 0.5),
+      0 0 32px rgba(139, 127, 255, 0.20);
   }
+  .note-card:hover::before {
+    box-shadow: 0 0 14px rgba(139, 127, 255, 0.75);
+  }
+
+  /* Editing: bigger lift, accent border, stronger purple halo. */
   .note-card.editing {
-    background: var(--bg-2);
-    border-color: var(--accent-soft);
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(255, 255, 255, 0.22) 0%,
+        rgba(255, 255, 255, 0) 55%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.12) 0%,
+        rgba(255, 255, 255, 0.04) 32%,
+        rgba(0, 0, 0, 0.04) 68%,
+        rgba(0, 0, 0, 0.10) 100%
+      ),
+      linear-gradient(
+        140deg,
+        rgba(139, 127, 255, 0.22) 0%,
+        rgba(139, 127, 255, 0.10) 100%
+      ),
+      rgba(20, 18, 30, 0.72);
+    border-color: rgba(139, 127, 255, 0.45);
     cursor: default;
+    transform: translateX(-3px) translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+      0 14px 36px rgba(0, 0, 0, 0.5),
+      0 0 40px rgba(139, 127, 255, 0.32);
+  }
+  .note-card.editing::before {
+    box-shadow: 0 0 18px rgba(139, 127, 255, 0.9);
   }
 
   /* Inline-edit textarea — handwritten font like the popover so the
      edit experience feels continuous with the existing in-doc note
      editor. Replaces .body when the card is in edit mode. */
   .edit-input {
-    background: rgba(0, 0, 0, 0.18);
+    background:
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(0, 0, 0, 0.10) 100%
+      ),
+      rgba(0, 0, 0, 0.22);
     color: var(--fg-0);
-    border: 1px solid var(--accent-soft);
+    border: 1px solid rgba(139, 127, 255, 0.3);
     border-radius: 6px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     padding: 6px 8px;
     font-family:
       'Segoe Print',
