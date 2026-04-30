@@ -212,11 +212,19 @@
     background: transparent;
     border: 0;
   }
+  /* Title-bar window controls — bare buttons that bloom on hover.
+     Each carries a --ctrl-color custom property; ::before is a
+     glowing orb that scales up behind the icon, ::after is a ripple
+     ring that expands outward, and the icon itself does a small
+     action-specific transform. No flat squares, no harsh red
+     rectangle on close. */
   .ctrl {
+    position: relative;
     background: transparent;
     border: 0;
     color: var(--fg-1);
     width: 44px;
+    height: 38px;
     cursor: pointer;
     display: grid;
     place-items: center;
@@ -224,15 +232,104 @@
     font-size: 14px;
     line-height: 1;
     padding: 0;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: color 0.18s ease;
   }
+  .ctrl > :global(span) {
+    position: relative;
+    z-index: 2;
+    display: inline-block;
+    transition:
+      transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+      text-shadow 0.18s ease;
+  }
+  /* Glowing orb behind the icon — radial gradient + soft halo */
+  .ctrl::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 35% 30%,
+      rgba(255, 255, 255, 0.55) 0%,
+      var(--ctrl-color, var(--accent)) 48%,
+      rgba(0, 0, 0, 0) 100%
+    );
+    box-shadow:
+      0 0 14px var(--ctrl-color, var(--accent)),
+      0 0 28px color-mix(in srgb, var(--ctrl-color, var(--accent)) 50%, transparent);
+    filter: blur(0.4px);
+    transition:
+      transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+      opacity 0.22s ease;
+    z-index: 1;
+  }
+  /* Outer ripple ring — appears slightly after the orb for a
+     "echoing pulse" feel */
+  .ctrl::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--ctrl-color, var(--accent));
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s,
+      opacity 0.32s ease;
+    z-index: 1;
+  }
+
   .ctrl:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--fg-0);
-  }
-  .ctrl.close:hover {
-    background: #e74c3c;
     color: #fff;
+  }
+  .ctrl:hover::before {
+    transform: translate(-50%, -50%) scale(3.4);
+    opacity: 0.95;
+  }
+  .ctrl:hover::after {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.45;
+  }
+
+  /* Action-coded color + per-icon micro animation */
+  .ctrl.min {
+    --ctrl-color: #f5b54a;     /* warm amber — 'set aside' */
+  }
+  .ctrl.min:hover > :global(span) {
+    transform: translateY(4px);
+  }
+
+  .ctrl.max {
+    --ctrl-color: #5dd0d6;     /* cool cyan — 'expand' */
+  }
+  .ctrl.max:hover > :global(span) {
+    transform: scale(1.25);
+  }
+
+  .ctrl.close {
+    --ctrl-color: #ff5e6e;     /* vivid red — 'dismiss' */
+  }
+  .ctrl.close:hover > :global(span) {
+    transform: rotate(90deg) scale(1.15);
+    text-shadow: 0 0 10px rgba(255, 94, 110, 0.85);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ctrl::before,
+    .ctrl::after,
+    .ctrl > :global(span) {
+      transition-duration: 0.1s;
+    }
   }
 
   /* Resize grip — generous 36×36 hit zone in the bottom-right corner so
