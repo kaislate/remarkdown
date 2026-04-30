@@ -28,6 +28,28 @@ export const doc = writable<DocState | null>(null);
 
 let currentDispose: (() => Promise<void>) | null = null;
 
+let watcherPaused = false;
+let pausedPath: string | null = null;
+
+export async function pauseFileWatcher(): Promise<void> {
+  if (currentDispose) {
+    pausedPath = get(doc)?.path ?? null;
+    await currentDispose();
+    currentDispose = null;
+  }
+  watcherPaused = true;
+}
+
+export async function resumeFileWatcher(): Promise<void> {
+  watcherPaused = false;
+  const path = pausedPath ?? get(doc)?.path;
+  pausedPath = null;
+  if (!path) return;
+  currentDispose = await installFileWatcher(path, () => {
+    void reloadCurrent(path);
+  });
+}
+
 export async function loadDocument(path: string): Promise<void> {
   let r;
   try {
@@ -106,14 +128,17 @@ export async function loadDocument(path: string): Promise<void> {
     });
   }
 
-  // Cancel previous watcher (if any) and install a new one for this path.
+  // Cancel previous watcher (if any) and install a new one for this path,
+  // unless the watcher is currently paused (e.g. during edit mode autosave).
   if (currentDispose) {
     await currentDispose();
     currentDispose = null;
   }
-  currentDispose = await installFileWatcher(path, () => {
-    void reloadCurrent(path);
-  });
+  if (!watcherPaused) {
+    currentDispose = await installFileWatcher(path, () => {
+      void reloadCurrent(path);
+    });
+  }
 }
 
 async function reloadCurrent(path: string): Promise<void> {

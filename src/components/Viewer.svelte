@@ -13,6 +13,13 @@
   import { addToast } from '../stores/toasts';
   import { get } from 'svelte/store';
   import type { Drawing } from '../lib/schema';
+  import { editMode } from '../stores/edit-mode';
+  import { pauseFileWatcher, resumeFileWatcher } from '../stores/doc';
+  import Editor from './Editor.svelte';
+  import { writeDocument } from '../lib/tauri-api';
+  import { debounce } from '../lib/editor/debounce';
+  import type { Debounced } from '../lib/editor/debounce';
+  import { settings } from '../stores/settings';
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -159,6 +166,36 @@
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
   });
+
+  $effect(() => {
+    // editMode subscription — pause file watcher when entering edit mode,
+    // resume on exit. Without this, our own debounced writes would round-
+    // trip back through the file watcher and re-anchor mid-edit (jarring).
+    if ($editMode) {
+      void pauseFileWatcher();
+    } else {
+      void resumeFileWatcher();
+    }
+  });
+
+  let pendingSave: Debounced<[string]> | null = null;
+  $effect(() => {
+    const currentDoc = $doc;
+    if (!currentDoc) {
+      pendingSave?.cancel();
+      pendingSave = null;
+      return;
+    }
+    const ms = $settings.saveDebounceMs;
+    pendingSave = debounce((markdown: string) => {
+      void writeDocument(currentDoc.path, markdown);
+    }, ms);
+    return () => pendingSave?.flush();
+  });
+
+  function onEditorChange(markdown: string) {
+    pendingSave?.(markdown);
+  }
 </script>
 
 <div class="scroll" bind:this={scrollEl}>
@@ -168,19 +205,23 @@
     </div>
   {:else}
     <div class="content">
-      <div class="text-frame">
-        <article class="viewer md-rendered" bind:this={articleEl}>
-          {@html $doc.html}
-        </article>
-        <MermaidRenderer {articleEl} />
-        <HighlightLayer />
-        <NoteLayer />
-        <!-- Marginalia hugs the text-frame's right edge (left:100% + 32px
-             gap) so the cards live in the close margin instead of pinned
-             to the screen edge. Inside text-frame because the cards'
-             y-coords are computed in text-frame coordinate space. -->
-        <MarginaliaColumn />
-      </div>
+      {#if !$editMode}
+        <div class="text-frame">
+          <article class="viewer md-rendered" bind:this={articleEl}>
+            {@html $doc.html}
+          </article>
+          <MermaidRenderer {articleEl} />
+          <HighlightLayer />
+          <NoteLayer />
+          <!-- Marginalia hugs the text-frame's right edge (left:100% + 32px
+               gap) so the cards live in the close margin instead of pinned
+               to the screen edge. Inside text-frame because the cards'
+               y-coords are computed in text-frame coordinate space. -->
+          <MarginaliaColumn />
+        </div>
+      {:else}
+        <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+      {/if}
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->
       <DrawLayer />
