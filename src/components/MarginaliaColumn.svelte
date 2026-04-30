@@ -471,12 +471,14 @@
       10px 16px 32px rgba(0, 0, 0, 0.6);
   }
 
-  /* Editing: bigger lift, deeper drop shadow. No accent border or
-     halo glow — the writing surface inside the card carries the
-     'live' signal instead. */
+  /* Editing: deeper drop shadow + bevel, but NO transform translation.
+     The connector-stream is a child of the card; if the card moved
+     -3px,-2px, the dots would flow to a position offset from the
+     in-doc pin (which doesn't move with the card). Stays put so the
+     connector stays exactly aligned. The deeper shadow + dimmer
+     background carry the 'live' signal instead. */
   .note-card.editing {
     cursor: default;
-    transform: translateX(-3px) translateY(-2px);
     box-shadow:
       inset 4px 4px 12px rgba(255, 255, 255, 0.15),
       inset -4px -4px 14px rgba(0, 0, 0, 0.26),
