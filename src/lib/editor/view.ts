@@ -76,10 +76,21 @@ export function createEditorView(
     // the block); Mod-Enter exits to a fresh paragraph below; Tab and
     // Shift-Tab indent / dedent two spaces. Outside code blocks the
     // commands no-op (return false) and the chained list command runs.
+    // The trailing `() => true` on the Tab chains consumes the key
+    // even outside code-block / list contexts so focus doesn't escape
+    // the editor surface to the next focusable element on the page.
     'Enter': chainCommands(newlineInCode, splitListItem(editorSchema.nodes.list_item)),
     'Mod-Enter': exitCode,
-    'Tab': chainCommands(indentCodeBlock(2), sinkListItem(editorSchema.nodes.list_item)),
-    'Shift-Tab': chainCommands(dedentCodeBlock(2), liftListItem(editorSchema.nodes.list_item)),
+    'Tab': chainCommands(
+      indentCodeBlock(2),
+      sinkListItem(editorSchema.nodes.list_item),
+      () => true,
+    ),
+    'Shift-Tab': chainCommands(
+      dedentCodeBlock(2),
+      liftListItem(editorSchema.nodes.list_item),
+      () => true,
+    ),
   };
 
   const state = EditorState.create({
