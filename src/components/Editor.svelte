@@ -3,7 +3,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
-  import { createEditorView, insertCallout } from '../lib/editor/view';
+  import { createEditorView, insertCallout, insertCodeBlock } from '../lib/editor/view';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
@@ -63,6 +63,9 @@
     if (!v) return;
     if (action === 'callout') {
       insertCallout('info')(v.state, v.dispatch);
+      v.focus();
+    } else if (action === 'code') {
+      insertCodeBlock('')(v.state, v.dispatch);
       v.focus();
     }
   }

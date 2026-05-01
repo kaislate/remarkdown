@@ -1,5 +1,6 @@
 <script lang="ts">
   import Note from 'phosphor-svelte/lib/Note';
+  import Code from 'phosphor-svelte/lib/Code';
 
   type ToolbarAction = 'callout' | 'code' | 'table' | 'mermaid' | 'image';
 
@@ -21,6 +22,18 @@
   >
     <Note size={18} weight="regular" />
     <span class="label">Callout</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="code"
+    title="Insert code block"
+    aria-label="Insert code block"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('code')}
+  >
+    <Code size={18} weight="regular" />
+    <span class="label">Code</span>
   </button>
 </div>
 

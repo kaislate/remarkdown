@@ -28,4 +28,22 @@ describe('EditorToolbar', () => {
     expect(onInsert).toHaveBeenCalledWith('callout');
     cleanup();
   });
+
+  it('has a code button', () => {
+    const { container } = render(EditorToolbar, {
+      props: { onInsert: () => {} },
+    });
+    const btn = container.querySelector('.toolbar-btn[data-action="code"]');
+    expect(btn).not.toBeNull();
+  });
+
+  it('clicking code fires onInsert with the code action', async () => {
+    const onInsert = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorToolbar, { props: { onInsert } });
+    const btn = container.querySelector('.toolbar-btn[data-action="code"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onInsert).toHaveBeenCalledWith('code');
+    cleanup();
+  });
 });
