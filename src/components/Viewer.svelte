@@ -236,9 +236,11 @@
           <MarginaliaColumn />
         </div>
       {:else}
-        {#key $doc?.path}
-          <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
-        {/key}
+        <div class="text-frame">
+          {#key $doc?.path}
+            <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+          {/key}
+        </div>
       {/if}
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->

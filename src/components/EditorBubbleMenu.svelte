@@ -30,6 +30,7 @@
     aria-pressed={activeMarks.has('strong')}
     title="Bold (Ctrl+B)"
     aria-label="Bold"
+    onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('strong')}
   >
     <TextB size={16} weight="bold" />
@@ -41,6 +42,7 @@
     aria-pressed={activeMarks.has('em')}
     title="Italic (Ctrl+I)"
     aria-label="Italic"
+    onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('em')}
   >
     <TextItalic size={16} weight="bold" />
@@ -52,6 +54,7 @@
     aria-pressed={activeMarks.has('code')}
     title="Inline code (Ctrl+`)"
     aria-label="Inline code"
+    onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('code')}
   >
     <Code size={16} weight="bold" />
@@ -63,6 +66,7 @@
     aria-pressed={activeMarks.has('link')}
     title="Link"
     aria-label="Link"
+    onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('link')}
   >
     <Link size={16} weight="bold" />

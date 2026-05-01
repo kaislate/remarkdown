@@ -73,6 +73,20 @@
     void tick().then(updateBubble);
   }
 
+  // Click-outside handler — hide the bubble menu when the user clicks
+  // anywhere outside the editor surface or the toolbar/bubble menu
+  // themselves. PM keeps its selection state across focus changes, so
+  // without this the bubble would stay visible forever after the user
+  // clicks elsewhere in the app.
+  function onDocumentMouseDown(e: MouseEvent) {
+    const target = e.target as HTMLElement | null;
+    if (!parentEl || !target) return;
+    if (parentEl.contains(target)) return;
+    if (target.closest('.editor-toolbar')) return;
+    if (target.closest('.editor-bubble-menu')) return;
+    bubble = { ...bubble, visible: false };
+  }
+
   onMount(() => {
     if (!parentEl) return;
     view = createEditorView(parentEl, initialMarkdown, (md) => {
@@ -82,6 +96,7 @@
     parentEl.addEventListener('mouseup', updateBubble);
     parentEl.addEventListener('keyup', updateBubble);
     document.addEventListener('selectionchange', updateBubble);
+    document.addEventListener('mousedown', onDocumentMouseDown);
   });
 
   onDestroy(() => {
@@ -90,6 +105,7 @@
       parentEl.removeEventListener('keyup', updateBubble);
     }
     document.removeEventListener('selectionchange', updateBubble);
+    document.removeEventListener('mousedown', onDocumentMouseDown);
     view?.destroy();
     view = null;
   });
