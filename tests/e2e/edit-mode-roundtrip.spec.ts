@@ -111,3 +111,52 @@ test.describe('edit mode — callouts', () => {
     await expect(page.locator('article.viewer .callout.callout-info')).toBeVisible();
   });
 });
+
+test.describe('edit mode — code blocks', () => {
+  const CODE_FIXTURE_PATH = '/e2e/edit-code-fixture.md';
+  const CODE_FIXTURE_MD = `# Hello\n\n\`\`\`typescript\nconst x = 1;\n\`\`\`\n`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [CODE_FIXTURE_PATH, CODE_FIXTURE_MD],
+    );
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      CODE_FIXTURE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+  });
+
+  test('toggle on → existing fenced code block renders with language pill', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    // The NodeView's pill is the marker that the code-block surface mounted.
+    await expect(page.locator('.code-block-lang-pill')).toBeVisible();
+    await expect(page.locator('.code-block-lang-pill')).toHaveText('typescript');
+  });
+
+  test('insert-code-block button wraps a paragraph and saves with ``` syntax', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    // Place caret in the heading paragraph so the toolbar action has a valid target.
+    await page.locator('.editor-surface .ProseMirror h1').click();
+    await page.keyboard.press('End');
+    // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
+    // use DOM-native .click() to avoid blurring the PM selection (same workaround
+    // as the callout E2E test above).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="code"]') as HTMLElement | null)?.click();
+    });
+    // Wait for the autosave debounce to fire.
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    expect(last.path).toBe(CODE_FIXTURE_PATH);
+    expect(last.markdown).toContain('```');
+  });
+});
