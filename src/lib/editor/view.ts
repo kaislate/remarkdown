@@ -45,6 +45,12 @@ export function createEditorView(
   let view: EditorView;
   view = new EditorView(parent, {
     state,
+    // Apply the same `md-rendered` class the reader uses, so all of
+    // article.css's rules (callout boxes, list bullets, table styling,
+    // code-block backgrounds, etc.) automatically render in the editor.
+    attributes: {
+      class: 'md-rendered',
+    },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);
       view.updateState(newState);
