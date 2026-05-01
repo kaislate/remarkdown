@@ -13,11 +13,30 @@ export const SUPPORTED_LANGUAGES = [
   'markdown', 'svelte', 'cpp', 'objc', 'fsharp',
 ] as const;
 
-// User-friendly aliases → canonical Shiki name.
+// User-friendly aliases → canonical Shiki name. The first three are
+// the user-typed-with-symbols variants; the rest are common shorthand
+// identifiers (`ts`, `js`, `py`, ...) that Shiki recognises natively
+// when its bundled languages are loaded. The reader's previous path
+// trusted Shiki's getLoadedLanguages() (which returns canonical names
+// PLUS registered aliases) and so silently accepted these — the
+// shared resolveLanguage check below only consults SUPPORTED_LANGUAGES,
+// so we have to enumerate the aliases here to avoid silently
+// downgrading `\`\`\`ts` to plain text.
 export const LANG_ALIASES: Record<string, string> = {
   'c++': 'cpp',
   'objective-c': 'objc',
   'f#': 'fsharp',
+  ts: 'typescript',
+  js: 'javascript',
+  py: 'python',
+  rs: 'rust',
+  sh: 'bash',
+  zsh: 'bash',
+  shellscript: 'shell',
+  yml: 'yaml',
+  md: 'markdown',
+  fs: 'fsharp',
+  'cpp-macro': 'cpp',
 };
 
 // Resolve any input language string to either a supported Shiki
