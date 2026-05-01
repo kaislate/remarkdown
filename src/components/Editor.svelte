@@ -28,13 +28,21 @@
       bubble = { ...bubble, visible: false };
       return;
     }
+    // PM's coordsAtPos returns viewport-relative coordinates. The bubble
+    // menu is absolutely positioned inside .editor-shell (position:relative),
+    // so we have to subtract the shell's bounding rect to get the right
+    // coordinates relative to its containing block.
+    const shellEl = parentEl?.closest<HTMLElement>('.editor-shell');
+    const shellRect = shellEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
     const fromCoords = v.coordsAtPos(sel.from);
     const toCoords = v.coordsAtPos(sel.to);
-    const x = (fromCoords.left + toCoords.right) / 2;
-    const y = Math.min(fromCoords.top, toCoords.top);
+    const x = (fromCoords.left + toCoords.right) / 2 - shellRect.left;
+    const y = Math.min(fromCoords.top, toCoords.top) - shellRect.top;
+    // Active marks: prefer marksAcross (which returns marks active over
+    // the FULL selection range, not just at the start). storedMarks
+    // takes precedence for cursor-position-toggle cases.
     const marks = new Set<string>();
-    const selFrom = sel.$from;
-    const stored = v.state.storedMarks ?? selFrom.marks();
+    const stored = v.state.storedMarks ?? sel.$from.marksAcross(sel.$to) ?? [];
     for (const m of stored) marks.add(m.type.name);
     bubble = { visible: true, x, y, marks };
   }
