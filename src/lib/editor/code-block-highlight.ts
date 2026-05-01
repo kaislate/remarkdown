@@ -11,6 +11,7 @@ import {
   getSingletonHighlighter,
   type Highlighter,
   type BundledLanguage,
+  type SpecialLanguage,
 } from 'shiki';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './code-block-languages';
 
@@ -33,7 +34,16 @@ function getHighlighter(): Promise<Highlighter> {
   return highlighterPromise;
 }
 
-function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
+// TODO(Phase 2b follow-up): per-block memoization to avoid re-tokenizing
+// untouched blocks. Debounce is the current perf strategy; for very large
+// docs with many code blocks, memoizing by (node, lang) would skip work.
+//
+// Note: we sum tok.content.length manually rather than reading tok.offset.
+// Shiki's TokenBase.offset is documented as "relative to the input code"
+// but the per-line semantics are ambiguous in practice; the manual sum is
+// verified correct by the position-math test in code-blocks.test.ts.
+// A future contributor with more Shiki context can revisit.
+export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
   const decs: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (node.type.name !== 'code_block') return false; // don't descend
@@ -43,13 +53,16 @@ function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
     let tokens;
     try {
       // resolveLanguage returns either a SUPPORTED_LANGUAGES entry or 'text'
-      // (a Shiki SpecialLanguage). Cast to BundledLanguage to satisfy the
-      // tokenizer's typed lang parameter; values are validated at runtime.
+      // (a Shiki SpecialLanguage). The union covers both cases so the cast
+      // doesn't lie to the compiler; values are validated at runtime.
       tokens = hl.codeToTokensBase(text, {
-        lang: lang as BundledLanguage,
+        lang: lang as BundledLanguage | SpecialLanguage,
         theme: 'github-dark',
       });
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.warn('codeBlockHighlight: tokenize failed', { lang, err });
+      }
       return false;
     }
     // PM positions: pos is BEFORE the code_block; pos + 1 is the
@@ -112,27 +125,29 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       },
     },
     view(view: EditorView) {
+      // Single async-aware dispatcher: shared between the initial-mount path
+      // and the debounced update path. The isDestroyed check guards the
+      // window between awaiting getHighlighter() and dispatching, where the
+      // editor could be torn down (e.g. component unmount during HMR).
+      function scheduleHighlight(view: EditorView): void {
+        void getHighlighter().then((hl) => {
+          if (view.isDestroyed) return;
+          const decs = buildDecorations(view.state.doc, hl);
+          view.dispatch(
+            view.state.tr.setMeta(codeBlockHighlightKey, { decorations: decs }),
+          );
+        });
+      }
+
       // Initial highlight on mount (in case the doc opens with code blocks).
-      void getHighlighter().then((hl) => {
-        const decs = buildDecorations(view.state.doc, hl);
-        view.dispatch(
-          view.state.tr.setMeta(codeBlockHighlightKey, { decorations: decs }),
-        );
-      });
+      scheduleHighlight(view);
 
       return {
         update(updatedView, prevState) {
           if (prevState.doc.eq(updatedView.state.doc)) return;
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            void getHighlighter().then((hl) => {
-              const decs = buildDecorations(updatedView.state.doc, hl);
-              updatedView.dispatch(
-                updatedView.state.tr.setMeta(codeBlockHighlightKey, {
-                  decorations: decs,
-                }),
-              );
-            });
+            scheduleHighlight(updatedView);
           }, 150);
         },
         destroy() {

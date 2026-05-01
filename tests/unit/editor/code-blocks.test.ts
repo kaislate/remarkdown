@@ -6,7 +6,9 @@ import { editorSchema } from '../../../src/lib/editor/schema';
 import {
   createCodeBlockHighlightPlugin,
   codeBlockHighlightKey,
+  buildDecorations,
 } from '../../../src/lib/editor/code-block-highlight';
+import type { Highlighter } from 'shiki';
 
 describe('code-block parsing', () => {
   it('parses a fenced code block with a language', () => {
@@ -70,5 +72,31 @@ describe('code-block highlight plugin', () => {
     const next = state.apply(tr);
     const pluginState = codeBlockHighlightKey.getState(next);
     expect(pluginState).toBeDefined();
+  });
+
+  it('buildDecorations places color spans at correct PM positions', () => {
+    // Stub: one red token per non-empty line. tok.offset is line-local (0)
+    // because buildDecorations sums tok.content.length manually rather than
+    // trusting tok.offset; the stub mirrors that contract.
+    const fakeHl = {
+      codeToTokensBase: (text: string) => {
+        return text.split('\n').map((line) =>
+          line.length > 0
+            ? [{ content: line, color: '#ff0000', offset: 0 }]
+            : [],
+        );
+      },
+    } as unknown as Highlighter;
+    // doc has a single code_block at pos 0; its content "ab\ncd" lives
+    // at positions 1..6 (1=a, 2=b, 3=\n, 4=c, 5=d, 6=end-of-text).
+    const doc = parseMarkdownToDoc('```text\nab\ncd\n```\n');
+    const set = buildDecorations(doc, fakeHl);
+    const decs = set.find();
+    // Two decorations: line 1 ("ab") at 1..3, line 2 ("cd") at 4..6.
+    expect(decs.length).toBe(2);
+    expect(decs[0].from).toBe(1);
+    expect(decs[0].to).toBe(3);
+    expect(decs[1].from).toBe(4);
+    expect(decs[1].to).toBe(6);
   });
 });
