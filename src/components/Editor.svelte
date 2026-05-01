@@ -73,15 +73,22 @@
     void tick().then(updateBubble);
   }
 
-  // Click-outside handler — hide the bubble menu when the user clicks
-  // anywhere outside the editor surface or the toolbar/bubble menu
-  // themselves. PM keeps its selection state across focus changes, so
-  // without this the bubble would stay visible forever after the user
-  // clicks elsewhere in the app.
-  function onDocumentMouseDown(e: MouseEvent) {
+  // Hide the bubble on ANY mousedown that isn't on the toolbar or
+  // bubble menu itself. mouseup will re-show it if the selection is
+  // still non-empty (i.e., the user finished a new drag-select). This
+  // handles three cases that the previous "click outside parentEl"
+  // check missed:
+  //   - Click inside the editor on a different point (PM may keep
+  //     its selection if the click lands inside the existing range
+  //     or hits a non-text element).
+  //   - Click on chrome / blank canvas / minimap area.
+  //   - Click during a text selection that PM doesn't fully collapse.
+  // We allow the toolbar and bubble menu through so their buttons
+  // can fire (combined with onmousedown preventDefault on each
+  // button so the editor's selection survives the click).
+  function onAnyMouseDown(e: MouseEvent) {
     const target = e.target as HTMLElement | null;
-    if (!parentEl || !target) return;
-    if (parentEl.contains(target)) return;
+    if (!target) return;
     if (target.closest('.editor-toolbar')) return;
     if (target.closest('.editor-bubble-menu')) return;
     bubble = { ...bubble, visible: false };
@@ -96,7 +103,7 @@
     parentEl.addEventListener('mouseup', updateBubble);
     parentEl.addEventListener('keyup', updateBubble);
     document.addEventListener('selectionchange', updateBubble);
-    document.addEventListener('mousedown', onDocumentMouseDown);
+    document.addEventListener('mousedown', onAnyMouseDown);
   });
 
   onDestroy(() => {
@@ -105,7 +112,7 @@
       parentEl.removeEventListener('keyup', updateBubble);
     }
     document.removeEventListener('selectionchange', updateBubble);
-    document.removeEventListener('mousedown', onDocumentMouseDown);
+    document.removeEventListener('mousedown', onAnyMouseDown);
     view?.destroy();
     view = null;
   });
