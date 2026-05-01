@@ -62,6 +62,18 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
           : '',
     }),
   },
+  // Indented code blocks (no language).
+  code_block: {
+    block: 'code_block',
+    noCloseToken: true,
+    getAttrs: () => ({ language: '' }),
+  },
+  // Fenced code blocks: ```lang\n...\n```
+  fence: {
+    block: 'code_block',
+    noCloseToken: true,
+    getAttrs: (tok: Token) => ({ language: (tok.info || '').trim() }),
+  },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {
