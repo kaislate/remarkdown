@@ -245,3 +245,55 @@ body.reattach-mode .reader-mode-toggle {
   pointer-events: none;
   opacity: 0.4;
 }
+
+/* Code-block editor surface. The base .md-rendered pre rules already
+   cover background/padding/border. These rules just position the
+   language pill and style the dropdown picker. */
+.md-rendered pre.code-block-editor {
+  position: relative;
+}
+.code-block-lang-pill {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 2px 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-2);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.code-block-lang-pill:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.code-block-lang-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+.code-block-lang-option {
+  background: transparent;
+  border: 0;
+  color: var(--fg-1);
+  text-align: left;
+  padding: 4px 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.code-block-lang-option:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
