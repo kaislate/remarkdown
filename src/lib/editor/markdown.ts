@@ -1,32 +1,20 @@
-// Round-trip helpers wrapping prosemirror-markdown's default schema +
-// parser + serializer. Phase 1 uses the library defaults — Phase 2+
-// will extend the schema with custom node specs (e.g. for HTML
-// embedded inside paragraphs and mermaid blocks).
-import {
-  defaultMarkdownParser,
-  defaultMarkdownSerializer,
-  schema,
-} from 'prosemirror-markdown';
+// src/lib/editor/markdown.ts
+// Round-trip helpers for the editor. Phase 1 used prosemirror-markdown's
+// default schema + parser + serializer; Phase 2a swaps in our custom
+// versions so callouts (and future rich blocks) survive the round-trip
+// as their own PM node specs instead of degrading to plain blockquotes.
+
+import { editorSchema } from './schema';
+import { parseMarkdownToDoc } from './parser';
+import { serializeDocToMarkdown } from './serializer';
 import type { Node } from 'prosemirror-model';
 
-export const editorSchema = schema;
+export { editorSchema };
 
 export function parseMarkdown(md: string): Node {
-  const result = defaultMarkdownParser.parse(md);
-  if (!result) {
-    // The parser only returns null on internal errors — for us, treat
-    // it as an empty document so the editor mounts cleanly even on a
-    // pathological input.
-    return schema.node('doc', null, [schema.node('paragraph')]);
-  }
-  return result;
+  return parseMarkdownToDoc(md);
 }
 
 export function serializeToMarkdown(doc: Node): string {
-  // POSIX convention: text files end with `\n`. The default PM-markdown
-  // serializer doesn't append one, so we ensure exactly one trailing
-  // newline ourselves — otherwise round-tripping a file would strip
-  // the final newline on every save.
-  const out = defaultMarkdownSerializer.serialize(doc);
-  return out.endsWith('\n') ? out : out + '\n';
+  return serializeDocToMarkdown(doc);
 }
