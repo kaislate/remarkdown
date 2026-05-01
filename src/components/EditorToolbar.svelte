@@ -16,6 +16,7 @@
     data-action="insert-callout"
     title="Insert callout"
     aria-label="Insert callout"
+    onmousedown={(e) => e.preventDefault()}
     onclick={() => onInsert('callout')}
   >
     <Note size={18} weight="regular" />
