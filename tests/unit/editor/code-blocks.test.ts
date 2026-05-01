@@ -9,6 +9,8 @@ import {
   buildDecorations,
 } from '../../../src/lib/editor/code-block-highlight';
 import type { Highlighter } from 'shiki';
+import { CodeBlockNodeView } from '../../../src/lib/editor/code-block-node-view';
+import { EditorView } from 'prosemirror-view';
 
 describe('code-block parsing', () => {
   it('parses a fenced code block with a language', () => {
@@ -98,5 +100,58 @@ describe('code-block highlight plugin', () => {
     expect(decs[0].to).toBe(3);
     expect(decs[1].from).toBe(4);
     expect(decs[1].to).toBe(6);
+  });
+});
+
+describe('CodeBlockNodeView', () => {
+  it('renders <pre><code> with the language pill', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('```typescript\nconst x = 1;\n```\n');
+    const view = new EditorView(parent, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new CodeBlockNodeView(node, editorView, getPos),
+      },
+    });
+    const pre = parent.querySelector('pre');
+    expect(pre).not.toBeNull();
+    expect(pre!.querySelector('code')).not.toBeNull();
+    const pill = pre!.querySelector('.code-block-lang-pill');
+    expect(pill).not.toBeNull();
+    expect(pill!.textContent).toBe('typescript');
+    view.destroy();
+    parent.remove();
+  });
+
+  it('updates the pill label when the language attr changes', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('```typescript\nx\n```\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    const view = new EditorView(parent, {
+      state,
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new CodeBlockNodeView(node, editorView, getPos),
+      },
+      dispatchTransaction(tr) {
+        state = state.apply(tr);
+        view.updateState(state);
+      },
+    });
+    // Walk the doc to find the code_block position, then setNodeMarkup it.
+    let cbPos = -1;
+    state.doc.descendants((n, p) => {
+      if (n.type.name === 'code_block') cbPos = p;
+    });
+    expect(cbPos).toBeGreaterThanOrEqual(0);
+    const tr = state.tr.setNodeMarkup(cbPos, undefined, { language: 'python' });
+    view.dispatch(tr);
+    const pill = parent.querySelector('.code-block-lang-pill');
+    expect(pill!.textContent).toBe('python');
+    view.destroy();
+    parent.remove();
   });
 });
