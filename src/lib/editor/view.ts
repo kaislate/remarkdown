@@ -8,6 +8,7 @@ import { history, undo, redo } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
+import { findWrapping } from 'prosemirror-transform';
 import { editorSchema, parseMarkdown, serializeToMarkdown } from './markdown';
 
 export function createEditorView(
@@ -61,4 +62,32 @@ export function createEditorView(
   });
 
   return view;
+}
+
+/**
+ * Wrap the current selection's enclosing block(s) in a callout of the
+ * given type. If the selection already sits inside a callout (or is
+ * not in a wrappable block range), this is a no-op.
+ */
+export function insertCallout(type: string) {
+  return (
+    state: EditorState,
+    dispatch?: (tr: Transaction) => void,
+  ): boolean => {
+    const calloutType = editorSchema.nodes.callout;
+    if (!calloutType) return false;
+
+    const { $from, $to } = state.selection;
+    const range = $from.blockRange($to);
+    if (!range) return false;
+
+    const wrapping = findWrapping(range, calloutType, { type, title: '', fold: '' });
+    if (!wrapping) return false;
+
+    if (dispatch) {
+      const tr = state.tr.wrap(range, wrapping);
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
 }

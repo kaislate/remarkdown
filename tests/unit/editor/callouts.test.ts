@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
+import { EditorState } from 'prosemirror-state';
+import { editorSchema } from '../../../src/lib/editor/schema';
+import { insertCallout } from '../../../src/lib/editor/view';
 
 describe('callout parsing', () => {
   it('parses [!info] blockquote as a callout node', () => {
@@ -78,5 +81,30 @@ describe('callout round-trip', () => {
   it('round-trips a plain blockquote unchanged', () => {
     const src = '> Just a quote.\n';
     expect(rt(src)).toBe(src);
+  });
+});
+
+describe('insertCallout command', () => {
+  it('wraps the current selection in a callout node when called on a paragraph', () => {
+    const doc = parseMarkdownToDoc('Hello world.\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    let dispatched = false;
+    insertCallout('info')(state, (tr) => {
+      state = state.apply(tr);
+      dispatched = true;
+    });
+    expect(dispatched).toBe(true);
+    const first = state.doc.firstChild!;
+    expect(first.type.name).toBe('callout');
+    expect(first.attrs.type).toBe('info');
+  });
+
+  it('round-trip after inserting a callout produces [!info]', () => {
+    const doc = parseMarkdownToDoc('Hello world.\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    insertCallout('info')(state, (tr) => { state = state.apply(tr); });
+    const md = serializeDocToMarkdown(state.doc);
+    expect(md).toContain('[!info]');
+    expect(md).toContain('Hello world.');
   });
 });
