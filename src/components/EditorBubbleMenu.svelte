@@ -87,6 +87,14 @@
     pointer-events: auto;
     transform: translate(-50%, calc(-100% - 8px));
   }
+  /* The `hidden` HTML attribute defaults to display:none in the user-
+     agent stylesheet, but the rule above (display: flex) has higher
+     specificity and was overriding it — so `hidden=true` was set on
+     the element while it kept rendering visibly. Explicit override
+     here re-asserts display:none when hidden. */
+  .editor-bubble-menu[hidden] {
+    display: none;
+  }
   .bubble-btn {
     background: transparent;
     border: 0;
