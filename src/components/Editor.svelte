@@ -134,5 +134,12 @@
   :global(.editor-surface .ProseMirror) {
     outline: none;
     min-height: 60vh;
+    /* Match the read-mode article's column position. The read-mode
+       `.viewer` rule (Viewer.svelte) uses `padding: 96px 48px 160px`.
+       In edit mode the toolbar (~36px) sits above this surface and
+       eats into the top — reduce padding-top by the toolbar's height
+       so the first line of text lands at the same y as read mode.
+       Left/right (48px) and bottom (160px) match exactly. */
+    padding: 60px 48px 160px;
   }
 </style>
