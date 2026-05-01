@@ -21,3 +21,29 @@ describe('code-block parsing', () => {
     expect(first.textContent).toBe('plain text');
   });
 });
+
+describe('code-block round-trip', () => {
+  function rt(md: string): string {
+    return serializeDocToMarkdown(parseMarkdownToDoc(md));
+  }
+
+  it('round-trips a typescript fence', () => {
+    const src = '```typescript\nconst x = 1;\n```\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a no-language fence', () => {
+    const src = '```\nplain text\n```\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a multi-line fence with markdown-looking content', () => {
+    const src = '```python\n# This looks like a heading\n**not bold**\n```\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips an empty fence', () => {
+    const src = '```\n```\n';
+    expect(rt(src)).toBe(src);
+  });
+});

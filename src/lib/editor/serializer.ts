@@ -34,8 +34,18 @@ const callout = (state: MarkdownSerializerState, node: Node) => {
   );
 };
 
+const code_block = (state: MarkdownSerializerState, node: Node) => {
+  const lang = String(node.attrs.language || '');
+  state.write('```' + lang + '\n');
+  state.text(node.textContent, false); // false = don't escape markdown chars
+  // Ensure the closing fence sits on its own line. wrapBlock-friendly.
+  state.ensureNewLine();
+  state.write('```');
+  state.closeBlock(node);
+};
+
 const editorMarkdownSerializer = new MarkdownSerializer(
-  { ...defaultMarkdownSerializer.nodes, callout },
+  { ...defaultMarkdownSerializer.nodes, callout, code_block },
   defaultMarkdownSerializer.marks,
 );
 
