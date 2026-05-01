@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
+import { EditorState } from 'prosemirror-state';
+import { editorSchema } from '../../../src/lib/editor/schema';
+import {
+  createCodeBlockHighlightPlugin,
+  codeBlockHighlightKey,
+} from '../../../src/lib/editor/code-block-highlight';
 
 describe('code-block parsing', () => {
   it('parses a fenced code block with a language', () => {
@@ -45,5 +51,24 @@ describe('code-block round-trip', () => {
   it('round-trips an empty fence', () => {
     const src = '```\n```\n';
     expect(rt(src)).toBe(src);
+  });
+});
+
+describe('code-block highlight plugin', () => {
+  it('contributes an empty decoration set on init', () => {
+    const plugin = createCodeBlockHighlightPlugin();
+    const state = EditorState.create({ schema: editorSchema, plugins: [plugin] });
+    const pluginState = codeBlockHighlightKey.getState(state);
+    expect(pluginState).toBeDefined();
+    expect(pluginState!.decorations.find().length).toBe(0);
+  });
+
+  it('decoration set is preserved as a no-op through irrelevant transactions', () => {
+    const plugin = createCodeBlockHighlightPlugin();
+    const state = EditorState.create({ schema: editorSchema, plugins: [plugin] });
+    const tr = state.tr.insertText('hello');
+    const next = state.apply(tr);
+    const pluginState = codeBlockHighlightKey.getState(next);
+    expect(pluginState).toBeDefined();
   });
 });
