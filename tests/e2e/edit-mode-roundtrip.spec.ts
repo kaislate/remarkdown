@@ -141,9 +141,32 @@ test.describe('edit mode — code blocks', () => {
   });
 
   test('insert-code-block button wraps a paragraph and saves with ``` syntax', async ({ page }) => {
+    // Override the describe-level beforeEach fixture (which seeds a doc with an
+    // existing fence) — we need a clean slate so the assertion proves the toolbar
+    // action wrote the fence, not the seed. localStorage-backed docs persist
+    // across the page reload; window-scoped helpers (__E2E_DIALOG_PATH__,
+    // __E2E_WRITES__) do not, so reset & set them AFTER the goto.
+    const NO_FENCE_PATH = '/e2e/edit-code-no-fence-fixture.md';
+    const NO_FENCE_MD = `# Hello\n\nA paragraph.\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [NO_FENCE_PATH, NO_FENCE_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      NO_FENCE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+
     await page.locator('.edit-mode-toggle').click();
-    // Place caret in the heading paragraph so the toolbar action has a valid target.
-    await page.locator('.editor-surface .ProseMirror h1').click();
+    // Place caret in the trailing paragraph so the toolbar action has a valid target.
+    const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'A paragraph.' });
+    await para.click();
     await page.keyboard.press('End');
     // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
     // use DOM-native .click() to avoid blurring the PM selection (same workaround
@@ -156,7 +179,9 @@ test.describe('edit mode — code blocks', () => {
     const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
     expect(writes.length).toBeGreaterThan(0);
     const last = writes[writes.length - 1];
-    expect(last.path).toBe(CODE_FIXTURE_PATH);
+    expect(last.path).toBe(NO_FENCE_PATH);
+    // With a no-fence seed, any '```' in the saved markdown proves the toolbar
+    // action — not the fixture — wrote the fence.
     expect(last.markdown).toContain('```');
   });
 });
