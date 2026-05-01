@@ -150,6 +150,15 @@ export class CodeBlockNodeView implements NodeView {
 
     // Anchor the picker just below the pill, in document coordinates.
     const rect = this.pill.getBoundingClientRect();
+    // position: fixed is anchored to the nearest ancestor with a CSS
+    // transform/filter/perspective (per spec) — falling back to the
+    // viewport when none exists. The current article.css has none, so
+    // the picker correctly anchors to the viewport. If a future feature
+    // adds a transform to any ancestor of .editor-shell (a reveal
+    // animation, a perspective effect on the article column, etc.),
+    // this picker will silently anchor wrong. If that happens, switch
+    // to the Popover API (or position: absolute with manual coordinate
+    // translation from getBoundingClientRect to the editor-shell origin).
     picker.style.position = 'fixed';
     picker.style.top = `${rect.bottom + 4}px`;
     picker.style.left = `${rect.left}px`;

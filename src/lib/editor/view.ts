@@ -24,7 +24,7 @@ import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 // Insert N spaces at the cursor, but only if the cursor is inside a
 // code_block. Outside code_blocks this returns false and the chained
 // list-indent command runs.
-function indentCodeBlock(n: number) {
+export function indentCodeBlock(n: number) {
   const indent = ' '.repeat(n);
   return (state: EditorState, dispatch?: (tr: Transaction) => void): boolean => {
     const { $from } = state.selection;

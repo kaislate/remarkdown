@@ -7,6 +7,12 @@
 //
 // Marks all default to prosemirror-markdown's behaviour. Future sub-
 // phases (code blocks, tables, etc.) extend the nodes record here.
+//
+// Note: indented code blocks (4-space-leading-indent) are intentionally
+// upgraded to fenced code blocks on round-trip. This is by design per
+// the product framing ("a markdown editor for people who don't know
+// markdown") — fenced fences are visually clearer and unambiguous about
+// language. Future contributors: this is NOT a bug to "fix".
 
 import { defaultMarkdownSerializer, MarkdownSerializer, MarkdownSerializerState } from 'prosemirror-markdown';
 import type { Node } from 'prosemirror-model';
@@ -36,11 +42,21 @@ const callout = (state: MarkdownSerializerState, node: Node) => {
 
 const code_block = (state: MarkdownSerializerState, node: Node) => {
   const lang = String(node.attrs.language || '');
-  state.write('```' + lang + '\n');
-  state.text(node.textContent, false); // false = don't escape markdown chars
+  // Pick a fence length one longer than the longest run of backticks in
+  // the body, with a 3-tick floor (CommonMark minimum). Without this a
+  // user who writes markdown-about-markdown would see their fence "swallow"
+  // the inner content's literal triple-backticks on round-trip.
+  const text = node.textContent;
+  const longestRun = (text.match(/`+/g) ?? []).reduce(
+    (m, run) => Math.max(m, run.length),
+    0,
+  );
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  state.write(fence + lang + '\n');
+  state.text(text, false); // false = don't escape markdown chars
   // Ensure the closing fence sits on its own line. wrapBlock-friendly.
   state.ensureNewLine();
-  state.write('```');
+  state.write(fence);
   state.closeBlock(node);
 };
 

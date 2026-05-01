@@ -57,6 +57,14 @@ describe('code-block round-trip', () => {
     const src = '```\n```\n';
     expect(rt(src)).toBe(src);
   });
+
+  it('round-trips a fence whose body contains literal triple-backticks', () => {
+    // CommonMark allows wrapping with a longer fence than the inner content.
+    // Without variable-length fences in the serializer, the inner ``` would
+    // be re-interpreted as a fence boundary on re-parse.
+    const src = '````markdown\n```ts\nx\n```\n````\n';
+    expect(rt(src)).toBe(src);
+  });
 });
 
 describe('code-block highlight plugin', () => {
@@ -157,7 +165,9 @@ describe('CodeBlockNodeView', () => {
   });
 });
 
-import { createEditorView, insertCodeBlock } from '../../../src/lib/editor/view';
+import { createEditorView, insertCodeBlock, indentCodeBlock } from '../../../src/lib/editor/view';
+import { exitCode } from 'prosemirror-commands';
+import { TextSelection } from 'prosemirror-state';
 
 describe('createEditorView with code blocks', () => {
   it('mounts the code-block NodeView for fenced source', () => {
@@ -186,5 +196,65 @@ describe('createEditorView with code blocks', () => {
     });
     expect(found).not.toBeNull();
     expect(found!.attrs.language).toBe('typescript');
+  });
+
+  it('Tab inside a code block inserts 2 spaces (indentCodeBlock)', () => {
+    // Seed with a code block whose body is "ab"; place caret at start of body
+    // (position 1 — just inside the code_block). Calling indentCodeBlock(2)
+    // should insert two spaces before "ab".
+    const doc = parseMarkdownToDoc('```\nab\n```\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    // Caret at position 1 (inside the code_block, before 'a').
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    let result = false;
+    result = indentCodeBlock(2)(state, (tr) => {
+      state = state.apply(tr);
+    });
+    expect(result).toBe(true);
+    let cb: Node | null = null;
+    state.doc.descendants((n) => {
+      if (n.type.name === 'code_block') cb = n;
+    });
+    expect(cb).not.toBeNull();
+    expect(cb!.textContent).toBe('  ab');
+  });
+
+  it('Mod-Enter inside a code block exits to a fresh paragraph below (exitCode)', () => {
+    // Seed with a single code block, no following paragraph. Place caret
+    // inside the code block at the end and dispatch exitCode; doc should
+    // gain a paragraph after the code_block.
+    const doc = parseMarkdownToDoc('```\nx\n```\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    // Find the end of the code_block content and place the caret there.
+    let cbEnd = -1;
+    state.doc.descendants((n, p) => {
+      if (n.type.name === 'code_block') cbEnd = p + n.nodeSize - 1;
+    });
+    expect(cbEnd).toBeGreaterThan(0);
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, cbEnd)));
+    let result = false;
+    result = exitCode(state, (tr) => {
+      state = state.apply(tr);
+    });
+    expect(result).toBe(true);
+    // Doc should now have at least 2 children: the code_block then a paragraph.
+    expect(state.doc.childCount).toBeGreaterThanOrEqual(2);
+    expect(state.doc.firstChild!.type.name).toBe('code_block');
+    // The node after the code_block should be a paragraph.
+    expect(state.doc.child(1).type.name).toBe('paragraph');
+  });
+
+  it('indentCodeBlock returns false when called outside a code block', () => {
+    // A plain paragraph: indentCodeBlock should fall through (return false)
+    // so the chained sinkListItem command can run instead.
+    const doc = parseMarkdownToDoc('hello world\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    // Caret at position 1 (inside the paragraph).
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    const result = indentCodeBlock(2)(state, () => {
+      // Should not be called.
+      throw new Error('dispatch should not have been called');
+    });
+    expect(result).toBe(false);
   });
 });
