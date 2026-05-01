@@ -82,6 +82,33 @@ describe('callout round-trip', () => {
     const src = '> Just a quote.\n';
     expect(rt(src)).toBe(src);
   });
+
+  // Regression: previously the serializer suppressed any title that
+  // matched the auto-derived default (capitalized type), so a user
+  // who explicitly typed `Note` after `[!note]` would see it dropped
+  // on round-trip. The parser now stores empty when no title was
+  // typed and the literal title otherwise, so this case round-trips.
+  it('round-trips an explicit title that equals the default', () => {
+    const src = '> [!note] Note\n> Body.\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  // Empty-body callout: header-only, no content lines under it. The
+  // parser still produces a callout node (with at least one empty
+  // paragraph child to satisfy `block+`) and the serializer emits
+  // a blank `>` continuation line, NOT a malformed doc.
+  it('handles a callout with no body lines', () => {
+    const src = '> [!info]\n';
+    const doc = parseMarkdownToDoc(src);
+    const first = doc.firstChild!;
+    expect(first.type.name).toBe('callout');
+    expect(first.attrs.type).toBe('info');
+    // Content satisfies `block+` — exactly one empty paragraph is fine.
+    expect(first.childCount).toBeGreaterThanOrEqual(1);
+    // Round-trip should not crash; output must contain the header.
+    const out = rt(src);
+    expect(out).toContain('[!info]');
+  });
 });
 
 describe('insertCallout command', () => {

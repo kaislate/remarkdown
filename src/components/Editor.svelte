@@ -17,8 +17,17 @@
   let parentEl = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
 
-  // Bubble-menu state — recomputed on every selection change.
-  let bubble = $state({ visible: false, x: 0, y: 0, marks: new Set<string>() });
+  // Bubble-menu state — recomputed on every selection change. linkHref
+  // is the href of any link mark active across the whole selection;
+  // empty string when there's no link or the link only covers part of
+  // the range. Pre-fills the link popover when the user opens it.
+  let bubble = $state({
+    visible: false,
+    x: 0,
+    y: 0,
+    marks: new Set<string>(),
+    linkHref: '',
+  });
 
   function updateBubble() {
     const v = view;
@@ -44,7 +53,9 @@
     const marks = new Set<string>();
     const stored = v.state.storedMarks ?? sel.$from.marksAcross(sel.$to) ?? [];
     for (const m of stored) marks.add(m.type.name);
-    bubble = { visible: true, x, y, marks };
+    const linkMark = stored.find((m) => m.type.name === 'link');
+    const linkHref = linkMark ? String(linkMark.attrs.href ?? '') : '';
+    bubble = { visible: true, x, y, marks, linkHref };
   }
 
   function onToolbarInsert(action: string) {
@@ -56,19 +67,32 @@
     }
   }
 
-  function onBubbleMark(name: 'strong' | 'em' | 'code' | 'link') {
+  function onBubbleMark(name: 'strong' | 'em' | 'code') {
     const v = view;
     if (!v) return;
     const markType = editorSchema.marks[name];
     if (!markType) return;
-    if (name === 'link') {
-      const url = prompt('Enter URL:');
-      if (!url) return;
-      const tr = v.state.tr.addMark(v.state.selection.from, v.state.selection.to, markType.create({ href: url }));
-      v.dispatch(tr);
-    } else {
-      toggleMark(markType)(v.state, v.dispatch);
+    toggleMark(markType)(v.state, v.dispatch);
+    v.focus();
+    void tick().then(updateBubble);
+  }
+
+  // Apply (or clear) the link mark from the popover. Empty url means
+  // "remove any link mark in the selection". We always remove first so
+  // a single Apply also overwrites an existing href instead of layering
+  // a second mark on top.
+  function onApplyLink(url: string) {
+    const v = view;
+    if (!v) return;
+    const linkType = editorSchema.marks.link;
+    if (!linkType) return;
+    const sel = v.state.selection;
+    if (sel.empty) return;
+    let tr = v.state.tr.removeMark(sel.from, sel.to, linkType);
+    if (url) {
+      tr = tr.addMark(sel.from, sel.to, linkType.create({ href: url }));
     }
+    v.dispatch(tr);
     v.focus();
     void tick().then(updateBubble);
   }
@@ -131,7 +155,9 @@
     x={bubble.x}
     y={bubble.y}
     onMark={onBubbleMark}
+    onApplyLink={onApplyLink}
     activeMarks={bubble.marks}
+    linkHref={bubble.linkHref}
   />
 </div>
 

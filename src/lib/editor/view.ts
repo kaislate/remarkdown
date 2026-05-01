@@ -9,7 +9,9 @@ import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { findWrapping } from 'prosemirror-transform';
-import { editorSchema, parseMarkdown, serializeToMarkdown } from './markdown';
+import { editorSchema } from './schema';
+import { parseMarkdown, serializeToMarkdown } from './markdown';
+import { CalloutNodeView } from './callout-node-view';
 
 export function createEditorView(
   parent: HTMLElement,
@@ -51,6 +53,14 @@ export function createEditorView(
     // code-block backgrounds, etc.) automatically render in the editor.
     attributes: {
       class: 'md-rendered',
+    },
+    nodeViews: {
+      // Custom NodeView so the callout's fold chevron can dispatch a
+      // transaction that updates the node's `fold` attr (rather than
+      // the read-mode delegated handler in Viewer.svelte, which only
+      // mutates DOM and would be lost on the next state apply).
+      callout: (node, editorView, getPos) =>
+        new CalloutNodeView(node, editorView, getPos),
     },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);

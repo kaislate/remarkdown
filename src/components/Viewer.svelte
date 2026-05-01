@@ -221,11 +221,20 @@
     </div>
   {:else}
     <div class="content">
-      {#if !$editMode}
-        <div class="text-frame">
-          <article class="viewer md-rendered" bind:this={articleEl}>
-            {@html $doc.html}
-          </article>
+      <div class="text-frame">
+        <!-- The article stays mounted in edit mode (hidden via
+             body.edit-mode .viewer { display:none } in edit-mode.css) so
+             the minimap, which subscribes to currentViewerRoot and
+             mirrors the article's innerHTML, can keep rendering while
+             the user edits. The doc store is frozen during edit (file
+             watcher paused), so the minimap shows the last-saved view —
+             acceptable per design. The companion layers DO unmount in
+             edit mode: highlights/notes/marginalia don't anchor cleanly
+             to a hidden article, and the editor doesn't need them. -->
+        <article class="viewer md-rendered" bind:this={articleEl}>
+          {@html $doc.html}
+        </article>
+        {#if !$editMode}
           <MermaidRenderer {articleEl} />
           <HighlightLayer />
           <NoteLayer />
@@ -234,14 +243,12 @@
                to the screen edge. Inside text-frame because the cards'
                y-coords are computed in text-frame coordinate space. -->
           <MarginaliaColumn />
-        </div>
-      {:else}
-        <div class="text-frame">
+        {:else}
           {#key $doc?.path}
             <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
           {/key}
-        </div>
-      {/if}
+        {/if}
+      </div>
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->
       <DrawLayer />

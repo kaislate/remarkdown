@@ -15,20 +15,7 @@
 import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
 import type { NodeSpec } from 'prosemirror-model';
-
-const ICONS: Record<string, string> = {
-  note: 'ℹ', info: 'ⓘ',
-  tip: '💡', hint: '💡',
-  success: '✓', done: '✓',
-  question: '❓', help: '❓', faq: '❓',
-  warning: '⚠', caution: '⚠', attention: '⚠',
-  failure: '✗', fail: '✗', missing: '✗',
-  danger: '⚡', error: '⚡',
-  bug: '🐛',
-  example: '📝',
-  quote: '❞', cite: '❞',
-  abstract: '📋', summary: '📋', tldr: '📋',
-};
+import { calloutIcon } from './callout-icons';
 
 const calloutNode: NodeSpec = {
   attrs: {
@@ -54,7 +41,7 @@ const calloutNode: NodeSpec = {
     const type = String(node.attrs.type || 'note');
     const title = String(node.attrs.title || (type.charAt(0).toUpperCase() + type.slice(1)));
     const fold = String(node.attrs.fold || '');
-    const icon = ICONS[type] ?? ICONS['note'];
+    const icon = calloutIcon(type);
     const foldable = fold === '+' || fold === '-';
     const startsClosed = fold === '-';
     return [

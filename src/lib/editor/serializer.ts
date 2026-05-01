@@ -16,10 +16,11 @@ function calloutHeader(node: Node): string {
   const type = String(node.attrs.type || 'note');
   const fold = String(node.attrs.fold || '');
   const title = String(node.attrs.title || '');
-  // Default title (auto-derived from type) shouldn't be re-emitted —
-  // we only emit the explicit title if it's distinct from the default.
-  const defaultTitle = type.charAt(0).toUpperCase() + type.slice(1);
-  const titlePart = title && title !== defaultTitle ? ` ${title}` : '';
+  // attrs.title only contains the user-explicit title (the parser keeps
+  // it empty when the user didn't write one). So we can safely emit
+  // ANY non-empty title, including ones that happen to equal the
+  // capitalized type — `> [!note] Note` round-trips intact.
+  const titlePart = title ? ` ${title}` : '';
   return `[!${type}]${fold}${titlePart}`;
 }
 

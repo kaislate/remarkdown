@@ -5,10 +5,17 @@
 
 body.edit-mode .notes-layer,
 body.edit-mode .draw-overlay,
-body.edit-mode .minimap,
-body.edit-mode .minimap-toggle,
 body.edit-mode .strip,
 body.edit-mode .rail {
+  display: none !important;
+}
+
+/* The article stays mounted under the editor so the minimap can keep
+   mirroring it, but is visually hidden while editing. display:none is
+   safe here — the minimap reads innerHTML (which works on hidden
+   elements) and renders into its own scaled container, so removing
+   the source from layout doesn't affect the mirror. */
+body.edit-mode .viewer {
   display: none !important;
 }
 
