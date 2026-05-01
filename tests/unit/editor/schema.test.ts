@@ -55,4 +55,51 @@ describe('editorSchema', () => {
     );
     expect(node.attrs.language).toBe('typescript');
   });
+
+  it('toDOM emits <pre><code class="language-X"> when a language is set', () => {
+    const node = editorSchema.node(
+      'code_block',
+      { language: 'rust' },
+      [editorSchema.text('fn main() {}')],
+    );
+    const out = node.type.spec.toDOM!(node) as unknown[];
+    // ['pre', {'data-language': 'rust'}, ['code', {class: 'language-rust'}, 0]]
+    expect(out[0]).toBe('pre');
+    expect((out[1] as Record<string, string>)['data-language']).toBe('rust');
+    const codeArr = out[2] as unknown[];
+    expect(codeArr[0]).toBe('code');
+    expect((codeArr[1] as Record<string, string>).class).toBe('language-rust');
+    expect(codeArr[2]).toBe(0);
+  });
+
+  it('toDOM emits a bare <pre><code> when no language is set', () => {
+    const node = editorSchema.node('code_block', null, [editorSchema.text('x')]);
+    const out = node.type.spec.toDOM!(node) as unknown[];
+    expect(out[0]).toBe('pre');
+    // No data-language attr should be present (empty attr object).
+    expect(Object.keys(out[1] as Record<string, string>).length).toBe(0);
+    const codeArr = out[2] as unknown[];
+    // Same for the inner code's class.
+    expect(Object.keys(codeArr[1] as Record<string, string>).length).toBe(0);
+  });
+
+  it('parseDOM getAttrs reads language from inner <code class="language-foo">', () => {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.className = 'language-rust';
+    code.textContent = 'fn main() {}';
+    pre.appendChild(code);
+    const rule = editorSchema.nodes.code_block.spec.parseDOM![0];
+    const attrs = (rule.getAttrs as (dom: HTMLElement) => Record<string, unknown>)(pre);
+    expect(attrs.language).toBe('rust');
+  });
+
+  it('parseDOM getAttrs falls back to data-language on the <pre>', () => {
+    const pre = document.createElement('pre');
+    pre.setAttribute('data-language', 'python');
+    pre.appendChild(document.createElement('code'));
+    const rule = editorSchema.nodes.code_block.spec.parseDOM![0];
+    const attrs = (rule.getAttrs as (dom: HTMLElement) => Record<string, unknown>)(pre);
+    expect(attrs.language).toBe('python');
+  });
 });

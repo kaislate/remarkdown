@@ -11,6 +11,14 @@
 // round-trip; the actual hide/show interaction is handled by the
 // existing delegated click handler in Viewer.svelte's reader path,
 // and a dedicated edit-mode handler in Phase 2a-toolbar.
+//
+// This file ALSO overrides the default `code_block` node to add an
+// explicit `language` attr (the prosemirror-markdown default stores
+// the language under `params`, which doesn't round-trip cleanly with
+// our toolbar/NodeView surface). The matching custom parser and
+// serializer integration land in Tasks 2-3 of Phase 2b — until those
+// ship, stock `defaultMarkdownParser`/`defaultMarkdownSerializer`
+// against `editorSchema` will not preserve the language on round-trip.
 
 import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
@@ -61,6 +69,10 @@ const calloutNode: NodeSpec = {
   },
 };
 
+// TODO(Phase 2b Tasks 2-3): pair this NodeSpec with a custom markdown
+// parser + serializer. Until those land, round-tripping through the
+// stock prosemirror-markdown parser/serializer will drop the language
+// (base reads `params`, this override stores it on `language`).
 const codeBlockNode: NodeSpec = {
   attrs: { language: { default: '' } },
   content: 'text*',
@@ -94,6 +106,10 @@ const codeBlockNode: NodeSpec = {
   },
 };
 
+// OrderedMap.update() REPLACES the spec wholesale rather than merging,
+// so `codeBlockNode` must be a complete NodeSpec — fields like
+// `marks: ''`, `content: 'text*'`, `code: true`, etc. are restated on
+// purpose because anything not restated here would be lost.
 const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
   .addBefore('blockquote', 'callout', calloutNode);
