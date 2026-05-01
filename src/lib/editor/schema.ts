@@ -61,7 +61,42 @@ const calloutNode: NodeSpec = {
   },
 };
 
-const nodes = baseSchema.spec.nodes.addBefore('blockquote', 'callout', calloutNode);
+const codeBlockNode: NodeSpec = {
+  attrs: { language: { default: '' } },
+  content: 'text*',
+  marks: '',
+  group: 'block',
+  code: true,
+  defining: true,
+  parseDOM: [
+    {
+      tag: 'pre',
+      preserveWhitespace: 'full',
+      getAttrs: (dom: HTMLElement) => {
+        // Pick the language from the inner <code class="language-foo">
+        // when present (the read-mode Shiki path emits this), or from
+        // a `data-language` attribute on the <pre> itself (the editor's
+        // NodeView surface). Empty string when neither is set.
+        const codeEl = dom.querySelector('code');
+        const cls = codeEl?.className ?? '';
+        const m = /(?:^|\s)language-([\w+#-]+)/.exec(cls);
+        return { language: m ? m[1] : (dom.getAttribute('data-language') || '') };
+      },
+    },
+  ],
+  toDOM(node) {
+    const lang = String(node.attrs.language || '');
+    return [
+      'pre',
+      lang ? { 'data-language': lang } : {},
+      ['code', lang ? { class: `language-${lang}` } : {}, 0],
+    ];
+  },
+};
+
+const nodes = baseSchema.spec.nodes
+  .update('code_block', codeBlockNode)
+  .addBefore('blockquote', 'callout', calloutNode);
 
 export const editorSchema = new Schema({
   nodes,

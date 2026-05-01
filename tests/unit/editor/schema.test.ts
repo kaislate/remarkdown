@@ -38,4 +38,21 @@ describe('editorSchema', () => {
     expect(editorSchema.nodes.heading).toBeDefined();
     expect(editorSchema.nodes.blockquote).toBeDefined();
   });
+
+  it('has a code_block node with a language attr defaulting to empty string', () => {
+    const cb = editorSchema.nodes.code_block;
+    expect(cb).toBeDefined();
+    expect(cb.spec.attrs?.language).toBeDefined();
+    const node = editorSchema.node('code_block', null, [editorSchema.text('hi')]);
+    expect(node.attrs.language).toBe('');
+  });
+
+  it('preserves a non-empty language on a code_block node', () => {
+    const node = editorSchema.node(
+      'code_block',
+      { language: 'typescript' },
+      [editorSchema.text('const x = 1;')],
+    );
+    expect(node.attrs.language).toBe('typescript');
+  });
 });
