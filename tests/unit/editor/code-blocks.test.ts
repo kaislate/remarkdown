@@ -11,6 +11,7 @@ import {
 import type { Highlighter } from 'shiki';
 import { CodeBlockNodeView } from '../../../src/lib/editor/code-block-node-view';
 import { EditorView } from 'prosemirror-view';
+import type { Node } from 'prosemirror-model';
 
 describe('code-block parsing', () => {
   it('parses a fenced code block with a language', () => {
@@ -153,5 +154,37 @@ describe('CodeBlockNodeView', () => {
     expect(pill!.textContent).toBe('python');
     view.destroy();
     parent.remove();
+  });
+});
+
+import { createEditorView, insertCodeBlock } from '../../../src/lib/editor/view';
+
+describe('createEditorView with code blocks', () => {
+  it('mounts the code-block NodeView for fenced source', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const view = createEditorView(parent, '```javascript\nlet a = 1;\n```\n', () => {});
+    const pill = parent.querySelector('.code-block-lang-pill');
+    expect(pill).not.toBeNull();
+    expect(pill!.textContent).toBe('javascript');
+    view.destroy();
+    parent.remove();
+  });
+
+  it('insertCodeBlock wraps an empty paragraph as a code_block', () => {
+    const doc = parseMarkdownToDoc('hello\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    let dispatched = false;
+    insertCodeBlock('typescript')(state, (tr) => {
+      state = state.apply(tr);
+      dispatched = true;
+    });
+    expect(dispatched).toBe(true);
+    let found: Node | null = null;
+    state.doc.descendants((n) => {
+      if (n.type.name === 'code_block') found = n;
+    });
+    expect(found).not.toBeNull();
+    expect(found!.attrs.language).toBe('typescript');
   });
 });
