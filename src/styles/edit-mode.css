@@ -34,3 +34,14 @@ body.edit-mode .editor-shell {
   width: 100%;
   overflow: visible;
 }
+
+/* The toolbar is position:sticky at top:0 of the scroll container,
+   which is the same space the hamburger pill (top-left, z:100) and
+   title-bar controls (top-right, z:180) live in. They render above
+   the toolbar (toolbar is z:5 inside the shell), so without padding
+   the toolbar's leftmost button gets hidden behind the hamburger.
+   Pad the toolbar's content to clear both ends. */
+body.edit-mode .editor-toolbar {
+  padding-left: 64px;
+  padding-right: 140px;
+}
