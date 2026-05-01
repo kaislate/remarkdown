@@ -102,8 +102,14 @@
     });
     parentEl.addEventListener('mouseup', updateBubble);
     parentEl.addEventListener('keyup', updateBubble);
-    document.addEventListener('selectionchange', updateBubble);
     document.addEventListener('mousedown', onAnyMouseDown);
+    // NOTE: previously had a `selectionchange` listener too, but it
+    // races onAnyMouseDown — every click outside the editor changes
+    // the document selection, fires selectionchange, which calls
+    // updateBubble, which reads PM's still-non-empty state and
+    // re-shows the bubble we just hid. mouseup + keyup on parentEl
+    // catch the cases that matter (drag-select, shift+arrow), and
+    // onAnyMouseDown handles dismissal.
   });
 
   onDestroy(() => {
@@ -111,7 +117,6 @@
       parentEl.removeEventListener('mouseup', updateBubble);
       parentEl.removeEventListener('keyup', updateBubble);
     }
-    document.removeEventListener('selectionchange', updateBubble);
     document.removeEventListener('mousedown', onAnyMouseDown);
     view?.destroy();
     view = null;
