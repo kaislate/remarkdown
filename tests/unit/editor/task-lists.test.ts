@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import MarkdownIt from 'markdown-it';
 import { tasksPlugin } from '../../../src/lib/markdown-it-tasks';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
+import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
 
 describe('tasksPlugin', () => {
   function tokenize(md: string) {
@@ -88,5 +89,36 @@ describe('task-list parsing', () => {
       if (n.type.name === 'text') text += n.text;
     });
     expect(text).toBe('thing');
+  });
+});
+
+describe('task-list round-trip', () => {
+  function rt(md: string): string {
+    return serializeDocToMarkdown(parseMarkdownToDoc(md));
+  }
+
+  it('round-trips a single unchecked task', () => {
+    const src = '* [ ] thing\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a single checked task', () => {
+    const src = '* [x] done\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a mixed list (plain + tasks)', () => {
+    const src = '* plain\n* [ ] todo\n* [x] done\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a multi-paragraph task item', () => {
+    const src = '* [ ] first paragraph\n\n  second paragraph\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a plain bullet list unchanged', () => {
+    const src = '* one\n* two\n';
+    expect(rt(src)).toBe(src);
   });
 });

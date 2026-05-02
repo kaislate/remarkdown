@@ -60,8 +60,22 @@ const code_block = (state: MarkdownSerializerState, node: Node) => {
   state.closeBlock(node);
 };
 
+const list_item = (state: MarkdownSerializerState, node: Node) => {
+  const checked = node.attrs.checked;
+  if (checked === true) {
+    state.write('[x] ');
+  } else if (checked === false) {
+    state.write('[ ] ');
+  }
+  // Default behavior: just render the children. The bullet (`*`) is
+  // emitted by the parent bullet_list's renderList; our optional
+  // `[ ] ` / `[x] ` lands AFTER that bullet on the same line because
+  // state.write doesn't insert a newline.
+  state.renderContent(node);
+};
+
 const editorMarkdownSerializer = new MarkdownSerializer(
-  { ...defaultMarkdownSerializer.nodes, callout, code_block },
+  { ...defaultMarkdownSerializer.nodes, callout, code_block, list_item },
   defaultMarkdownSerializer.marks,
 );
 
