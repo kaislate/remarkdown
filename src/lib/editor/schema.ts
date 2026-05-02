@@ -106,12 +106,53 @@ const codeBlockNode: NodeSpec = {
   },
 };
 
+// `list_item` extended with an optional `checked` attr so GitHub-style
+// task lists round-trip. null → plain list item; true / false → checked
+// or unchecked task. The reader's markdown-it-task-lists plugin emits
+// the same task-list-item / input shape, so this lights up article.css's
+// existing styling automatically.
+const listItemNode: NodeSpec = {
+  attrs: { checked: { default: null } },
+  content: 'paragraph block*',
+  defining: true,
+  parseDOM: [
+    {
+      tag: 'li',
+      getAttrs: (dom: HTMLElement) => {
+        if (!dom.classList.contains('task-list-item')) return { checked: null };
+        const input = dom.querySelector<HTMLInputElement>(
+          'input[type="checkbox"]',
+        );
+        return { checked: input?.checked === true };
+      },
+    },
+  ],
+  toDOM(node) {
+    const checked = node.attrs.checked;
+    if (checked === null) return ['li', 0];
+    return [
+      'li',
+      { class: 'task-list-item' },
+      [
+        'input',
+        {
+          type: 'checkbox',
+          contenteditable: 'false',
+          ...(checked === true ? { checked: '' } : {}),
+        },
+      ],
+      0,
+    ];
+  },
+};
+
 // OrderedMap.update() REPLACES the spec wholesale rather than merging,
 // so `codeBlockNode` must be a complete NodeSpec — fields like
 // `marks: ''`, `content: 'text*'`, `code: true`, etc. are restated on
 // purpose because anything not restated here would be lost.
 const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
+  .update('list_item', listItemNode)
   .addBefore('blockquote', 'callout', calloutNode);
 
 export const editorSchema = new Schema({
