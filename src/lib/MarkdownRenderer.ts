@@ -4,6 +4,7 @@ import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
+import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
 
 export interface RenderResult {
   html: string;
@@ -22,20 +23,6 @@ const md = new MarkdownIt({
   .use(katex.default ?? katex)
   .use(calloutsPlugin);
 
-// Preload common languages lazily the first time render() is called.
-const SUPPORTED_LANGS = [
-  'typescript', 'javascript', 'tsx', 'jsx', 'rust', 'python', 'go',
-  'bash', 'shell', 'json', 'yaml', 'toml', 'sql', 'html', 'css',
-  'markdown', 'svelte', 'cpp', 'objc', 'fsharp',
-];
-
-// Map non-standard language identifiers (as emitted by markdown-it) to Shiki canonical names.
-const LANG_ALIASES: Record<string, string> = {
-  'c++': 'cpp',
-  'objective-c': 'objc',
-  'f#': 'fsharp',
-};
-
 // Matches fenced mermaid blocks specifically (before Shiki touches them).
 const mermaidFenceRe = /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g;
 
@@ -46,7 +33,7 @@ function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = getSingletonHighlighter({
       themes: ['github-dark'],
-      langs: SUPPORTED_LANGS,
+      langs: [...SUPPORTED_LANGUAGES],
     });
   }
   return highlighterPromise;
@@ -76,9 +63,9 @@ async function highlightFences(html: string): Promise<string> {
   // Use the callback form so every match is replaced, even if two fences share identical text.
   return html.replace(fenceRe, (_m, lang, body) => {
     const raw = decodeEntities(body);
-    const loaded = highlighter.getLoadedLanguages() as readonly string[];
-    const normalizedLang = LANG_ALIASES[lang] ?? lang;
-    const resolvedLang = loaded.includes(normalizedLang) ? normalizedLang : 'text';
+    // resolveLanguage handles case-folding, alias lookup, and unknown-lang
+    // fallback to 'text' so the same matrix the editor uses applies here.
+    const resolvedLang = resolveLanguage(lang);
     return highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
   });
 }

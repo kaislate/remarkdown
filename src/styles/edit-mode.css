@@ -1,0 +1,44 @@
+/* src/styles/edit-mode.css — applied when body has the .edit-mode
+   class (set by App.svelte from the editMode store). Hides annotation
+   layers entirely while editing — Phase 2 will revisit for the
+   "dimmed but visible" treatment. */
+
+body.edit-mode .notes-layer,
+body.edit-mode .draw-overlay,
+body.edit-mode .strip,
+body.edit-mode .rail {
+  display: none !important;
+}
+
+/* The article stays mounted under the editor so the minimap can keep
+   mirroring it, but is visually hidden while editing. display:none is
+   safe here — the minimap reads innerHTML (which works on hidden
+   elements) and renders into its own scaled container, so removing
+   the source from layout doesn't affect the mirror. */
+body.edit-mode .viewer {
+  display: none !important;
+}
+
+/* Subtle accent inset border on the editor surface so the user
+   sees they're in edit mode without a heavy chrome change. */
+body.edit-mode .editor-surface {
+  position: relative;
+}
+body.edit-mode .editor-surface::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(139, 127, 255, 0.18);
+}
+
+/* Editor shell hosts the toolbar (top), surface (middle), and bubble
+   menu (overlay). overflow:visible so the bubble menu — which uses
+   transform: translate(-50%, calc(-100% - 8px)) to position above the
+   selection — isn't clipped near the top edge. */
+body.edit-mode .editor-shell {
+  width: 100%;
+  overflow: visible;
+}
+

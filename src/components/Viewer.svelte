@@ -13,6 +13,13 @@
   import { addToast } from '../stores/toasts';
   import { get } from 'svelte/store';
   import type { Drawing } from '../lib/schema';
+  import { editMode } from '../stores/edit-mode';
+  import { pauseFileWatcher, resumeFileWatcher, loadDocument } from '../stores/doc';
+  import Editor from './Editor.svelte';
+  import { writeDocument } from '../lib/tauri-api';
+  import { debounce } from '../lib/editor/debounce';
+  import type { Debounced } from '../lib/editor/debounce';
+  import { settings } from '../stores/settings';
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -159,6 +166,52 @@
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
   });
+
+  let pendingSave: Debounced<[string]> | null = null;
+
+  $effect(() => {
+    if ($editMode) {
+      // CSS Custom Highlight API ranges live in a global registry; the
+      // HighlightLayer component unmounts when entering edit mode but the
+      // ranges it registered persist. Clear them so they don't paint
+      // stale highlights over the editor surface.
+      if (typeof CSS !== 'undefined' && CSS.highlights) {
+        CSS.highlights.clear();
+      }
+      void pauseFileWatcher();
+    } else {
+      // Flush any pending autosave so the file on disk reflects the
+      // user's final edits, then reload the doc — re-renders article
+      // HTML from the new markdown and runs the existing re-anchor
+      // pipeline (annotations re-resolve, orphans go to the orphan
+      // panel via the standard flow).
+      pendingSave?.flush();
+      const currentDoc = get(doc);
+      if (currentDoc) {
+        void loadDocument(currentDoc.path).then(() => resumeFileWatcher());
+      } else {
+        void resumeFileWatcher();
+      }
+    }
+  });
+
+  $effect(() => {
+    const currentDoc = $doc;
+    if (!currentDoc) {
+      pendingSave?.cancel();
+      pendingSave = null;
+      return;
+    }
+    const ms = $settings.saveDebounceMs;
+    pendingSave = debounce((markdown: string) => {
+      void writeDocument(currentDoc.path, markdown);
+    }, ms);
+    return () => pendingSave?.flush();
+  });
+
+  function onEditorChange(markdown: string) {
+    pendingSave?.(markdown);
+  }
 </script>
 
 <div class="scroll" bind:this={scrollEl}>
@@ -169,17 +222,32 @@
   {:else}
     <div class="content">
       <div class="text-frame">
+        <!-- The article stays mounted in edit mode (hidden via
+             body.edit-mode .viewer { display:none } in edit-mode.css) so
+             the minimap, which subscribes to currentViewerRoot and
+             mirrors the article's innerHTML, can keep rendering while
+             the user edits. The doc store is frozen during edit (file
+             watcher paused), so the minimap shows the last-saved view —
+             acceptable per design. The companion layers DO unmount in
+             edit mode: highlights/notes/marginalia don't anchor cleanly
+             to a hidden article, and the editor doesn't need them. -->
         <article class="viewer md-rendered" bind:this={articleEl}>
           {@html $doc.html}
         </article>
-        <MermaidRenderer {articleEl} />
-        <HighlightLayer />
-        <NoteLayer />
-        <!-- Marginalia hugs the text-frame's right edge (left:100% + 32px
-             gap) so the cards live in the close margin instead of pinned
-             to the screen edge. Inside text-frame because the cards'
-             y-coords are computed in text-frame coordinate space. -->
-        <MarginaliaColumn />
+        {#if !$editMode}
+          <MermaidRenderer {articleEl} />
+          <HighlightLayer />
+          <NoteLayer />
+          <!-- Marginalia hugs the text-frame's right edge (left:100% + 32px
+               gap) so the cards live in the close margin instead of pinned
+               to the screen edge. Inside text-frame because the cards'
+               y-coords are computed in text-frame coordinate space. -->
+          <MarginaliaColumn />
+        {:else}
+          {#key $doc?.path}
+            <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+          {/key}
+        {/if}
       </div>
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint
            across the full window width, not just within the text column. -->

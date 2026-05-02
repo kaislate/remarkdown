@@ -1,35 +1,9 @@
 import type MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import { calloutIcon } from './editor/callout-icons';
 
 // Matches [!TYPE], [!TYPE]+, [!TYPE]-, optionally followed by a title.
 const CALLOUT_RE = /^\[!(\w+)\]([+-]?)(.*)$/;
-
-const ICONS: Record<string, string> = {
-  note: 'ℹ',
-  info: 'ⓘ',
-  tip: '💡',
-  hint: '💡',
-  success: '✓',
-  done: '✓',
-  question: '❓',
-  help: '❓',
-  faq: '❓',
-  warning: '⚠',
-  caution: '⚠',
-  attention: '⚠',
-  failure: '✗',
-  fail: '✗',
-  missing: '✗',
-  danger: '⚡',
-  error: '⚡',
-  bug: '🐛',
-  example: '📝',
-  quote: '❞',
-  cite: '❞',
-  abstract: '📋',
-  summary: '📋',
-  tldr: '📋',
-};
 
 function findMatchingOpen(tokens: Token[], closeIdx: number): Token | null {
   let depth = 0;
@@ -64,12 +38,17 @@ export function calloutsPlugin(md: MarkdownIt): void {
       const type = m[1].toLowerCase();
       const fold = m[2]; // '+', '-', or ''
       const rawTitle = m[3].trim();
-      const title = rawTitle || (type.charAt(0).toUpperCase() + type.slice(1));
-
-      // Mark the blockquote_open token with callout metadata.
+      // Store ONLY the user-explicit title here. When the user wrote
+      // `> [!note]` (no title text), data-title stays empty and the
+      // renderer / NodeView fall back to the auto-derived display
+      // title. The serializer round-trip relies on this distinction:
+      // an empty data-title means "user didn't write one", a non-empty
+      // value means "the user typed exactly this and we must preserve
+      // it" — even when the typed title happens to equal the default
+      // (`> [!note] Note`).
       tokens[i].attrSet('data-callout', type);
       tokens[i].attrSet('data-fold', fold === '+' ? 'open' : fold === '-' ? 'closed' : '');
-      tokens[i].attrSet('data-title', title);
+      tokens[i].attrSet('data-title', rawTitle);
       (tokens[i] as Token & { meta: unknown }).meta = { callout: true };
 
       // Strip the marker line from the inline token's content so it doesn't appear in body.
@@ -92,8 +71,13 @@ export function calloutsPlugin(md: MarkdownIt): void {
 
     const type = t.attrGet('data-callout') ?? 'note';
     const fold = t.attrGet('data-fold') ?? '';
-    const title = t.attrGet('data-title') ?? '';
-    const icon = ICONS[type] ?? ICONS['note'];
+    const explicitTitle = t.attrGet('data-title') ?? '';
+    // data-title is empty when the user didn't type one — fall back to
+    // a Capitalised version of the type for display only (kept out of
+    // the serialized markdown so we don't drift on round-trip).
+    const title =
+      explicitTitle || type.charAt(0).toUpperCase() + type.slice(1);
+    const icon = calloutIcon(type);
     const foldable = fold !== '';
     const startsClosed = fold === 'closed';
 

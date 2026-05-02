@@ -170,6 +170,13 @@ pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
     Ok(backup.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+pub fn write_document(path: String, markdown: String) -> Result<(), CommandError> {
+    let p = PathBuf::from(path);
+    crate::sidecar::atomic_write(&p, markdown.as_bytes())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +242,14 @@ mod tests {
         assert!(result.contains(".corrupt-"));
         assert!(!sc.exists());
         assert!(std::path::Path::new(&result).exists());
+    }
+
+    #[test]
+    fn write_document_writes_markdown_atomically() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        let body = "# Hello\n\nWorld.\n";
+        write_document(path.to_string_lossy().into_owned(), body.to_string()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
     }
 }

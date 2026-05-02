@@ -54,6 +54,21 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       localStorage.setItem(sidecarKey(mdPath), json);
       return;
     }
+    case 'write_document': {
+      const path = args?.path as string;
+      const markdown = args?.markdown as string;
+      const bytes = new TextEncoder().encode(markdown);
+      localStorage.setItem(docKey(path), JSON.stringify({
+        markdown,
+        sidecar_raw: localStorage.getItem(sidecarKey(path)),
+        sha256: hashBytes(bytes),
+        bytes: bytes.length,
+      }));
+      const writes = (window as any).__E2E_WRITES__ ?? [];
+      writes.push({ path, markdown });
+      (window as any).__E2E_WRITES__ = writes;
+      return;
+    }
     case 'push_recent': {
       const path = args?.path as string;
       const list = JSON.parse(localStorage.getItem('rmd-recent') ?? '[]');
@@ -109,4 +124,5 @@ export function convertFileSrc(path: string): string {
       localStorage.removeItem(k);
     }
   }
+  (window as any).__E2E_WRITES__ = [];
 };

@@ -7,6 +7,7 @@
   import './styles/cursors.css';
   import './styles/scrollbars.css';
   import './styles/reader-mode.css';
+  import './styles/edit-mode.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';
@@ -25,6 +26,7 @@
   import MouseCursor from './components/MouseCursor.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
+  import EditModeToggle from './components/EditModeToggle.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
@@ -47,6 +49,7 @@
   import { readerMode, exitReaderMode } from './stores/reader-mode';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
+  import { editMode, toggleEditMode } from './stores/edit-mode';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -101,6 +104,13 @@
     syncMinimapPopoutClass();
   });
 
+  // Reflect the edit-mode store on body so edit-mode.css can hide
+  // annotation layers and apply edit mode styling.
+  const unsubEditMode = editMode.subscribe((on) => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('edit-mode', on);
+  });
+
   // body.minimap-popout is the combined signal (reader-mode AND the
   // setting both on). reader-mode.css uses it to keep the minimap
   // mounted but slid offscreen, with a peek-zone trigger sliding it
@@ -149,6 +159,22 @@
     )) return;
     e.preventDefault();
     toggleTutorial();
+  }
+
+  function onEditModeKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key !== 'e' && e.key !== 'E') return;
+    // Skip while a text input or contenteditable is focused — typing
+    // Cmd+E inside a re.mark popover etc. shouldn't toggle the editor.
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    e.preventDefault();
+    toggleEditMode();
   }
 
   function onZoomKey(e: KeyboardEvent) {
@@ -248,6 +274,7 @@
     window.addEventListener('keydown', onReaderModeEsc);
     window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
+    window.addEventListener('keydown', onEditModeKey);
 
     // Startup-document precedence:
     //   1. If welcome is enabled (default), materialise it under app_data_dir
@@ -294,6 +321,7 @@
     unsubTool();
     unsubTheme();
     unsubReaderMode();
+    unsubEditMode();
     unsubMinimapPopout();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
@@ -301,6 +329,7 @@
       window.removeEventListener('keydown', onReaderModeEsc);
       window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);
+      window.removeEventListener('keydown', onEditModeKey);
     }
   });
 </script>
@@ -319,6 +348,7 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<EditModeToggle />
 <TocButton />
 <NotesPanel />
 <WelcomeDismiss />

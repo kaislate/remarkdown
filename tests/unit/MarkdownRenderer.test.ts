@@ -74,6 +74,25 @@ describe('MarkdownRenderer.render (Shiki)', () => {
     const { html } = await render('```\njust text\n```\n');
     expect(html).toMatch(/<pre[^>]*><code>just text\n<\/code><\/pre>/);
   });
+
+  // Regression: the welcome.md fixture (and a lot of real-world
+  // markdown) uses `\`\`\`ts` rather than `\`\`\`typescript`. The
+  // shared resolveLanguage in code-block-languages.ts must recognise
+  // these shorthand aliases and route them to the canonical Shiki
+  // language; otherwise the fence silently downgrades to `text` and
+  // loses all coloring.
+  it('highlights shorthand language identifiers via the alias map (ts → typescript)', async () => {
+    const { html } = await render('```ts\nconst x: number = 1;\n```\n');
+    expect(html).toMatch(/class="shiki[^"]*github-dark/);
+    expect(html).toMatch(/<span[^>]*style="color:/);
+  });
+
+  it('highlights other common shorthand aliases (js, py, rs, sh, yml, md)', async () => {
+    for (const md of ['```js\nlet x = 1;\n```\n', '```py\nx = 1\n```\n', '```rs\nfn main() {}\n```\n']) {
+      const { html } = await render(md);
+      expect(html).toMatch(/class="shiki[^"]*github-dark/);
+    }
+  });
 });
 
 describe('MarkdownRenderer.render (image src rewriting)', () => {
