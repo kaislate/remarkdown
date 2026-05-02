@@ -1,8 +1,9 @@
 <script lang="ts">
   import Note from 'phosphor-svelte/lib/Note';
   import Code from 'phosphor-svelte/lib/Code';
+  import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
 
-  type ToolbarAction = 'callout' | 'code' | 'table' | 'mermaid' | 'image';
+  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'mermaid' | 'image';
 
   interface Props {
     onInsert: (action: ToolbarAction) => void;
@@ -34,6 +35,18 @@
   >
     <Code size={18} weight="regular" />
     <span class="label">Code</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="tasks"
+    title="Insert task list"
+    aria-label="Insert task list"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('tasks')}
+  >
+    <CheckSquare size={18} weight="regular" />
+    <span class="label">Tasks</span>
   </button>
 </div>
 

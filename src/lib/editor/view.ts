@@ -19,6 +19,7 @@ import { editorSchema } from './schema';
 import { parseMarkdown, serializeToMarkdown } from './markdown';
 import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
+import { TaskItemNodeView } from './task-item-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 
 // Insert N spaces at the cursor, but only if the cursor is inside a
@@ -58,6 +59,40 @@ function dedentCodeBlock(n: number) {
   };
 }
 
+// Wrapper around prosemirror-schema-list's splitListItem that resets
+// the new sibling's `checked` attr to false when the parent was a
+// checked task. Without this, splitting a `[x] done` task would
+// produce another `[x]` item — every other task UX (Notion, Obsidian,
+// GitHub) defaults the new task to unchecked.
+export function splitTaskOrListItem(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const original = splitListItem(editorSchema.nodes.list_item);
+  if (!dispatch) return original(state, undefined);
+  let captured: Transaction | null = null;
+  const ok = original(state, (tr) => {
+    captured = tr;
+  });
+  if (!ok || !captured) return false;
+  // Find the newly-created list_item (the one AFTER the cursor in the
+  // resulting tr) and clear its checked state if it inherited a task
+  // marker.
+  const trAny = captured as Transaction;
+  const $cursor = trAny.selection.$from;
+  // Walk up until we find the list_item ancestor of the new cursor.
+  for (let d = $cursor.depth; d >= 0; d--) {
+    const n = $cursor.node(d);
+    if (n.type.name === 'list_item' && n.attrs.checked === true) {
+      const pos = $cursor.before(d);
+      trAny.setNodeMarkup(pos, undefined, { ...n.attrs, checked: false });
+      break;
+    }
+  }
+  dispatch(trAny);
+  return true;
+}
+
 export function createEditorView(
   parent: HTMLElement,
   initialMarkdown: string,
@@ -79,7 +114,7 @@ export function createEditorView(
     // The trailing `() => true` on the Tab chains consumes the key
     // even outside code-block / list contexts so focus doesn't escape
     // the editor surface to the next focusable element on the page.
-    'Enter': chainCommands(newlineInCode, splitListItem(editorSchema.nodes.list_item)),
+    'Enter': chainCommands(newlineInCode, splitTaskOrListItem),
     'Mod-Enter': exitCode,
     'Tab': chainCommands(
       indentCodeBlock(2),
@@ -125,6 +160,8 @@ export function createEditorView(
         new CalloutNodeView(node, editorView, getPos),
       code_block: (node, editorView, getPos) =>
         new CodeBlockNodeView(node, editorView, getPos),
+      list_item: (node, editorView, getPos) =>
+        new TaskItemNodeView(node, editorView, getPos),
     },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);
@@ -188,6 +225,44 @@ export function insertCodeBlock(language: string) {
       // Place the cursor inside the new (empty) block.
       const newPos = range.start + 1;
       tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+
+/**
+ * Wrap the current selection's enclosing block in a bullet_list whose
+ * single list_item is an unchecked task (`checked: false`). If the
+ * selection is already inside a list_item, this is a no-op — use the
+ * checkbox to toggle existing items.
+ */
+export function insertTaskList() {
+  return (
+    state: EditorState,
+    dispatch?: (tr: Transaction) => void,
+  ): boolean => {
+    const ulType = editorSchema.nodes.bullet_list;
+    const liType = editorSchema.nodes.list_item;
+    if (!ulType || !liType) return false;
+    const { $from, $to } = state.selection;
+    if ($from.parent.type.name === 'list_item') return false;
+    const range = $from.blockRange($to);
+    if (!range) return false;
+    const wrapping = findWrapping(range, ulType);
+    if (!wrapping) return false;
+    if (dispatch) {
+      const tr = state.tr.wrap(range, wrapping);
+      // After wrap, the bullet_list starts at range.start and the new
+      // list_item starts at range.start + 1. Setting checked: false
+      // directly by position is more precise than walking descendants
+      // and matching on `checked: null` — which would also match any
+      // pre-existing plain list_items elsewhere in the doc.
+      const liPos = range.start + 1;
+      const liNode = tr.doc.nodeAt(liPos);
+      if (liNode && liNode.type === liType) {
+        tr.setNodeMarkup(liPos, undefined, { ...liNode.attrs, checked: false });
+      }
       dispatch(tr.scrollIntoView());
     }
     return true;

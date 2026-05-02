@@ -102,4 +102,66 @@ describe('editorSchema', () => {
     const attrs = (rule.getAttrs as (dom: HTMLElement) => Record<string, unknown>)(pre);
     expect(attrs.language).toBe('python');
   });
+
+  it('list_item has a checked attr defaulting to null', () => {
+    const li = editorSchema.nodes.list_item;
+    expect(li.spec.attrs?.checked).toBeDefined();
+    const node = editorSchema.node('list_item', null, [
+      editorSchema.node('paragraph', null, [editorSchema.text('a')]),
+    ]);
+    expect(node.attrs.checked).toBe(null);
+  });
+
+  it('list_item preserves a non-null checked attr (true / false)', () => {
+    const t = editorSchema.node('list_item', { checked: true }, [
+      editorSchema.node('paragraph', null, [editorSchema.text('a')]),
+    ]);
+    const f = editorSchema.node('list_item', { checked: false }, [
+      editorSchema.node('paragraph', null, [editorSchema.text('a')]),
+    ]);
+    expect(t.attrs.checked).toBe(true);
+    expect(f.attrs.checked).toBe(false);
+  });
+
+  it('toDOM emits a plain <li> when checked is null', () => {
+    const node = editorSchema.node('list_item', null, [
+      editorSchema.node('paragraph', null, [editorSchema.text('a')]),
+    ]);
+    const out = node.type.spec.toDOM!(node) as unknown[];
+    expect(out[0]).toBe('li');
+    // Plain list item: second element is the content hole `0`.
+    expect(out[1]).toBe(0);
+  });
+
+  it('toDOM emits a task-list-item <li> with checkbox when checked is set', () => {
+    const node = editorSchema.node('list_item', { checked: true }, [
+      editorSchema.node('paragraph', null, [editorSchema.text('a')]),
+    ]);
+    const out = node.type.spec.toDOM!(node) as unknown[];
+    // ['li', { class: 'task-list-item' }, ['input', { ... checked: '' }], 0]
+    expect(out[0]).toBe('li');
+    expect((out[1] as Record<string, string>).class).toBe('task-list-item');
+    const input = out[2] as unknown[];
+    expect(input[0]).toBe('input');
+    const inputAttrs = input[1] as Record<string, string>;
+    expect(inputAttrs.type).toBe('checkbox');
+    expect(inputAttrs.checked).toBeDefined();
+    expect(out[3]).toBe(0);
+  });
+
+  it('parseDOM reads task-list-item class + input.checked into the attr', () => {
+    const li = document.createElement('li');
+    li.className = 'task-list-item';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = true;
+    li.appendChild(input);
+    const rule = editorSchema.nodes.list_item.spec.parseDOM!.find(
+      (r) => r.tag === 'li',
+    )!;
+    const attrs = (rule.getAttrs as (dom: HTMLElement) => Record<string, unknown>)(
+      li,
+    );
+    expect(attrs.checked).toBe(true);
+  });
 });

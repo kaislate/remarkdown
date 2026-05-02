@@ -16,12 +16,14 @@
 import MarkdownIt from 'markdown-it';
 import { MarkdownParser, defaultMarkdownParser } from 'prosemirror-markdown';
 import { calloutsPlugin } from '../markdown-it-callouts';
+import { tasksPlugin } from '../markdown-it-tasks';
 import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
 
 const md = MarkdownIt('commonmark');
 md.use(calloutsPlugin);
+md.use(tasksPlugin);
 
 // Rename `blockquote_open`/`blockquote_close` tokens to `callout_open`/
 // `callout_close` whenever calloutsPlugin marked them. We track a stack
@@ -73,6 +75,16 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
     block: 'code_block',
     noCloseToken: true,
     getAttrs: (tok: Token) => ({ language: (tok.info || '').trim() }),
+  },
+  list_item: {
+    block: 'list_item',
+    getAttrs: (tok: Token) => {
+      const state = tok.attrGet('data-task-state');
+      return {
+        checked:
+          state === 'checked' ? true : state === 'unchecked' ? false : null,
+      };
+    },
   },
 });
 
