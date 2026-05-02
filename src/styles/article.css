@@ -76,6 +76,16 @@
   padding-left: 1.6em;
 }
 .md-rendered li { margin: 0.3em 0; }
+/* In the editor, ProseMirror wraps each list-item's text in a <p>
+   element (<li><p>text</p></li>) so the cursor has somewhere to land.
+   Without these rules the <p>'s default 1em top/bottom margins double-
+   space lists relative to read mode (where markdown-it emits
+   <li>text</li> directly with no wrapping <p>). Strip the paragraph
+   margins where they're adjacent to the list item's edge so the li's
+   own 0.3em handles spacing. Multi-paragraph items still get their
+   inter-paragraph margin (only first/last lose theirs). */
+.md-rendered li > p:first-child { margin-top: 0; }
+.md-rendered li > p:last-child { margin-bottom: 0; }
 
 .md-rendered hr {
   border: 0;
