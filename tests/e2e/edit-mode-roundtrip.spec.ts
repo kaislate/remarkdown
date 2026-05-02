@@ -185,3 +185,57 @@ test.describe('edit mode — code blocks', () => {
     expect(last.markdown).toContain('```');
   });
 });
+
+test.describe('edit mode — task lists', () => {
+  const TASK_FIXTURE_PATH = '/e2e/edit-task-fixture.md';
+  const TASK_FIXTURE_MD = `# Doc\n\n- [ ] todo one\n- [x] done two\n`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [TASK_FIXTURE_PATH, TASK_FIXTURE_MD],
+    );
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      TASK_FIXTURE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+  });
+
+  test('toggle on → existing task list renders with clickable checkboxes', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    const cb = page.locator('.editor-surface li.task-list-item input[type="checkbox"]').first();
+    await expect(cb).toBeVisible();
+  });
+
+  test('clicking a checkbox toggles its checked state and saves to disk', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for the task-list checkbox to mount before reading the pre-click state.
+    await expect(page.locator('.editor-surface li.task-list-item input[type="checkbox"]').first()).toBeVisible();
+    // Count `[x]` markers in the seed (effectively — the seed has one).
+    const beforeCount = (TASK_FIXTURE_MD.match(/\[x\]/g) || []).length;
+    // Use DOM-native .click() so the PM selection isn't blurred by a synthetic
+    // mousedown — same workaround the callout / code-block tests document.
+    await page.evaluate(() => {
+      (document.querySelector('.editor-surface li.task-list-item input[type="checkbox"]') as HTMLInputElement | null)?.click();
+    });
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    expect(last.path).toBe(TASK_FIXTURE_PATH);
+    // The saved markdown must still contain task-list markers. The serializer
+    // emits `*` as the bullet (CommonMark-compatible) but accept `-` too in
+    // case that ever changes — both are valid task-list markers.
+    expect(last.markdown).toMatch(/[*-] \[(x| )\] /);
+    // Stricter check: clicking the FIRST checkbox (which was `- [ ]` in the seed)
+    // must have flipped exactly one marker, so the `[x]` count changes by 1.
+    const afterCount = (last.markdown.match(/\[x\]/g) || []).length;
+    expect(Math.abs(afterCount - beforeCount)).toBe(1);
+  });
+});
