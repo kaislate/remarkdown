@@ -3,6 +3,10 @@ import MarkdownIt from 'markdown-it';
 import { tasksPlugin } from '../../../src/lib/markdown-it-tasks';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
+import { TaskItemNodeView } from '../../../src/lib/editor/task-item-node-view';
+import { EditorView } from 'prosemirror-view';
+import { EditorState } from 'prosemirror-state';
+import { editorSchema } from '../../../src/lib/editor/schema';
 
 describe('tasksPlugin', () => {
   function tokenize(md: string) {
@@ -120,5 +124,66 @@ describe('task-list round-trip', () => {
   it('round-trips a plain bullet list unchanged', () => {
     const src = '* one\n* two\n';
     expect(rt(src)).toBe(src);
+  });
+});
+
+describe('TaskItemNodeView', () => {
+  it('renders a <li.task-list-item> with a leading checkbox', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('- [ ] hello\n');
+    const view = new EditorView(parent, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        list_item: (node, editorView, getPos) =>
+          new TaskItemNodeView(node, editorView, getPos),
+      },
+    });
+    const li = parent.querySelector('li.task-list-item');
+    expect(li).not.toBeNull();
+    const input = li!.querySelector('input[type="checkbox"]');
+    expect(input).not.toBeNull();
+    expect((input as HTMLInputElement).checked).toBe(false);
+    view.destroy();
+    parent.remove();
+  });
+
+  it('reflects the checked state in the rendered input', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('- [x] done\n');
+    const view = new EditorView(parent, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        list_item: (node, editorView, getPos) =>
+          new TaskItemNodeView(node, editorView, getPos),
+      },
+    });
+    const input = parent.querySelector<HTMLInputElement>(
+      'li.task-list-item input[type="checkbox"]',
+    );
+    expect(input!.checked).toBe(true);
+    view.destroy();
+    parent.remove();
+  });
+
+  it('renders a plain <li> when the item is not a task (checked: null)', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('- plain\n');
+    const view = new EditorView(parent, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        list_item: (node, editorView, getPos) =>
+          new TaskItemNodeView(node, editorView, getPos),
+      },
+    });
+    const taskLi = parent.querySelector('li.task-list-item');
+    expect(taskLi).toBeNull();
+    const li = parent.querySelector('li');
+    expect(li).not.toBeNull();
+    expect(li!.querySelector('input[type="checkbox"]')).toBeNull();
+    view.destroy();
+    parent.remove();
   });
 });
