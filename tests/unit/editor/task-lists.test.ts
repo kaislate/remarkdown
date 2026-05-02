@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import MarkdownIt from 'markdown-it';
 import { tasksPlugin } from '../../../src/lib/markdown-it-tasks';
+import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 
 describe('tasksPlugin', () => {
   function tokenize(md: string) {
@@ -39,5 +40,53 @@ describe('tasksPlugin', () => {
     const upper = tokenize('- [X] b\n');
     expect(lower.find((t) => t.type === 'list_item_open')!.attrGet('data-task-state')).toBe('checked');
     expect(upper.find((t) => t.type === 'list_item_open')!.attrGet('data-task-state')).toBe('checked');
+  });
+});
+
+describe('task-list parsing', () => {
+  it('parses an unchecked task into list_item with checked: false', () => {
+    const doc = parseMarkdownToDoc('- [ ] thing\n');
+    let item: { attrs: { checked: unknown } } | null = null;
+    doc.descendants((n) => {
+      if (n.type.name === 'list_item') item = n as never;
+    });
+    expect(item).not.toBeNull();
+    expect(item!.attrs.checked).toBe(false);
+  });
+
+  it('parses a checked task into list_item with checked: true', () => {
+    const doc = parseMarkdownToDoc('- [x] done\n');
+    let item: { attrs: { checked: unknown } } | null = null;
+    doc.descendants((n) => {
+      if (n.type.name === 'list_item') item = n as never;
+    });
+    expect(item!.attrs.checked).toBe(true);
+  });
+
+  it('parses a plain bullet item with checked: null', () => {
+    const doc = parseMarkdownToDoc('- plain\n');
+    let item: { attrs: { checked: unknown } } | null = null;
+    doc.descendants((n) => {
+      if (n.type.name === 'list_item') item = n as never;
+    });
+    expect(item!.attrs.checked).toBe(null);
+  });
+
+  it('parses a mixed list (plain + task) preserving each items state', () => {
+    const doc = parseMarkdownToDoc('- plain\n- [ ] todo\n- [x] done\n');
+    const checks: unknown[] = [];
+    doc.descendants((n) => {
+      if (n.type.name === 'list_item') checks.push(n.attrs.checked);
+    });
+    expect(checks).toEqual([null, false, true]);
+  });
+
+  it('strips the marker from the parsed text content', () => {
+    const doc = parseMarkdownToDoc('- [ ] thing\n');
+    let text = '';
+    doc.descendants((n) => {
+      if (n.type.name === 'text') text += n.text;
+    });
+    expect(text).toBe('thing');
   });
 });
