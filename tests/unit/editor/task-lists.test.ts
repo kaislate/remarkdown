@@ -5,8 +5,9 @@ import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
 import { TaskItemNodeView } from '../../../src/lib/editor/task-item-node-view';
 import { EditorView } from 'prosemirror-view';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { editorSchema } from '../../../src/lib/editor/schema';
+import { createEditorView, insertTaskList, splitTaskOrListItem } from '../../../src/lib/editor/view';
 
 describe('tasksPlugin', () => {
   function tokenize(md: string) {
@@ -185,5 +186,72 @@ describe('TaskItemNodeView', () => {
     expect(li!.querySelector('input[type="checkbox"]')).toBeNull();
     view.destroy();
     parent.remove();
+  });
+});
+
+describe('createEditorView with task lists', () => {
+  it('mounts the TaskItemNodeView for a task source', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const view = createEditorView(parent, '- [ ] thing\n', () => {});
+    const cb = parent.querySelector('li.task-list-item input[type="checkbox"]');
+    expect(cb).not.toBeNull();
+    view.destroy();
+    parent.remove();
+  });
+
+  it('insertTaskList wraps the current paragraph as a bullet_list with one unchecked task', () => {
+    const doc = parseMarkdownToDoc('hello\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    let dispatched = false;
+    insertTaskList()(state, (tr) => {
+      state = state.apply(tr);
+      dispatched = true;
+    });
+    expect(dispatched).toBe(true);
+    let firstItem: { attrs: { checked: unknown } } | null = null;
+    state.doc.descendants((n) => {
+      if (n.type.name === 'list_item' && firstItem === null) {
+        firstItem = n as never;
+      }
+    });
+    expect(firstItem).not.toBeNull();
+    expect(firstItem!.attrs.checked).toBe(false);
+  });
+
+  it('splitTaskOrListItem creates a new task with checked: false from a checked task', () => {
+    // Caret at end of a checked task — Enter should split into a new
+    // UNCHECKED task (matches Notion / GitHub UX).
+    const doc = parseMarkdownToDoc('- [x] done\n');
+    let state = EditorState.create({ doc, schema: editorSchema });
+    // Move cursor inside the paragraph of the checked task. We walk to
+    // the first paragraph and place the selection at the end of its
+    // content — this is more robust than computing positions from
+    // doc.content.size, which depends on closing-token sizing.
+    let paraEnd: number | null = null;
+    state.doc.descendants((n, pos) => {
+      if (paraEnd === null && n.type.name === 'paragraph') {
+        paraEnd = pos + 1 + n.content.size;
+        return false;
+      }
+      return undefined;
+    });
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, paraEnd!)
+      )
+    );
+    let dispatched = false;
+    splitTaskOrListItem(state, (tr) => {
+      state = state.apply(tr);
+      dispatched = true;
+    });
+    expect(dispatched).toBe(true);
+    const checks: unknown[] = [];
+    state.doc.descendants((n) => {
+      if (n.type.name === 'list_item') checks.push(n.attrs.checked);
+    });
+    // Original task is still checked: true; new sibling is checked: false.
+    expect(checks).toEqual([true, false]);
   });
 });
