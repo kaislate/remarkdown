@@ -171,16 +171,20 @@
   }
   .editor-surface {
     width: 100%;
+    /* Match the read-mode `.viewer` structure exactly: padding lives on
+       the OUTER container, not on the contenteditable inside. The
+       read-mode rule is `padding: 96px 48px 160px` on the article;
+       here we shave 36px off the top to compensate for the toolbar
+       sitting above. Left/right (48px) and bottom (160px) match the
+       reader so a paragraph wraps at the same column in both modes.
+       (Previously the padding lived on the inner `.ProseMirror`, which
+       interacted oddly with PM's auto-width tracking and produced a
+       visibly narrower column in edit mode.) */
+    padding: 60px 48px 160px;
+    box-sizing: content-box;
   }
   :global(.editor-surface .ProseMirror) {
     outline: none;
     min-height: 60vh;
-    /* Match the read-mode article's column position. The read-mode
-       `.viewer` rule (Viewer.svelte) uses `padding: 96px 48px 160px`.
-       In edit mode the toolbar (~36px) sits above this surface and
-       eats into the top — reduce padding-top by the toolbar's height
-       so the first line of text lands at the same y as read mode.
-       Left/right (48px) and bottom (160px) match exactly. */
-    padding: 60px 48px 160px;
   }
 </style>
