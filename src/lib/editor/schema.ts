@@ -24,6 +24,7 @@ import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
 import type { NodeSpec } from 'prosemirror-model';
 import { calloutIcon } from './callout-icons';
+import { tableNodes } from './table-nodes';
 
 const calloutNode: NodeSpec = {
   attrs: {
@@ -153,7 +154,11 @@ const listItemNode: NodeSpec = {
 const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
   .update('list_item', listItemNode)
-  .addBefore('blockquote', 'callout', calloutNode);
+  .addBefore('blockquote', 'callout', calloutNode)
+  .addToEnd('table', tableNodes.table)
+  .addToEnd('table_row', tableNodes.table_row)
+  .addToEnd('table_cell', tableNodes.table_cell)
+  .addToEnd('table_header', tableNodes.table_header);
 
 export const editorSchema = new Schema({
   nodes,
