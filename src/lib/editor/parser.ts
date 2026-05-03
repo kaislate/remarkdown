@@ -21,7 +21,11 @@ import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
 
-const md = MarkdownIt('commonmark');
+// Use the default preset (not 'commonmark') so GFM tables produce
+// table_open / tr_open / th_open / td_open tokens. The default preset
+// also enables strikethrough (`~~text~~` → `s_open`/`s_close`); we
+// have a `strike` mark in the schema and a handler below to map it.
+const md = MarkdownIt();
 md.use(calloutsPlugin);
 md.use(tasksPlugin);
 
@@ -86,6 +90,17 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
       };
     },
   },
+  table: { block: 'table' },
+  tr: { block: 'table_row' },
+  th: { block: 'table_header' },
+  td: { block: 'table_cell' },
+  // thead / tbody are presentational in markdown-it's table tokens but
+  // don't have a corresponding PM node. Mark them as ignored so the
+  // parser skips the open/close tokens cleanly.
+  thead: { ignore: true },
+  tbody: { ignore: true },
+  // Strikethrough: markdown-it emits `s_open` / `s_close` for `~~text~~`.
+  s: { mark: 'strike' },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {

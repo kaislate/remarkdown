@@ -24,6 +24,7 @@ import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
 import type { NodeSpec } from 'prosemirror-model';
 import { calloutIcon } from './callout-icons';
+import { tableNodes } from './table-nodes';
 
 const calloutNode: NodeSpec = {
   attrs: {
@@ -153,9 +154,24 @@ const listItemNode: NodeSpec = {
 const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
   .update('list_item', listItemNode)
-  .addBefore('blockquote', 'callout', calloutNode);
+  .addBefore('blockquote', 'callout', calloutNode)
+  .addToEnd('table', tableNodes.table)
+  .addToEnd('table_row', tableNodes.table_row)
+  .addToEnd('table_cell', tableNodes.table_cell)
+  .addToEnd('table_header', tableNodes.table_header);
+
+// Strikethrough mark — GFM emits `<s>...</s>` and accepts the older
+// `<del>` / `<strike>` HTML aliases. Adding it to the schema lets the
+// editor round-trip `~~text~~` (the parser maps the markdown-it `s`
+// token to this mark; the serializer emits ~~ delimiters).
+const marks = baseSchema.spec.marks.addToEnd('strike', {
+  parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }],
+  toDOM() {
+    return ['s', 0];
+  },
+});
 
 export const editorSchema = new Schema({
   nodes,
-  marks: baseSchema.spec.marks,
+  marks,
 });

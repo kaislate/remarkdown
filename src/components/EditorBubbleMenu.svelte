@@ -2,10 +2,11 @@
   import { tick } from 'svelte';
   import TextB from 'phosphor-svelte/lib/TextB';
   import TextItalic from 'phosphor-svelte/lib/TextItalic';
+  import TextStrikethrough from 'phosphor-svelte/lib/TextStrikethrough';
   import Code from 'phosphor-svelte/lib/Code';
   import Link from 'phosphor-svelte/lib/Link';
 
-  type MarkName = 'strong' | 'em' | 'code';
+  type MarkName = 'strong' | 'em' | 'strike' | 'code';
 
   interface Props {
     visible: boolean;
@@ -105,6 +106,18 @@
     onclick={() => onMark('em')}
   >
     <TextItalic size={16} weight="bold" />
+  </button>
+  <button
+    type="button"
+    class="bubble-btn"
+    data-mark="strike"
+    aria-pressed={activeMarks.has('strike')}
+    title="Strikethrough"
+    aria-label="Strikethrough"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onMark('strike')}
+  >
+    <TextStrikethrough size={16} weight="bold" />
   </button>
   <button
     type="button"

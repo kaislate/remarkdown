@@ -239,3 +239,79 @@ test.describe('edit mode — task lists', () => {
     expect(Math.abs(afterCount - beforeCount)).toBe(1);
   });
 });
+
+test.describe('edit mode — tables', () => {
+  const TABLE_FIXTURE_PATH = '/e2e/edit-table-fixture.md';
+  const TABLE_FIXTURE_MD = `# Doc\n\n| a | b |\n| - | - |\n| 1 | 2 |\n`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [TABLE_FIXTURE_PATH, TABLE_FIXTURE_MD],
+    );
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      TABLE_FIXTURE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+  });
+
+  test('toggle on → existing table renders editable', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    const table = page.locator('.editor-surface table').first();
+    await expect(table).toBeVisible();
+  });
+
+  test('toolbar Table button inserts a 3x2 table that saves to disk', async ({ page }) => {
+    // Override the describe-level beforeEach fixture (which seeds a doc with an
+    // existing table) — we need a clean slate so the assertion proves the toolbar
+    // action wrote a fresh table, not the seed. localStorage-backed docs persist
+    // across the page reload; window-scoped helpers (__E2E_DIALOG_PATH__,
+    // __E2E_WRITES__) do not, so reset & set them AFTER the goto. Mirrors the
+    // code-block toolbar test above.
+    const NO_TABLE_PATH = '/e2e/edit-table-no-table-fixture.md';
+    const NO_TABLE_MD = `# Doc\n\nA paragraph.\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [NO_TABLE_PATH, NO_TABLE_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      NO_TABLE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+
+    await page.locator('.edit-mode-toggle').click();
+    // Place caret in the trailing paragraph so the toolbar action has a valid target.
+    const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'A paragraph.' });
+    await para.click();
+    await page.keyboard.press('End');
+    // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
+    // use DOM-native .click() to avoid blurring the PM selection (same workaround
+    // as the callout / code-block / task-list E2E tests above).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="table"]') as HTMLElement | null)?.click();
+    });
+    // Wait for the autosave debounce (750ms) to fire.
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    expect(last.path).toBe(NO_TABLE_PATH);
+    // A real GFM table written to disk must contain BOTH a pipe-bordered row
+    // and a header-separator row — together these prove the toolbar action
+    // emitted a proper GFM table (not just stray pipes in a paragraph).
+    expect(last.markdown).toMatch(/^\|.*\|$/m); // contains a table line
+    expect(last.markdown).toMatch(/\| -+ \|/);  // contains a separator row
+  });
+});

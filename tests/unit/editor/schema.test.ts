@@ -164,4 +164,28 @@ describe('editorSchema', () => {
     );
     expect(attrs.checked).toBe(true);
   });
+
+  it('has table, table_row, table_cell, table_header nodes', () => {
+    expect(editorSchema.nodes.table).toBeDefined();
+    expect(editorSchema.nodes.table_row).toBeDefined();
+    expect(editorSchema.nodes.table_cell).toBeDefined();
+    expect(editorSchema.nodes.table_header).toBeDefined();
+  });
+
+  it('table_cell content is inline-only (no nested blocks)', () => {
+    const cell = editorSchema.nodes.table_cell;
+    // GFM tables don't support multi-paragraph cells; constraining the
+    // schema to inline content matches that and keeps serialization
+    // simple.
+    expect(cell.spec.content).toBe('inline*');
+  });
+
+  it('a 1x1 table can be constructed and contains the cell text', () => {
+    const cell = editorSchema.node('table_cell', null, [
+      editorSchema.text('hello'),
+    ]);
+    const row = editorSchema.node('table_row', null, [cell]);
+    const table = editorSchema.node('table', null, [row]);
+    expect(table.firstChild!.firstChild!.textContent).toBe('hello');
+  });
 });

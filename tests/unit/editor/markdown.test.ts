@@ -40,6 +40,16 @@ describe('markdown round-trip', () => {
     const src = '> A quoted line.\n';
     expect(roundTrip(src)).toBe(src);
   });
+
+  it('preserves strikethrough', () => {
+    const src = 'Some ~~stricken~~ text.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves strikethrough mixed with bold and italic', () => {
+    const src = 'A **bold** *italic* ~~strike~~ combo.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
 });
 
 import { createEditorView } from '../../../src/lib/editor/view';
