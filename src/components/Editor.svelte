@@ -3,7 +3,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
-  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList } from '../lib/editor/view';
+  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable } from '../lib/editor/view';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
@@ -69,6 +69,9 @@
       v.focus();
     } else if (action === 'tasks') {
       insertTaskList()(v.state, v.dispatch);
+      v.focus();
+    } else if (action === 'table') {
+      insertTable(3, 2)(v.state, v.dispatch);
       v.focus();
     }
   }

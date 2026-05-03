@@ -64,4 +64,22 @@ describe('EditorToolbar', () => {
     expect(onInsert).toHaveBeenCalledWith('tasks');
     cleanup();
   });
+
+  it('has a table button', () => {
+    const { container } = render(EditorToolbar, {
+      props: { onInsert: () => {} },
+    });
+    const btn = container.querySelector('.toolbar-btn[data-action="table"]');
+    expect(btn).not.toBeNull();
+  });
+
+  it('clicking table fires onInsert with the table action', async () => {
+    const onInsert = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorToolbar, { props: { onInsert } });
+    const btn = container.querySelector('.toolbar-btn[data-action="table"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onInsert).toHaveBeenCalledWith('table');
+    cleanup();
+  });
 });

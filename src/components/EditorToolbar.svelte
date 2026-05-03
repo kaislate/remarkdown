@@ -2,6 +2,7 @@
   import Note from 'phosphor-svelte/lib/Note';
   import Code from 'phosphor-svelte/lib/Code';
   import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
+  import Table from 'phosphor-svelte/lib/Table';
 
   type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'mermaid' | 'image';
 
@@ -47,6 +48,18 @@
   >
     <CheckSquare size={18} weight="regular" />
     <span class="label">Tasks</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="table"
+    title="Insert table"
+    aria-label="Insert table"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('table')}
+  >
+    <Table size={18} weight="regular" />
+    <span class="label">Table</span>
   </button>
 </div>
 
