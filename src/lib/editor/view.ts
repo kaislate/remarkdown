@@ -15,12 +15,14 @@ import {
 } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { findWrapping } from 'prosemirror-transform';
+import { tableEditing } from 'prosemirror-tables';
 import { editorSchema } from './schema';
 import { parseMarkdown, serializeToMarkdown } from './markdown';
 import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
 import { TaskItemNodeView } from './task-item-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
+import { tabInTable } from './table-commands';
 
 // Insert N spaces at the cursor, but only if the cursor is inside a
 // code_block. Outside code_blocks this returns false and the chained
@@ -117,6 +119,7 @@ export function createEditorView(
     'Enter': chainCommands(newlineInCode, splitTaskOrListItem),
     'Mod-Enter': exitCode,
     'Tab': chainCommands(
+      tabInTable,
       indentCodeBlock(2),
       sinkListItem(editorSchema.nodes.list_item),
       () => true,
@@ -135,6 +138,7 @@ export function createEditorView(
       keymap(baseKeys),
       keymap(baseKeymap),
       createCodeBlockHighlightPlugin(),
+      tableEditing(),
     ],
   });
 
@@ -268,3 +272,5 @@ export function insertTaskList() {
     return true;
   };
 }
+
+export { insertTable } from './table-commands';
