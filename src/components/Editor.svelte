@@ -7,6 +7,14 @@
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
+  import TableActionsMenu from './TableActionsMenu.svelte';
+  import { tableActionsKey } from '../lib/editor/table-actions-plugin';
+  import {
+    addRowAfterCmd,
+    addColumnAfterCmd,
+    deleteRowCmd,
+    deleteColumnCmd,
+  } from '../lib/editor/table-commands';
 
   interface Props {
     initialMarkdown: string;
@@ -28,6 +36,12 @@
     marks: new Set<string>(),
     linkHref: '',
   });
+
+  // Table actions menu state — recomputed on selection / doc change
+  // alongside `bubble`. Visible when the cursor is inside any table
+  // (the table-actions plugin tracks the active table's pos). The
+  // menu floats above the active table's top edge.
+  let tableMenu = $state({ visible: false, x: 0, y: 0 });
 
   function updateBubble() {
     const v = view;
@@ -56,6 +70,46 @@
     const linkMark = stored.find((m) => m.type.name === 'link');
     const linkHref = linkMark ? String(linkMark.attrs.href ?? '') : '';
     bubble = { visible: true, x, y, marks, linkHref };
+  }
+
+  function updateTableMenu() {
+    const v = view;
+    if (!v) {
+      tableMenu = { ...tableMenu, visible: false };
+      return;
+    }
+    const ps = tableActionsKey.getState(v.state);
+    if (!ps?.active) {
+      tableMenu = { ...tableMenu, visible: false };
+      return;
+    }
+    const tableNode = v.state.doc.nodeAt(ps.active.tablePos);
+    if (!tableNode) {
+      tableMenu = { ...tableMenu, visible: false };
+      return;
+    }
+    // Coordinates just inside the table's open token. coordsAtPos is
+    // viewport-relative; subtract the editor-shell rect (the bubble's
+    // containing block — see updateBubble) to get shell-local coords.
+    const coords = v.coordsAtPos(ps.active.tablePos + 1);
+    const shellEl = parentEl?.closest<HTMLElement>('.editor-shell');
+    const shellRect = shellEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    // Approximate horizontal centering — true centering needs the
+    // table's actual width. 100px right of the left edge is a
+    // reasonable v1 anchor; refined in Task 10 if needed.
+    const x = coords.left - shellRect.left + 100;
+    const y = coords.top - shellRect.top;
+    tableMenu = { visible: true, x, y };
+  }
+
+  function runTableCmd(cmd: typeof addRowAfterCmd) {
+    const v = view;
+    if (!v) return;
+    cmd(v.state, v.dispatch);
+    v.focus();
+    // Re-evaluate menu position after the command runs — row/column
+    // mutations change the table's bounding rect.
+    void tick().then(updateTableMenu);
   }
 
   function onToolbarInsert(action: string) {
@@ -124,7 +178,20 @@
     if (!target) return;
     if (target.closest('.editor-toolbar')) return;
     if (target.closest('.editor-bubble-menu')) return;
+    // Allow clicks inside the table-actions menu to fall through to
+    // its button handlers without dismissing the bubble — the table
+    // menu is its own visibility lifecycle (driven by selection-in-
+    // table state) so we don't need to hide it here.
+    if (target.closest('.table-actions-menu')) return;
     bubble = { ...bubble, visible: false };
+  }
+
+  // Wrappers fire BOTH bubble + table-menu updates on every event —
+  // selections and doc changes can affect either. Cheap to run both
+  // since each early-returns when its precondition isn't met.
+  function onSelectionMaybeChanged() {
+    updateBubble();
+    updateTableMenu();
   }
 
   onMount(() => {
@@ -132,9 +199,10 @@
     view = createEditorView(parentEl, initialMarkdown, (md) => {
       onChange(md);
       updateBubble();
+      updateTableMenu();
     });
-    parentEl.addEventListener('mouseup', updateBubble);
-    parentEl.addEventListener('keyup', updateBubble);
+    parentEl.addEventListener('mouseup', onSelectionMaybeChanged);
+    parentEl.addEventListener('keyup', onSelectionMaybeChanged);
     document.addEventListener('mousedown', onAnyMouseDown);
     // NOTE: previously had a `selectionchange` listener too, but it
     // races onAnyMouseDown — every click outside the editor changes
@@ -147,8 +215,8 @@
 
   onDestroy(() => {
     if (parentEl) {
-      parentEl.removeEventListener('mouseup', updateBubble);
-      parentEl.removeEventListener('keyup', updateBubble);
+      parentEl.removeEventListener('mouseup', onSelectionMaybeChanged);
+      parentEl.removeEventListener('keyup', onSelectionMaybeChanged);
     }
     document.removeEventListener('mousedown', onAnyMouseDown);
     view?.destroy();
@@ -167,6 +235,15 @@
     onApplyLink={onApplyLink}
     activeMarks={bubble.marks}
     linkHref={bubble.linkHref}
+  />
+  <TableActionsMenu
+    visible={tableMenu.visible}
+    x={tableMenu.x}
+    y={tableMenu.y}
+    onAddRow={() => runTableCmd(addRowAfterCmd)}
+    onAddCol={() => runTableCmd(addColumnAfterCmd)}
+    onDelRow={() => runTableCmd(deleteRowCmd)}
+    onDelCol={() => runTableCmd(deleteColumnCmd)}
   />
 </div>
 
