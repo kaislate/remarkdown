@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
+import { serializeDocToMarkdown } from '../../../src/lib/editor/serializer';
 
 describe('table parsing', () => {
   it('parses a simple 2x2 table into table > table_row > table_cell', () => {
@@ -32,5 +33,31 @@ describe('table parsing', () => {
     const bodyRow = table.child(1);
     expect(bodyRow.firstChild!.textContent).toBe('');
     expect(bodyRow.child(1).textContent).toBe('2');
+  });
+});
+
+describe('table round-trip', () => {
+  function rt(md: string): string {
+    return serializeDocToMarkdown(parseMarkdownToDoc(md));
+  }
+
+  it('round-trips a 2x2 table', () => {
+    const src = '| A | B |\n| - | - |\n| 1 | 2 |\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a 3x3 table', () => {
+    const src = '| a | b | c |\n| - | - | - |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a table with empty cells', () => {
+    const src = '| a | b |\n| - | - |\n|   | 2 |\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('round-trips a table with inline marks (bold, italic, code)', () => {
+    const src = '| **a** | *b* |\n| - | - |\n| `c` | d |\n';
+    expect(rt(src)).toBe(src);
   });
 });
