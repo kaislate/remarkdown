@@ -21,7 +21,11 @@ import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
 
-const md = MarkdownIt('commonmark');
+// Use the default preset (not 'commonmark') so GFM tables produce
+// table_open / tr_open / th_open / td_open tokens. The other GFM
+// extensions (linkify, typographer, etc.) are off in default — only
+// tables and a couple of inline ones are added by default-preset.
+const md = MarkdownIt();
 md.use(calloutsPlugin);
 md.use(tasksPlugin);
 
@@ -86,6 +90,15 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
       };
     },
   },
+  table: { block: 'table' },
+  tr: { block: 'table_row' },
+  th: { block: 'table_header' },
+  td: { block: 'table_cell' },
+  // thead / tbody are presentational in markdown-it's table tokens but
+  // don't have a corresponding PM node. Mark them as ignored so the
+  // parser skips the open/close tokens cleanly.
+  thead: { ignore: true },
+  tbody: { ignore: true },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {
