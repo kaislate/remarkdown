@@ -83,9 +83,15 @@
    <li>text</li> directly with no wrapping <p>). Strip the paragraph
    margins where they're adjacent to the list item's edge so the li's
    own 0.3em handles spacing. Multi-paragraph items still get their
-   inter-paragraph margin (only first/last lose theirs). */
-.md-rendered li > p:first-child { margin-top: 0; }
-.md-rendered li > p:last-child { margin-bottom: 0; }
+   inter-paragraph margin (only first/last lose theirs).
+   The TaskItemNodeView wraps the editable content in <span class=
+   "task-content"> (so PM's contentDOM is that span and the checkbox
+   sits OUTSIDE PM's content area). For task items the <p> is a child
+   of the span, not the <li> directly — selectors must reach through. */
+.md-rendered li > p:first-child,
+.md-rendered li > .task-content > p:first-child { margin-top: 0; }
+.md-rendered li > p:last-child,
+.md-rendered li > .task-content > p:last-child { margin-bottom: 0; }
 
 .md-rendered hr {
   border: 0;

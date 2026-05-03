@@ -15,12 +15,13 @@
 </button>
 
 <style>
-  /* Stacked above the Focus toggle (left:144, bottom:22). We sit at
-     bottom:114 to clear: Focus (38) + ToC (38) + gap. */
+  /* Stacked under the hamburger (left:14, top:14, height:38). We sit at
+     top:60 = 14 + 38 + 8gap. ToC and Focus stack below this in 46-step
+     increments (38 button height + 8 gap). */
   .edit-mode-toggle {
     position: fixed;
-    bottom: 114px;
-    left: 144px;
+    top: 60px;
+    left: 14px;
     width: 38px;
     height: 38px;
     display: grid;

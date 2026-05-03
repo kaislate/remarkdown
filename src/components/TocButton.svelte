@@ -114,13 +114,12 @@
 {/if}
 
 <style>
-  /* Stacked above the reader-mode (Focus) toggle at left:144, bottom:22.
-     Same x so the two pills line up vertically; offset bottom by the
-     toggle height (38) plus a small gap (8) = 68px above the bottom. */
+  /* Third in the top-left stack: hamburger (top:14), EditMode (top:60),
+     this button (top:106 = 60 + 38 + 8 gap), Focus toggle (top:152). */
   .toc-button {
     position: fixed;
-    bottom: 68px;
-    left: 144px;
+    top: 106px;
+    left: 14px;
     width: 38px;
     height: 38px;
     display: grid;
@@ -152,16 +151,15 @@
     cursor: default;
   }
 
-  /* Popover floats above the button (which sits at bottom:68 + height:38
-     = top edge at bottom:106). Offset 10px above the button so the
-     glass border doesn't kiss the pill. Anchored at left:22 so the
-     popover spans the same edge as the zoom + re.marks pills below. */
+  /* Popover floats to the RIGHT of the button (now at top:106, left:14,
+     right-edge at x=52). Offset 8px gap so the glass border doesn't
+     kiss the pill. Top-aligned with the button. */
   .toc-popover {
     position: fixed;
-    bottom: 116px;
-    left: 22px;
+    top: 106px;
+    left: 60px;
     z-index: 110;
-    width: min(340px, calc(100vw - 44px));
+    width: min(340px, calc(100vw - 80px));
     max-height: 60vh;
     display: flex;
     flex-direction: column;
@@ -169,8 +167,8 @@
     animation: tocIn 0.18s ease-out;
   }
   @keyframes tocIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
   .toc-popover header {
     display: flex;

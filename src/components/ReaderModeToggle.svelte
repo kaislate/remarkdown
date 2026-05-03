@@ -19,12 +19,12 @@
 </button>
 
 <style>
-  /* Sits to the right of the zoom pill (which is left:22, ~108px wide
-     including its 4px padding). 22 + 108 + 14 gap = 144. */
+  /* Bottom of the top-left button stack: hamburger (top:14), EditMode
+     (top:60), ToC (top:106), this Focus toggle (top:152 = 106 + 38 + 8). */
   .reader-mode-toggle {
     position: fixed;
-    bottom: 22px;
-    left: 144px;
+    top: 152px;
+    left: 14px;
     width: 38px;
     height: 38px;
     display: grid;
