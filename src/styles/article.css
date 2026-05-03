@@ -333,3 +333,25 @@ body.reattach-mode .reader-mode-toggle {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ──────────────────────────────────────────────────────
+   Tables — header tint and selected-cell affordance
+   ──────────────────────────────────────────────────────
+   Base table/th/td rules (border-collapse, borders, padding) live
+   higher up in this file. These additions are editor-parity polish
+   that also benefits the reader (both share .md-rendered). */
+
+/* Header row gets a subtle tint so the data area pops. Applies in both
+   reader and editor (both use .md-rendered). */
+.md-rendered th {
+  background: var(--bg-2);
+  text-align: left;
+}
+
+/* Editor-mode cell affordance: a focus ring on the cell that has the
+   selection. prosemirror-tables sets the .selectedCell class on cells
+   in a CellSelection; we light those up in addition to the
+   contenteditable focus. */
+.md-rendered .selectedCell {
+  background: var(--accent-soft);
+}
