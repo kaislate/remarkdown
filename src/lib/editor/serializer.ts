@@ -178,7 +178,19 @@ const editorMarkdownSerializer = new MarkdownSerializer(
     table_cell,
     table_header,
   },
-  defaultMarkdownSerializer.marks,
+  {
+    ...defaultMarkdownSerializer.marks,
+    // Strikethrough mark — `~~text~~`. `mixable: true` lets it overlap
+    // cleanly with **bold** / *italic*; `expelEnclosingWhitespace`
+    // pushes leading/trailing whitespace OUTSIDE the marker so we
+    // don't emit `~~ text ~~` (invalid GFM).
+    strike: {
+      open: '~~',
+      close: '~~',
+      mixable: true,
+      expelEnclosingWhitespace: true,
+    },
+  },
 );
 
 export function serializeDocToMarkdown(doc: Node): string {

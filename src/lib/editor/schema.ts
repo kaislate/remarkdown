@@ -160,7 +160,18 @@ const nodes = baseSchema.spec.nodes
   .addToEnd('table_cell', tableNodes.table_cell)
   .addToEnd('table_header', tableNodes.table_header);
 
+// Strikethrough mark — GFM emits `<s>...</s>` and accepts the older
+// `<del>` / `<strike>` HTML aliases. Adding it to the schema lets the
+// editor round-trip `~~text~~` (the parser maps the markdown-it `s`
+// token to this mark; the serializer emits ~~ delimiters).
+const marks = baseSchema.spec.marks.addToEnd('strike', {
+  parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }],
+  toDOM() {
+    return ['s', 0];
+  },
+});
+
 export const editorSchema = new Schema({
   nodes,
-  marks: baseSchema.spec.marks,
+  marks,
 });

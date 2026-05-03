@@ -41,18 +41,14 @@ describe('markdown round-trip', () => {
     expect(roundTrip(src)).toBe(src);
   });
 
-  // Regression: switching the editor's md from 'commonmark' to the
-  // default preset (Phase 2d, for GFM tables) accidentally enabled
-  // strikethrough, which emits unhandled `s_open`/`s_close` tokens and
-  // crashed MarkdownParser on any doc containing `~~...~~` — the editor
-  // would mount with an empty doc. parser.ts now disables the
-  // strikethrough rule on its md instance; the chars survive as
-  // literal text instead.
-  it('does not crash on strikethrough text (rule disabled)', () => {
+  it('preserves strikethrough', () => {
     const src = 'Some ~~stricken~~ text.\n';
-    expect(() => parseMarkdown(src)).not.toThrow();
-    const doc = parseMarkdown(src);
-    expect(doc.textContent).toContain('~~stricken~~');
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves strikethrough mixed with bold and italic', () => {
+    const src = 'A **bold** *italic* ~~strike~~ combo.\n';
+    expect(roundTrip(src)).toBe(src);
   });
 });
 

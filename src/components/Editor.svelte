@@ -130,7 +130,7 @@
     }
   }
 
-  function onBubbleMark(name: 'strong' | 'em' | 'code') {
+  function onBubbleMark(name: 'strong' | 'em' | 'strike' | 'code') {
     const v = view;
     if (!v) return;
     const markType = editorSchema.marks[name];
