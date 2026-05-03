@@ -22,10 +22,16 @@ import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
 
 // Use the default preset (not 'commonmark') so GFM tables produce
-// table_open / tr_open / th_open / td_open tokens. The other GFM
-// extensions (linkify, typographer, etc.) are off in default — only
-// tables and a couple of inline ones are added by default-preset.
+// table_open / tr_open / th_open / td_open tokens. The default preset
+// ALSO enables strikethrough (`~~text~~` → `s_open`/`s_close`), which
+// our schema doesn't have a mark for and our parser config doesn't
+// handle — leaving it enabled would crash MarkdownParser on any doc
+// containing `~~...~~` and present the user with a blank editor.
+// Disable that one rule explicitly. The reader (MarkdownRenderer.ts)
+// owns its own md instance and keeps strikethrough enabled for HTML
+// rendering, so read-mode is unaffected.
 const md = MarkdownIt();
+md.disable('strikethrough');
 md.use(calloutsPlugin);
 md.use(tasksPlugin);
 
