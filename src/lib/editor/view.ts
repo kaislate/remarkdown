@@ -23,6 +23,7 @@ import { CodeBlockNodeView } from './code-block-node-view';
 import { TaskItemNodeView } from './task-item-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 import { tabInTable } from './table-commands';
+import { createTableActionsPlugin } from './table-actions-plugin';
 
 // Insert N spaces at the cursor, but only if the cursor is inside a
 // code_block. Outside code_blocks this returns false and the chained
@@ -139,6 +140,7 @@ export function createEditorView(
       keymap(baseKeymap),
       createCodeBlockHighlightPlugin(),
       tableEditing(),
+      createTableActionsPlugin(),
     ],
   });
 

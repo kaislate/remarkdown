@@ -11,6 +11,7 @@ import {
   deleteRowCmd,
   deleteColumnCmd,
 } from '../../../src/lib/editor/table-commands';
+import { createTableActionsPlugin, tableActionsKey } from '../../../src/lib/editor/table-actions-plugin';
 
 describe('table parsing', () => {
   it('parses a simple 2x2 table into table > table_row > table_cell', () => {
@@ -122,5 +123,38 @@ describe('table commands', () => {
     const state = EditorState.create({ doc, schema: editorSchema });
     const ok = tabInTable(state, () => {});
     expect(ok).toBe(false);
+  });
+});
+
+describe('tableActionsPlugin', () => {
+  it('sets active = null when selection is outside any table', () => {
+    const plugin = createTableActionsPlugin();
+    const doc = parseMarkdownToDoc('hello\n');
+    const state = EditorState.create({
+      doc,
+      schema: editorSchema,
+      plugins: [plugin],
+    });
+    const pluginState = tableActionsKey.getState(state);
+    expect(pluginState).toBeDefined();
+    expect(pluginState!.active).toBeNull();
+  });
+
+  it('sets active = { tablePos, ... } when selection is inside a table', () => {
+    const plugin = createTableActionsPlugin();
+    const doc = parseMarkdownToDoc('| a | b |\n| - | - |\n| 1 | 2 |\n');
+    let state = EditorState.create({
+      doc,
+      schema: editorSchema,
+      plugins: [plugin],
+    });
+    let firstCellPos = -1;
+    state.doc.descendants((n, p) => {
+      if (n.type.name === 'table_cell' && firstCellPos === -1) firstCellPos = p;
+    });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, firstCellPos + 1)));
+    const pluginState = tableActionsKey.getState(state);
+    expect(pluginState!.active).not.toBeNull();
+    expect(pluginState!.active!.tablePos).toBeGreaterThanOrEqual(0);
   });
 });
