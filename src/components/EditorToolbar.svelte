@@ -3,6 +3,7 @@
   import Code from 'phosphor-svelte/lib/Code';
   import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
   import Table from 'phosphor-svelte/lib/Table';
+  import FlowArrow from 'phosphor-svelte/lib/FlowArrow';
 
   type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'mermaid' | 'image';
 
@@ -60,6 +61,18 @@
   >
     <Table size={18} weight="regular" />
     <span class="label">Table</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="mermaid"
+    title="Insert diagram"
+    aria-label="Insert diagram"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('mermaid')}
+  >
+    <FlowArrow size={18} weight="regular" />
+    <span class="label">Diagram</span>
   </button>
 </div>
 

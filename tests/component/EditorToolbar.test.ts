@@ -82,4 +82,22 @@ describe('EditorToolbar', () => {
     expect(onInsert).toHaveBeenCalledWith('table');
     cleanup();
   });
+
+  it('has a mermaid (Diagram) button', () => {
+    const { container } = render(EditorToolbar, {
+      props: { onInsert: () => {} },
+    });
+    const btn = container.querySelector('.toolbar-btn[data-action="mermaid"]');
+    expect(btn).not.toBeNull();
+  });
+
+  it('clicking mermaid fires onInsert with the mermaid action', async () => {
+    const onInsert = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorToolbar, { props: { onInsert } });
+    const btn = container.querySelector('.toolbar-btn[data-action="mermaid"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onInsert).toHaveBeenCalledWith('mermaid');
+    cleanup();
+  });
 });

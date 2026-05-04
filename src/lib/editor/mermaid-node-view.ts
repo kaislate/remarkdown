@@ -447,6 +447,32 @@ export class MermaidNodeView implements NodeView {
       this.dom.classList.add('mermaid-fallback');
     }
 
+    // Empty diagram (e.g. fresh `flowchart TD\n` from the toolbar button):
+    // skip the mermaid render and show a placeholder with a "+ Add first
+    // shape" affordance instead. mermaid would render an empty SVG and
+    // there's nothing for the user to click; the placeholder gives them
+    // an entry point that opens the node popover for a brand-new node.
+    if (parsed.ok && parsed.graph.nodes.size === 0) {
+      // Any popover/banner from a previous render would now be orphaned —
+      // there are no SVG nodes left to anchor against.
+      this.clearSelection();
+      this.renderedEl.innerHTML = '';
+      const placeholder = document.createElement('button');
+      placeholder.type = 'button';
+      placeholder.className = 'mermaid-empty-state';
+      placeholder.textContent = '+ Add first shape';
+      // Mirror toolbar-button behaviour: don't steal focus from PM on
+      // mousedown so the surrounding selection survives the click.
+      placeholder.addEventListener('mousedown', (e) => e.preventDefault());
+      placeholder.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.createFirstNode();
+      });
+      this.renderedEl.appendChild(placeholder);
+      return;
+    }
+
     try {
       const mermaid = await getMermaid();
       const id = `remarkdown-mermaid-${++renderId}`;
@@ -590,6 +616,23 @@ export class MermaidNodeView implements NodeView {
       document.removeEventListener('keydown', this.escListener);
       this.escListener = null;
     }
+  }
+
+  // Empty-state entry point: the user clicked "+ Add first shape" on
+  // a fresh `flowchart TD\n` block. Add a single rect node, commit, and
+  // wait for the re-render before opening the popover for it (the SVG
+  // doesn't exist until mermaid finishes rendering, and the popover
+  // anchors to that SVG element).
+  private createFirstNode(): void {
+    if (!this.graph) return;
+    const result = addNode(this.graph, { shape: 'rect', label: '' });
+    this.graph = result.graph;
+    this.commitGraphChange(serializeMermaid(this.graph));
+    setTimeout(() => {
+      if (this.graph?.nodes.has(result.id)) {
+        this.selectGraphNode(result.id);
+      }
+    }, 50);
   }
 
   private addNewNodeInConnectMode(): void {

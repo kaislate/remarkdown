@@ -186,6 +186,28 @@ describe('MermaidNodeView', () => {
     parent.remove();
   });
 
+  it('renders the empty-state placeholder for an empty mermaid block', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc('```mermaid\nflowchart TD\n```\n');
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const placeholder = parent.querySelector('.mermaid-empty-state');
+    expect(placeholder).not.toBeNull();
+    expect(placeholder!.textContent).toContain('Add first shape');
+    view.destroy();
+    parent.remove();
+  });
+
   it('opens the edge popover when an edge is clicked', async () => {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
