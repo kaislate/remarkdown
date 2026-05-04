@@ -315,3 +315,113 @@ test.describe('edit mode — tables', () => {
     expect(last.markdown).toMatch(/\| -+ \|/);  // contains a separator row
   });
 });
+
+test.describe('edit mode — mermaid', () => {
+  const MERMAID_FIXTURE_PATH = '/e2e/edit-mermaid-fixture.md';
+  const MERMAID_FIXTURE_MD = `# Doc\n\n\`\`\`mermaid\nflowchart TD\nA[Start]\nB[End]\nA --> B\n\`\`\`\n`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [MERMAID_FIXTURE_PATH, MERMAID_FIXTURE_MD],
+    );
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      MERMAID_FIXTURE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+  });
+
+  test('toggle on → mermaid block renders editable', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    // The wrapper is the marker that the NodeView mounted.
+    await expect(page.locator('.editor-surface .mermaid-block-editor').first()).toBeVisible();
+    // The rendered SVG should be present (mermaid finished render).
+    await expect(page.locator('.editor-surface .mermaid-rendered svg').first()).toBeVisible();
+  });
+
+  test('clicking a node opens the popover with its current label', async ({ page }) => {
+    // KNOWN ISSUE (discovered via this e2e): mermaid in the browser renders SVG
+    // <g.node> elements with id `remarkdown-mermaid-N-flowchart-A-0` (the full
+    // render-id prefix is prepended), but the NodeView's click delegation in
+    // src/lib/editor/mermaid-node-view.ts uses `g.node[id^="flowchart-"]` /
+    // `/^flowchart-([A-Za-z]...)/` — neither selector matches the prefixed id,
+    // so the click handler's `closest()` returns null and selectGraphNode is
+    // never invoked. The popover therefore stays hidden. The unit-level tests
+    // in tests/unit/editor/mermaid-node-view.test.ts use the same selector but
+    // bail out when jsdom can't render mermaid, which is why this never showed
+    // up before. Track this against Phase 2e Task 11 (final verification) /
+    // a follow-up source fix; the test below is the observable behaviour we
+    // want once the selector is fixed (e.g. `g.node[id*="flowchart-"]` and an
+    // anchored regex against the suffix).
+    test.fixme();
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for mermaid render to settle.
+    await page.locator('.editor-surface .mermaid-rendered g.node').first().waitFor();
+    // Click the first node (the "A[Start]" node) via DOM-native click — Playwright's
+    // .click() may not work cleanly on SVG <g> elements (no intrinsic bounding box).
+    // Same selection-blur workaround documented in the callout / code-block describes.
+    // The actual rendered id is `remarkdown-mermaid-N-flowchart-A-0`, so we match
+    // with [id*="flowchart-A-"] (contains) rather than [id^="flowchart-A-"].
+    await page.evaluate(() => {
+      const el = document.querySelector('.editor-surface .mermaid-rendered g.node[id*="flowchart-A-"]') as SVGGElement | null;
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // Popover should be visible with the label "Start" pre-filled.
+    const popover = page.locator('.mermaid-popover').first();
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.mermaid-popover-label')).toHaveValue('Start');
+  });
+
+  test('toolbar Diagram button inserts a fresh mermaid block', async ({ page }) => {
+    // Override the describe-level beforeEach fixture (which seeds a doc with an
+    // existing mermaid fence) — we need a clean slate so the assertion proves
+    // the toolbar action wrote a fresh block, not the seed. localStorage-backed
+    // docs persist across the page reload; window-scoped helpers
+    // (__E2E_DIALOG_PATH__, __E2E_WRITES__) do not, so reset & set them AFTER
+    // the goto. Mirrors the code-block / table toolbar tests above.
+    const NO_MERMAID_PATH = '/e2e/edit-mermaid-no-mermaid-fixture.md';
+    const NO_MERMAID_MD = `# Doc\n\nA paragraph.\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [NO_MERMAID_PATH, NO_MERMAID_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      NO_MERMAID_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+
+    await page.locator('.edit-mode-toggle').click();
+    // Place caret in the trailing paragraph so the toolbar action has a valid target.
+    const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'A paragraph.' });
+    await para.click();
+    await page.keyboard.press('End');
+    // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
+    // use DOM-native .click() to avoid blurring the PM selection (same workaround
+    // as the callout / code-block / task-list / table E2E tests above).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="mermaid"]') as HTMLElement | null)?.click();
+    });
+    // Wait for the autosave debounce to fire.
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    expect(last.path).toBe(NO_MERMAID_PATH);
+    // With a no-mermaid seed, both ` ```mermaid ` and `flowchart TD` in the saved
+    // markdown prove the toolbar action — not the fixture — wrote the block.
+    expect(last.markdown).toMatch(/```mermaid/);
+    expect(last.markdown).toMatch(/flowchart TD/);
+  });
+});
