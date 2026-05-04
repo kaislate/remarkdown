@@ -398,6 +398,20 @@ body.reattach-mode .reader-mode-toggle {
   height: auto;
 }
 
+/* Wider invisible hit target injected next to each visible edge path
+   so users have a forgiving click zone (mermaid's edges are 1-2px wide
+   and otherwise pixel-precise). Dark gray + low opacity so the band
+   reads as a subtle "click track" without overpowering the actual
+   line. cursor:pointer signals interactivity. */
+.mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit {
+  stroke: rgba(180, 180, 200, 0.18);
+  cursor: pointer;
+  transition: stroke 0.15s ease;
+}
+.mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit:hover {
+  stroke: rgba(180, 180, 200, 0.32);
+}
+
 /* Selection styling on rendered SVG nodes. Mermaid sets a `.node`
    class on each <g>; we add `.mermaid-selected` on click. */
 .mermaid-block-editor .mermaid-rendered g.node {

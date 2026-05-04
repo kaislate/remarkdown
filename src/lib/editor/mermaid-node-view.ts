@@ -575,9 +575,13 @@ export class MermaidNodeView implements NodeView {
       if (!parent) return;
       const hit = document.createElementNS(SVG_NS, 'path');
       hit.setAttribute('d', path.getAttribute('d') || '');
-      hit.setAttribute('class', 'flowchart-link mermaid-edge-hit');
+      // NOTE: deliberately NOT giving the hit target the
+      // `flowchart-link` class — that class picks up our hover/selection
+      // CSS rules (drop-shadow + accent stroke) which on a 14px-wide
+      // band paint a chunky colored ribbon. Keep `mermaid-edge-hit`
+      // alone so it stays a quiet dark-gray track regardless of state.
+      hit.setAttribute('class', 'mermaid-edge-hit');
       hit.setAttribute('data-id', dataId);
-      hit.setAttribute('stroke', 'transparent');
       hit.setAttribute('stroke-width', '14');
       hit.setAttribute('fill', 'none');
       // pointer-events: stroke means the path catches clicks within
