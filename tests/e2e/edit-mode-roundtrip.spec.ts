@@ -346,20 +346,11 @@ test.describe('edit mode — mermaid', () => {
   });
 
   test('clicking a node opens the popover with its current label', async ({ page }) => {
-    // KNOWN ISSUE (discovered via this e2e): mermaid in the browser renders SVG
-    // <g.node> elements with id `remarkdown-mermaid-N-flowchart-A-0` (the full
-    // render-id prefix is prepended), but the NodeView's click delegation in
-    // src/lib/editor/mermaid-node-view.ts uses `g.node[id^="flowchart-"]` /
-    // `/^flowchart-([A-Za-z]...)/` — neither selector matches the prefixed id,
-    // so the click handler's `closest()` returns null and selectGraphNode is
-    // never invoked. The popover therefore stays hidden. The unit-level tests
-    // in tests/unit/editor/mermaid-node-view.test.ts use the same selector but
-    // bail out when jsdom can't render mermaid, which is why this never showed
-    // up before. Track this against Phase 2e Task 11 (final verification) /
-    // a follow-up source fix; the test below is the observable behaviour we
-    // want once the selector is fixed (e.g. `g.node[id*="flowchart-"]` and an
-    // anchored regex against the suffix).
-    test.fixme();
+    // mermaid in the browser renders <g.node> with id
+    // `remarkdown-mermaid-N-flowchart-A-0` (the render-id we pass to
+    // mermaid.render() is prepended to every internal element id). The
+    // NodeView matches via `g.node[id*="flowchart-"]` / unanchored regex
+    // (see src/lib/editor/mermaid-node-view.ts) — fixed alongside this test.
     await page.locator('.edit-mode-toggle').click();
     // Wait for mermaid render to settle.
     await page.locator('.editor-surface .mermaid-rendered g.node').first().waitFor();
@@ -368,9 +359,16 @@ test.describe('edit mode — mermaid', () => {
     // Same selection-blur workaround documented in the callout / code-block describes.
     // The actual rendered id is `remarkdown-mermaid-N-flowchart-A-0`, so we match
     // with [id*="flowchart-A-"] (contains) rather than [id^="flowchart-A-"].
+    // Click the inner shape — Playwright's .click() doesn't reliably hit
+    // SVG <g> elements (no intrinsic bounding box), and dispatching on
+    // the inner rect is closer to a real user click anyway. The node id
+    // in the rendered SVG is `remarkdown-mermaid-N-flowchart-A-0`, so we
+    // match with [id*="flowchart-A-"] (contains) rather than the
+    // shorter prefix selector.
     await page.evaluate(() => {
       const el = document.querySelector('.editor-surface .mermaid-rendered g.node[id*="flowchart-A-"]') as SVGGElement | null;
-      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const innerShape = el?.querySelector('rect, circle, polygon, ellipse, path') as SVGElement | null;
+      (innerShape ?? el)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     // Popover should be visible with the label "Start" pre-filled.
     const popover = page.locator('.mermaid-popover').first();

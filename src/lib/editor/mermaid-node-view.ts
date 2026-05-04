@@ -245,10 +245,10 @@ export class MermaidNodeView implements NodeView {
       // in connect-mode adds an edge instead of selecting it.
       if (this.connectMode) {
         const nodeEl = target.closest(
-          'g.node[id^="flowchart-"]',
+          'g.node[id*="flowchart-"]',
         ) as SVGGElement | null;
         if (nodeEl) {
-          const m = /^flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
+          const m = /flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
           if (m) {
             const targetId = m[1];
             // Self-loop: silently ignore the click but exit connect-
@@ -274,10 +274,10 @@ export class MermaidNodeView implements NodeView {
       }
 
       const nodeEl = target.closest(
-        'g.node[id^="flowchart-"]',
+        'g.node[id*="flowchart-"]',
       ) as SVGGElement | null;
       if (nodeEl) {
-        const m = /^flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
+        const m = /flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
         if (m) {
           this.selectGraphNode(m[1]);
           e.stopPropagation();
@@ -285,10 +285,10 @@ export class MermaidNodeView implements NodeView {
         }
       }
       const edgeEl = target.closest(
-        'path.flowchart-link[id^="L-"]',
+        'path.flowchart-link[id*="L-"]',
       ) as SVGPathElement | null;
       if (edgeEl) {
-        const m = /^L-([A-Za-z][A-Za-z0-9_]*)-([A-Za-z][A-Za-z0-9_]*)/.exec(
+        const m = /L-([A-Za-z][A-Za-z0-9_]*)-([A-Za-z][A-Za-z0-9_]*)/.exec(
           edgeEl.id,
         );
         if (m) {
@@ -314,7 +314,7 @@ export class MermaidNodeView implements NodeView {
       .querySelectorAll('g.node.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
     const svgEl = this.renderedEl.querySelector(
-      `g.node[id^="flowchart-${id}-"]`,
+      `g.node[id*="flowchart-${id}-"]`,
     );
     svgEl?.classList.add('mermaid-selected');
     // Mutual exclusivity: switching to a node closes the edge popover.
@@ -329,7 +329,7 @@ export class MermaidNodeView implements NodeView {
       .querySelectorAll('path.flowchart-link.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
     const svgEl = this.renderedEl.querySelector(
-      `path.flowchart-link[id^="L-${from}-${to}-"]`,
+      `path.flowchart-link[id*="L-${from}-${to}-"]`,
     );
     svgEl?.classList.add('mermaid-selected');
     // Mutual exclusivity: close the node popover, open the edge one.
@@ -392,10 +392,25 @@ export class MermaidNodeView implements NodeView {
       target.nodeType === 1
         ? (target as Element)
         : target.parentElement;
-    return (
+    if (
       targetEl?.closest('.mermaid-rendered') !== null ||
       targetEl?.closest('.mermaid-popover-host') !== null
-    );
+    ) {
+      return true;
+    }
+    // Class-only mutations on the wrapper itself (e.g. our own
+    // .mermaid-has-selection / .mermaid-connect-mode toggles) are UI
+    // state, not document content — without this PM treats them as a
+    // real mutation and re-builds the NodeView, which destroys the
+    // popover before it can render.
+    if (
+      mutation.type === 'attributes' &&
+      (mutation as MutationRecord).attributeName === 'class' &&
+      targetEl === this.dom
+    ) {
+      return true;
+    }
+    return false;
   }
 
   // Cleanup when PM tears down the NodeView (block removed, editor
