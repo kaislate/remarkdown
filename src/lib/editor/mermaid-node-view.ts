@@ -1,15 +1,27 @@
 // NodeView for code_block nodes whose attrs.language === 'mermaid'.
 // Renders the diagram using the mermaid singleton, layered over PM's
-// hidden source surface. Click-to-edit, popovers, and edit operations
-// land in subsequent tasks; this commit is just the wrapper + initial
-// render + parse/fallback decision.
+// hidden source surface. Click selects a node/edge; Task 5 wires a
+// floating popover (label input, shape picker, delete, +connect stub)
+// whose edits flow back through the graph -> serializer -> PM
+// transaction -> NodeView.update() loop, which triggers a re-render.
 import type { Node } from 'prosemirror-model';
 import type {
   EditorView,
   NodeView,
   ViewMutationRecord,
 } from 'prosemirror-view';
+import { mount, unmount } from 'svelte';
+import { writable, type Writable } from 'svelte/store';
+import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
 import { parseMermaid } from './mermaid-parser';
+import {
+  setNodeLabel,
+  setNodeShape,
+  deleteNode,
+  type MermaidGraph,
+  type MermaidShape,
+} from './mermaid-graph';
+import { serializeMermaid } from './mermaid-serializer';
 
 let mermaidSingleton: typeof import('mermaid').default | null = null;
 async function getMermaid() {
@@ -32,19 +44,62 @@ type MermaidSelection =
   | { kind: 'edge'; from: string; to: string }
   | null;
 
+// State pushed into the popover via a Svelte store. The popover
+// component subscribes; the NodeView writes here whenever selection or
+// graph state changes.
+interface PopoverState {
+  visible: boolean;
+  x: number;
+  y: number;
+  label: string;
+  shape: MermaidShape;
+  onLabelChange: (label: string) => void;
+  onShapeChange: (shape: MermaidShape) => void;
+  onDelete: () => void;
+  onAddConnection: () => void;
+  onClose: () => void;
+}
+
+const HIDDEN_POPOVER_STATE: PopoverState = {
+  visible: false,
+  x: 0,
+  y: 0,
+  label: '',
+  shape: 'rect',
+  onLabelChange: () => {},
+  onShapeChange: () => {},
+  onDelete: () => {},
+  onAddConnection: () => {},
+  onClose: () => {},
+};
+
 export class MermaidNodeView implements NodeView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
   private node: Node;
+  private view: EditorView;
+  private getPos: () => number | undefined;
   private renderedEl: HTMLElement;
+  private popoverHost: HTMLElement;
   private selected: MermaidSelection = null;
+  // Latest successfully-parsed graph, refreshed in renderFromNode. Used
+  // by edit handlers to mutate -> serialize -> commit. null when the
+  // current source doesn't parse (fallback mode); edit ops no-op then.
+  private graph: MermaidGraph | null = null;
+  // Single popover instance, mounted once and updated via the store.
+  // Keeping it mounted (rather than re-mounting on every selection)
+  // preserves the input's focus/caret while typing.
+  private popoverStore: Writable<PopoverState>;
+  private popoverInstance: ReturnType<typeof mount> | null = null;
 
   constructor(
     node: Node,
-    _view: EditorView,
-    _getPos: () => number | undefined,
+    view: EditorView,
+    getPos: () => number | undefined,
   ) {
     this.node = node;
+    this.view = view;
+    this.getPos = getPos;
 
     // Outer wrapper holds both the rendered SVG and PM's <code> source
     // (which we keep in the DOM but visually hidden so PM still owns
@@ -65,12 +120,28 @@ export class MermaidNodeView implements NodeView {
     code.className = 'language-mermaid';
     pre.appendChild(code);
 
+    // Host element for the Svelte popover. Absolute-positioned children
+    // (the popover itself) are placed via inline left/top set from the
+    // SVG's bounding rect. The host has no styling of its own.
+    const popoverHost = document.createElement('div');
+    popoverHost.className = 'mermaid-popover-host';
+
     wrap.appendChild(rendered);
     wrap.appendChild(pre);
+    wrap.appendChild(popoverHost);
 
     this.dom = wrap;
     this.contentDOM = code;
     this.renderedEl = rendered;
+    this.popoverHost = popoverHost;
+
+    // Mount the popover once. We update its state via the store so the
+    // input keeps focus/caret across re-renders.
+    this.popoverStore = writable<PopoverState>({ ...HIDDEN_POPOVER_STATE });
+    this.popoverInstance = mount(MermaidNodePopover, {
+      target: this.popoverHost,
+      props: { stateStore: this.popoverStore },
+    });
 
     // Wire click delegation once on the rendered container. Subsequent
     // mermaid renders replace innerHTML inside renderedEl but don't
@@ -125,9 +196,11 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelectorAll('g.node.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
-    this.renderedEl
-      .querySelector(`g.node[id^="flowchart-${id}-"]`)
-      ?.classList.add('mermaid-selected');
+    const svgEl = this.renderedEl.querySelector(
+      `g.node[id^="flowchart-${id}-"]`,
+    );
+    svgEl?.classList.add('mermaid-selected');
+    this.openNodePopover(id, svgEl);
   }
 
   private selectGraphEdge(from: string, to: string): void {
@@ -139,6 +212,9 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelector(`path.flowchart-link[id^="L-${from}-${to}-"]`)
       ?.classList.add('mermaid-selected');
+    // Edge popover is Task 6 — for now make sure any open node popover
+    // closes when the user switches selection to an edge.
+    this.closePopover();
   }
 
   private clearSelection(): void {
@@ -147,6 +223,7 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelectorAll('.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
+    this.closePopover();
   }
 
   // Read-only view of the current selection. Tasks 5-6 use this to
@@ -171,16 +248,22 @@ export class MermaidNodeView implements NodeView {
 
   // Block PM from interpreting clicks inside the rendered preview as
   // cursor moves into the source (the source is hidden anyway, but
-  // keeps the editor from doing surprising things).
+  // keeps the editor from doing surprising things). Same for clicks
+  // inside the popover host — those are real UI events for our Svelte
+  // component, not PM input.
   stopEvent(event: Event): boolean {
     const target = event.target as HTMLElement | null;
     if (!target) return false;
-    return target.closest('.mermaid-rendered') !== null;
+    return (
+      target.closest('.mermaid-rendered') !== null ||
+      target.closest('.mermaid-popover-host') !== null
+    );
   }
 
   // The rendered side is non-content — we generate it ourselves via
   // mermaid.render and write innerHTML. PM's mutation observer
-  // shouldn't redraw on our writes.
+  // shouldn't redraw on our writes. Same for the popover host: it's
+  // owned by Svelte, not PM.
   ignoreMutation(mutation: ViewMutationRecord): boolean {
     const target = mutation.target;
     if (!target) return false;
@@ -188,16 +271,35 @@ export class MermaidNodeView implements NodeView {
       target.nodeType === 1
         ? (target as Element)
         : target.parentElement;
-    return targetEl?.closest('.mermaid-rendered') !== null;
+    return (
+      targetEl?.closest('.mermaid-rendered') !== null ||
+      targetEl?.closest('.mermaid-popover-host') !== null
+    );
+  }
+
+  // Cleanup when PM tears down the NodeView (block removed, editor
+  // destroyed, etc.). Without this the Svelte component would leak.
+  destroy(): void {
+    this.closePopover();
+    if (this.popoverInstance) {
+      try {
+        unmount(this.popoverInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.popoverInstance = null;
+    }
   }
 
   private async renderFromNode(node: Node): Promise<void> {
     const source = node.textContent;
     const parsed = parseMermaid(source);
-    if (!parsed.ok) {
-      this.dom.classList.add('mermaid-fallback');
-    } else {
+    if (parsed.ok) {
+      this.graph = parsed.graph;
       this.dom.classList.remove('mermaid-fallback');
+    } else {
+      this.graph = null;
+      this.dom.classList.add('mermaid-fallback');
     }
 
     try {
@@ -205,6 +307,17 @@ export class MermaidNodeView implements NodeView {
       const id = `remarkdown-mermaid-${++renderId}`;
       const { svg } = await mermaid.render(id, source);
       this.renderedEl.innerHTML = svg;
+      // After re-rendering the SVG, the previously-selected element no
+      // longer exists. Re-apply the highlight + reposition the popover
+      // against the new SVG element if a selection is still active.
+      if (this.selected?.kind === 'node' && this.graph?.nodes.has(this.selected.id)) {
+        this.selectGraphNode(this.selected.id);
+      } else if (this.selected?.kind === 'node') {
+        // The node we had selected is gone (e.g. user just deleted it).
+        this.clearSelection();
+      } else if (this.selected?.kind === 'edge') {
+        this.selectGraphEdge(this.selected.from, this.selected.to);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.renderedEl.innerHTML = '';
@@ -213,5 +326,82 @@ export class MermaidNodeView implements NodeView {
       errBox.textContent = `Mermaid error: ${msg}`;
       this.renderedEl.appendChild(errBox);
     }
+  }
+
+  // Replace the code_block's text with newSource. PM applies the
+  // transaction, our update() fires, renderFromNode re-parses and
+  // re-renders the SVG. Single source of truth: the document.
+  private commitGraphChange(newSource: string): void {
+    const pos = this.getPos();
+    if (pos == null) return;
+    const node = this.view.state.doc.nodeAt(pos);
+    if (!node) return;
+    const tr = this.view.state.tr.replaceWith(
+      pos + 1,
+      pos + 1 + node.content.size,
+      this.view.state.schema.text(newSource),
+    );
+    this.view.dispatch(tr);
+  }
+
+  private openNodePopover(id: string, svgEl: Element | null): void {
+    const node = this.graph?.nodes.get(id);
+    if (!node) {
+      this.closePopover();
+      return;
+    }
+    // Position relative to the editor-shell ancestor so the popover
+    // tracks with the editor's scroll/layout. Fallback to the wrapper
+    // itself if no shell is present (unit tests, embedded usage).
+    let x = 0;
+    let y = 0;
+    if (svgEl && typeof (svgEl as SVGGraphicsElement).getBoundingClientRect === 'function') {
+      const rect = (svgEl as SVGGraphicsElement).getBoundingClientRect();
+      const shellEl = this.dom.closest<HTMLElement>('.editor-shell');
+      const anchor = shellEl ?? this.dom;
+      const anchorRect = anchor.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = rect.right - anchorRect.left + 8;
+      y = rect.top - anchorRect.top;
+    }
+    this.popoverStore.set({
+      visible: true,
+      x,
+      y,
+      label: node.label,
+      shape: node.shape,
+      onLabelChange: (label) => this.handleLabelChange(id, label),
+      onShapeChange: (shape) => this.handleShapeChange(id, shape),
+      onDelete: () => this.handleDeleteNode(id),
+      onAddConnection: () => {
+        // Task 7: enter add-connection mode. Stub for now.
+      },
+      onClose: () => this.closePopover(),
+    });
+  }
+
+  private closePopover(): void {
+    this.popoverStore.set({ ...HIDDEN_POPOVER_STATE });
+  }
+
+  private handleLabelChange(id: string, label: string): void {
+    if (!this.graph) return;
+    const newGraph = setNodeLabel(this.graph, id, label);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+  }
+
+  private handleShapeChange(id: string, shape: MermaidShape): void {
+    if (!this.graph) return;
+    const newGraph = setNodeShape(this.graph, id, shape);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+  }
+
+  private handleDeleteNode(id: string): void {
+    if (!this.graph) return;
+    const newGraph = deleteNode(this.graph, id);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+    this.closePopover();
   }
 }
