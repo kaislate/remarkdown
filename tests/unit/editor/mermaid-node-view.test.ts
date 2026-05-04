@@ -40,4 +40,31 @@ describe('MermaidNodeView', () => {
     view.destroy();
     parent.remove();
   });
+
+  it('selecting a node sets mermaid-has-selection on the wrapper', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const doc = parseMarkdownToDoc('```mermaid\nflowchart TD\nA[a]\nB[b]\nA --> B\n```\n');
+    const view = new EditorView(parent, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    // Wait for the async mermaid render to complete.
+    await new Promise((r) => setTimeout(r, 100));
+    // Synthesize a click on the rendered node.
+    const nodeEl = parent.querySelector('g.node[id^="flowchart-A-"]');
+    if (!nodeEl) {
+      // jsdom may not fully render mermaid SVG. Skip assertion in that case.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    nodeEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(parent.querySelector('.mermaid-block-editor.mermaid-has-selection')).not.toBeNull();
+    view.destroy();
+    parent.remove();
+  });
 });

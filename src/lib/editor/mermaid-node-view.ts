@@ -27,11 +27,17 @@ async function getMermaid() {
 
 let renderId = 0;
 
+type MermaidSelection =
+  | { kind: 'node'; id: string }
+  | { kind: 'edge'; from: string; to: string }
+  | null;
+
 export class MermaidNodeView implements NodeView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
   private node: Node;
   private renderedEl: HTMLElement;
+  private selected: MermaidSelection = null;
 
   constructor(
     node: Node,
@@ -66,8 +72,89 @@ export class MermaidNodeView implements NodeView {
     this.contentDOM = code;
     this.renderedEl = rendered;
 
+    // Wire click delegation once on the rendered container. Subsequent
+    // mermaid renders replace innerHTML inside renderedEl but don't
+    // touch renderedEl itself, so the listener stays.
+    this.wireClickHandlers();
+
     // First render. Subsequent renders happen via update().
     void this.renderFromNode(node);
+  }
+
+  private wireClickHandlers(): void {
+    this.renderedEl.addEventListener('click', (e) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      const nodeEl = target.closest(
+        'g.node[id^="flowchart-"]',
+      ) as SVGGElement | null;
+      if (nodeEl) {
+        const m = /^flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
+        if (m) {
+          this.selectGraphNode(m[1]);
+          e.stopPropagation();
+          return;
+        }
+      }
+      const edgeEl = target.closest(
+        'path.flowchart-link[id^="L-"]',
+      ) as SVGPathElement | null;
+      if (edgeEl) {
+        const m = /^L-([A-Za-z][A-Za-z0-9_]*)-([A-Za-z][A-Za-z0-9_]*)/.exec(
+          edgeEl.id,
+        );
+        if (m) {
+          this.selectGraphEdge(m[1], m[2]);
+          e.stopPropagation();
+          return;
+        }
+      }
+      // Click on empty diagram area — clear selection.
+      this.clearSelection();
+    });
+  }
+
+  // Private helpers are named selectGraph* (not selectNode/selectEdge)
+  // to avoid clashing with the NodeView interface's optional
+  // `selectNode` method, which has a different signature (() => void)
+  // and meaning (PM's node-selection visual treatment).
+  private selectGraphNode(id: string): void {
+    this.selected = { kind: 'node', id };
+    this.dom.classList.add('mermaid-has-selection');
+    // Highlight the selected SVG node visually.
+    this.renderedEl
+      .querySelectorAll('g.node.mermaid-selected')
+      .forEach((el) => el.classList.remove('mermaid-selected'));
+    this.renderedEl
+      .querySelector(`g.node[id^="flowchart-${id}-"]`)
+      ?.classList.add('mermaid-selected');
+  }
+
+  private selectGraphEdge(from: string, to: string): void {
+    this.selected = { kind: 'edge', from, to };
+    this.dom.classList.add('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('path.flowchart-link.mermaid-selected')
+      .forEach((el) => el.classList.remove('mermaid-selected'));
+    this.renderedEl
+      .querySelector(`path.flowchart-link[id^="L-${from}-${to}-"]`)
+      ?.classList.add('mermaid-selected');
+  }
+
+  private clearSelection(): void {
+    this.selected = null;
+    this.dom.classList.remove('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('.mermaid-selected')
+      .forEach((el) => el.classList.remove('mermaid-selected'));
+  }
+
+  // Read-only view of the current selection. Tasks 5-6 use this to
+  // drive popover content; exposed here so the field actually has a
+  // reader (and so downstream code doesn't need to reach into private
+  // state).
+  getSelection(): MermaidSelection {
+    return this.selected;
   }
 
   update(node: Node): boolean {
