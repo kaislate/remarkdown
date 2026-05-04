@@ -14,8 +14,11 @@ import { mount, unmount } from 'svelte';
 import { writable, type Writable } from 'svelte/store';
 import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
 import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
+import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import { parseMermaid } from './mermaid-parser';
 import {
+  addNode,
+  addEdge,
   setNodeLabel,
   setNodeShape,
   deleteNode,
@@ -99,6 +102,22 @@ const HIDDEN_EDGE_POPOVER_STATE: EdgePopoverState = {
   onClose: () => {},
 };
 
+// Connect-mode banner state (Task 7). Shown while the NodeView is in
+// connect mode (after the user clicks "+ connect" on a node popover).
+// The banner offers a "+ Add new node" shortcut and a Cancel button;
+// the actual click-to-target-node logic lives in wireClickHandlers.
+interface BannerState {
+  visible: boolean;
+  onAddNewNode: () => void;
+  onCancel: () => void;
+}
+
+const HIDDEN_BANNER_STATE: BannerState = {
+  visible: false,
+  onAddNewNode: () => {},
+  onCancel: () => {},
+};
+
 export class MermaidNodeView implements NodeView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
@@ -123,6 +142,15 @@ export class MermaidNodeView implements NodeView {
   // other (mutual exclusivity is enforced in selectGraph*).
   private edgePopoverStore: Writable<EdgePopoverState>;
   private edgePopoverInstance: ReturnType<typeof mount> | null = null;
+  // Connect-mode state (Task 7). Non-null while the user is picking a
+  // target for a new edge. The banner is mounted at construction time,
+  // visibility is toggled via the store. The Esc listener is attached
+  // to `document` while in connect-mode and removed on exit.
+  private connectMode: { sourceId: string } | null = null;
+  private connectBannerHost: HTMLElement;
+  private connectBannerStore: Writable<BannerState>;
+  private connectBannerInstance: ReturnType<typeof mount> | null = null;
+  private escListener: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(
     node: Node,
@@ -160,17 +188,24 @@ export class MermaidNodeView implements NodeView {
     popoverHost.className = 'mermaid-popover-host';
     const edgePopoverHost = document.createElement('div');
     edgePopoverHost.className = 'mermaid-popover-host mermaid-edge-popover-host';
+    // Banner host shares the popover-host class so stopEvent / ignore-
+    // mutation gates apply to it too — clicks on the banner are real
+    // UI events, not PM input.
+    const connectBannerHost = document.createElement('div');
+    connectBannerHost.className = 'mermaid-popover-host mermaid-connect-banner-host';
 
     wrap.appendChild(rendered);
     wrap.appendChild(pre);
     wrap.appendChild(popoverHost);
     wrap.appendChild(edgePopoverHost);
+    wrap.appendChild(connectBannerHost);
 
     this.dom = wrap;
     this.contentDOM = code;
     this.renderedEl = rendered;
     this.popoverHost = popoverHost;
     this.edgePopoverHost = edgePopoverHost;
+    this.connectBannerHost = connectBannerHost;
 
     // Mount the popovers once. We update their state via the stores so
     // the inputs keep focus/caret across re-renders.
@@ -183,6 +218,11 @@ export class MermaidNodeView implements NodeView {
     this.edgePopoverInstance = mount(MermaidEdgePopover, {
       target: this.edgePopoverHost,
       props: { stateStore: this.edgePopoverStore },
+    });
+    this.connectBannerStore = writable<BannerState>({ ...HIDDEN_BANNER_STATE });
+    this.connectBannerInstance = mount(MermaidConnectBanner, {
+      target: this.connectBannerHost,
+      props: { stateStore: this.connectBannerStore },
     });
 
     // Wire click delegation once on the rendered container. Subsequent
@@ -198,6 +238,41 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl.addEventListener('click', (e) => {
       const target = e.target as Element | null;
       if (!target) return;
+
+      // Connect mode (Task 7): clicks pick a target for a new edge,
+      // or fall through to cancel. We check this BEFORE the normal
+      // selection paths so that e.g. clicking an existing node while
+      // in connect-mode adds an edge instead of selecting it.
+      if (this.connectMode) {
+        const nodeEl = target.closest(
+          'g.node[id^="flowchart-"]',
+        ) as SVGGElement | null;
+        if (nodeEl) {
+          const m = /^flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
+          if (m) {
+            const targetId = m[1];
+            // Self-loop: silently ignore the click but exit connect-
+            // mode (no edge added). Either ignore-only or ignore+exit
+            // is acceptable per spec; exiting is less surprising.
+            if (targetId !== this.connectMode.sourceId && this.graph) {
+              const newGraph = addEdge(this.graph, {
+                from: this.connectMode.sourceId,
+                to: targetId,
+              });
+              this.graph = newGraph;
+              this.commitGraphChange(serializeMermaid(newGraph));
+            }
+            this.exitConnectMode();
+            e.stopPropagation();
+            return;
+          }
+        }
+        // Empty-area click in connect-mode: cancel without an edge.
+        this.exitConnectMode();
+        e.stopPropagation();
+        return;
+      }
+
       const nodeEl = target.closest(
         'g.node[id^="flowchart-"]',
       ) as SVGGElement | null;
@@ -328,6 +403,13 @@ export class MermaidNodeView implements NodeView {
   destroy(): void {
     this.closePopover();
     this.closeEdgePopover();
+    // Belt-and-braces: exitConnectMode also removes the listener, but
+    // PM may tear us down without the user explicitly leaving connect-
+    // mode first.
+    if (this.escListener) {
+      document.removeEventListener('keydown', this.escListener);
+      this.escListener = null;
+    }
     if (this.popoverInstance) {
       try {
         unmount(this.popoverInstance);
@@ -343,6 +425,14 @@ export class MermaidNodeView implements NodeView {
         // Best-effort — if Svelte already cleaned up, ignore.
       }
       this.edgePopoverInstance = null;
+    }
+    if (this.connectBannerInstance) {
+      try {
+        unmount(this.connectBannerInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.connectBannerInstance = null;
     }
   }
 
@@ -434,9 +524,7 @@ export class MermaidNodeView implements NodeView {
       onLabelChange: (label) => this.handleLabelChange(id, label),
       onShapeChange: (shape) => this.handleShapeChange(id, shape),
       onDelete: () => this.handleDeleteNode(id),
-      onAddConnection: () => {
-        // Task 7: enter add-connection mode. Stub for now.
-      },
+      onAddConnection: () => this.enterConnectMode(id),
       onClose: () => this.closePopover(),
     });
   }
@@ -465,6 +553,65 @@ export class MermaidNodeView implements NodeView {
     this.graph = newGraph;
     this.commitGraphChange(serializeMermaid(newGraph));
     this.closePopover();
+  }
+
+  // Connect-mode lifecycle (Task 7). Entered via the "+ connect" button
+  // on the node popover. While active: a banner shows over the diagram,
+  // the wrapper carries the .mermaid-connect-mode class (Task 9 styles
+  // it), the next click on a node adds an edge from `sourceId`, and Esc
+  // / empty-area click cancels.
+  private enterConnectMode(sourceId: string): void {
+    this.connectMode = { sourceId };
+    this.dom.classList.add('mermaid-connect-mode');
+    // Both popovers are mutually exclusive with connect-mode.
+    this.closePopover();
+    this.closeEdgePopover();
+    this.connectBannerStore.set({
+      visible: true,
+      onAddNewNode: () => this.addNewNodeInConnectMode(),
+      onCancel: () => this.exitConnectMode(),
+    });
+    // Esc on `document` (not `this.dom`) — focus may be elsewhere when
+    // the user wants to bail. Removed in exitConnectMode + destroy.
+    this.escListener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && this.connectMode) {
+        e.preventDefault();
+        this.exitConnectMode();
+      }
+    };
+    document.addEventListener('keydown', this.escListener);
+  }
+
+  private exitConnectMode(): void {
+    this.connectMode = null;
+    this.dom.classList.remove('mermaid-connect-mode');
+    this.connectBannerStore.set({ ...HIDDEN_BANNER_STATE });
+    if (this.escListener) {
+      document.removeEventListener('keydown', this.escListener);
+      this.escListener = null;
+    }
+  }
+
+  private addNewNodeInConnectMode(): void {
+    if (!this.connectMode || !this.graph) return;
+    const sourceId = this.connectMode.sourceId;
+    // Add the node + edge in ONE graph mutation, commit ONCE. Single
+    // PM transaction means the renderFromNode pass picks up both at
+    // the same time.
+    const result = addNode(this.graph, { shape: 'rect', label: '' });
+    let g = result.graph;
+    g = addEdge(g, { from: sourceId, to: result.id });
+    this.graph = g;
+    this.commitGraphChange(serializeMermaid(g));
+    this.exitConnectMode();
+    // Mermaid render is async — wait one tick before opening the
+    // popover for the new node, otherwise its SVG element doesn't
+    // exist yet and the popover positioning would fall back to (0,0).
+    setTimeout(() => {
+      if (this.graph?.nodes.has(result.id)) {
+        this.selectGraphNode(result.id);
+      }
+    }, 50);
   }
 
   private openEdgePopover(from: string, to: string, svgEl: Element | null): void {

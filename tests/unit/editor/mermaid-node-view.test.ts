@@ -138,6 +138,54 @@ describe('MermaidNodeView', () => {
     expect(true).toBe(true); // smoke
   });
 
+  it('entering connect mode adds the mermaid-connect-mode class to the wrapper', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc('```mermaid\nflowchart TD\nA[a]\n```\n');
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const nodeEl = parent.querySelector('g.node[id^="flowchart-A-"]');
+    if (!nodeEl) {
+      // jsdom may not fully render mermaid SVG. Skip — covered in e2e.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    nodeEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    // The node popover has two .mermaid-popover-action buttons: "+ connect"
+    // (first) and the trash/delete one (second, also tagged with
+    // .mermaid-popover-delete). The non-delete one is the connect button.
+    const actionBtns = parent.querySelectorAll<HTMLButtonElement>(
+      '.mermaid-popover .mermaid-popover-action',
+    );
+    let connectBtn: HTMLButtonElement | null = null;
+    for (const btn of actionBtns) {
+      if (!btn.classList.contains('mermaid-popover-delete')) {
+        connectBtn = btn;
+        break;
+      }
+    }
+    if (connectBtn) {
+      connectBtn.click();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(
+        parent.querySelector('.mermaid-block-editor.mermaid-connect-mode'),
+      ).not.toBeNull();
+    }
+    view.destroy();
+    parent.remove();
+  });
+
   it('opens the edge popover when an edge is clicked', async () => {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
