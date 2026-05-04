@@ -543,18 +543,18 @@ export class MermaidNodeView implements NodeView {
       this.closePopover();
       return;
     }
-    // Position relative to the editor-shell ancestor so the popover
-    // tracks with the editor's scroll/layout. Fallback to the wrapper
-    // itself if no shell is present (unit tests, embedded usage).
+    // The popover-host is `position: absolute; inset: 0;` inside the
+    // wrapper (this.dom), so the popover's left/top are in WRAPPER
+    // coordinates — not editor-shell. (The bubble-menu and table-
+    // actions-menu use the shell because they live AT the shell level;
+    // ours lives one layer deeper.)
     let x = 0;
     let y = 0;
     if (svgEl && typeof (svgEl as SVGGraphicsElement).getBoundingClientRect === 'function') {
       const rect = (svgEl as SVGGraphicsElement).getBoundingClientRect();
-      const shellEl = this.dom.closest<HTMLElement>('.editor-shell');
-      const anchor = shellEl ?? this.dom;
-      const anchorRect = anchor.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-      x = rect.right - anchorRect.left + 8;
-      y = rect.top - anchorRect.top;
+      const wrapperRect = this.dom.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = rect.right - wrapperRect.left + 8;
+      y = rect.top - wrapperRect.top;
     }
     this.popoverStore.set({
       visible: true,
@@ -686,17 +686,15 @@ export class MermaidNodeView implements NodeView {
       return;
     }
     const edge = this.graph.edges[index];
-    // Position at the midpoint of the path's bounding rect — edges are
-    // line shapes, so midpoint feels more natural than top-right.
+    // Position at the midpoint of the path's bounding rect, in WRAPPER
+    // coordinates (the popover-host is absolute inside the wrapper).
     let x = 0;
     let y = 0;
     if (typeof (svgEl as SVGGraphicsElement).getBoundingClientRect === 'function') {
       const rect = (svgEl as SVGGraphicsElement).getBoundingClientRect();
-      const shellEl = this.dom.closest<HTMLElement>('.editor-shell');
-      const anchor = shellEl ?? this.dom;
-      const anchorRect = anchor.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-      x = (rect.left + rect.right) / 2 - anchorRect.left;
-      y = (rect.top + rect.bottom) / 2 - anchorRect.top;
+      const wrapperRect = this.dom.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = (rect.left + rect.right) / 2 - wrapperRect.left;
+      y = (rect.top + rect.bottom) / 2 - wrapperRect.top;
     }
     this.edgePopoverStore.set({
       visible: true,
