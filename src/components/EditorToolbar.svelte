@@ -86,7 +86,18 @@
     border-bottom: 1px solid var(--glass-border);
     position: sticky;
     top: 0;
-    z-index: 5;
+    /* The Tauri title-bar drag region (TitleBar.svelte's
+       `.titlebar-drag`) is `position: fixed; top: 0; height: 38px;
+       z-index: 50` and covers the middle of the top edge. With the
+       toolbar's old z-index of 5 the drag region sat ON TOP of the
+       toolbar buttons and Tauri's window-drag handler intercepted
+       every pointerdown before the click could reach our buttons —
+       the user saw a perfectly normal-looking toolbar that did
+       absolutely nothing when clicked. Raising the toolbar above
+       the drag region (51 > 50) makes the buttons actually
+       clickable; the title-bar drag still works in the regions to
+       the left and right of the toolbar where they don't overlap. */
+    z-index: 51;
   }
   .toolbar-btn {
     display: inline-flex;
