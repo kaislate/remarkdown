@@ -3,6 +3,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
+  import { TextSelection } from 'prosemirror-state';
   import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid } from '../lib/editor/view';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
@@ -112,25 +113,61 @@
     void tick().then(updateTableMenu);
   }
 
+  // Belt-and-braces: if PM's selection somehow landed inside a code_block
+  // (e.g. the user clicked into the mermaid wrapper before the
+  // contentEditable=false fix took effect, or a future regression
+  // re-introduces the issue), move it to a safe paragraph position OUTSIDE
+  // any code_block. Without this, three of the toolbar inserts
+  // (insertCodeBlock, insertTaskList, insertMermaid) refuse to run, and the
+  // other two (insertCallout, insertTable) silently wrap the code_block in
+  // a callout/table wrapper instead of inserting at top-level — both
+  // surprising and undesirable. The fix moves the cursor to the end of the
+  // first non-code_block text position so the user gets a predictable
+  // insert point regardless of where they clicked.
+  function ensureSelectionOutsideCodeBlock(v: EditorView) {
+    // Svelte 5 reserves identifiers starting with `$` (rune syntax), so we
+    // can't bind PM's `$from` directly — read it as a normal field instead.
+    const fromPos = v.state.selection.$from;
+    if (fromPos.parent.type.name !== 'code_block') return;
+    // Walk descendants for the first non-code text-block position; fall back
+    // to position 1 (start of doc) if the doc is somehow all code blocks.
+    let safePos = -1;
+    v.state.doc.descendants((node, pos) => {
+      if (safePos !== -1) return false;
+      if (node.isTextblock && node.type.name !== 'code_block') {
+        safePos = pos + 1;
+        return false;
+      }
+      return true;
+    });
+    if (safePos === -1) safePos = 1;
+    const tr = v.state.tr.setSelection(
+      TextSelection.near(v.state.doc.resolve(safePos)),
+    );
+    v.dispatch(tr);
+  }
+
   function onToolbarInsert(action: string) {
     const v = view;
     if (!v) return;
+    // Focus first so the editor is the active element when the command
+    // runs — some browsers won't apply selection updates to an unfocused
+    // contentEditable, which would leave dispatchTransaction running
+    // against a stale selection.
+    v.focus();
+    ensureSelectionOutsideCodeBlock(v);
     if (action === 'callout') {
       insertCallout('info')(v.state, v.dispatch);
-      v.focus();
     } else if (action === 'code') {
       insertCodeBlock('')(v.state, v.dispatch);
-      v.focus();
     } else if (action === 'tasks') {
       insertTaskList()(v.state, v.dispatch);
-      v.focus();
     } else if (action === 'table') {
       insertTable(3, 2)(v.state, v.dispatch);
-      v.focus();
     } else if (action === 'mermaid') {
       insertMermaid()(v.state, v.dispatch);
-      v.focus();
     }
+    v.focus();
   }
 
   function onBubbleMark(name: 'strong' | 'em' | 'strike' | 'code') {

@@ -223,7 +223,11 @@ describe('MermaidNodeView', () => {
       },
     });
     await new Promise((r) => setTimeout(r, 100));
-    const edgeEl = parent.querySelector('path.flowchart-link[id^="L-A-B-"]');
+    // Mermaid 11 sets `data-id="L_A_B_0"` on edge paths (NOT id^="L-A-B-",
+    // which is the format we previously assumed and which breaks edge
+    // selection in the browser — see the data-id rationale in
+    // mermaid-node-view.ts wireClickHandlers).
+    const edgeEl = parent.querySelector('path.flowchart-link[data-id^="L_A_B_"]');
     if (!edgeEl) {
       // jsdom didn't render the SVG; e2e covers this.
       view.destroy();
@@ -234,6 +238,48 @@ describe('MermaidNodeView', () => {
     await new Promise((r) => setTimeout(r, 0));
     const popover = parent.querySelector('.mermaid-edge-popover');
     // If the SVG rendered, the popover should be visible.
+    if (popover) {
+      expect(popover.hasAttribute('hidden')).toBe(false);
+    }
+    view.destroy();
+    parent.remove();
+  });
+
+  it('opens the edge popover when the edge LABEL (not the path) is clicked', async () => {
+    // Regression test for the bug where clicks on the "Yes"/"No" text on
+    // an edge label did nothing — mermaid renders edge labels in a
+    // separate <g class="edgeLabels"> with <foreignObject> children, and
+    // the previous click handler only walked up looking for
+    // `path.flowchart-link`, missing the label entirely.
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc(
+      '```mermaid\nflowchart TD\nA[a]\nB[b]\nA -->|Yes| B\n```\n',
+    );
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    // The label `<g class="label" data-id="L_A_B_0">` is inside the
+    // `<g class="edgeLabels">` group. Clicking ANY descendant of it
+    // should map back to the A→B edge via the data-id.
+    const labelEl = parent.querySelector('g.label[data-id^="L_A_B_"]');
+    if (!labelEl) {
+      // jsdom didn't render the foreignObject; e2e covers this.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    labelEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    const popover = parent.querySelector('.mermaid-edge-popover');
     if (popover) {
       expect(popover.hasAttribute('hidden')).toBe(false);
     }

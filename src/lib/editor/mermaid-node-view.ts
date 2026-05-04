@@ -296,13 +296,23 @@ export class MermaidNodeView implements NodeView {
           return;
         }
       }
-      const edgeEl = target.closest(
-        'path.flowchart-link[id*="L-"]',
-      ) as SVGPathElement | null;
-      if (edgeEl) {
-        const m = /L-([A-Za-z][A-Za-z0-9_]*)-([A-Za-z][A-Za-z0-9_]*)/.exec(
-          edgeEl.id,
-        );
+      // Edge detection. Mermaid 11 emits two clickable surfaces per edge:
+      //   1. The path: `<path class="flowchart-link" id="${diagramId}-L_A_B_0"
+      //      data-id="L_A_B_0">`
+      //   2. The label: `<g class="edgeLabel">` containing
+      //      `<g class="label" data-id="L_A_B_0">` wrapping a <foreignObject>.
+      //      Clicks on the "Yes"/"No" text land somewhere inside the
+      //      foreignObject (a <span>), which is a sibling of the path —
+      //      walking up via `path.flowchart-link` would never find it.
+      // Both surfaces carry a `data-id="L_${from}_${to}_${counter}"` (NOTE:
+      // underscores, not dashes — this differs from mermaid's `flowchart-A-0`
+      // node ids which DO use dashes). The previous selector matched
+      // `[id*="L-"]` and never fired in the browser. Match by data-id, which
+      // works for both the path and the label container.
+      const edgeWithDataId = target.closest('[data-id^="L_"]') as Element | null;
+      if (edgeWithDataId) {
+        const dataId = edgeWithDataId.getAttribute('data-id') ?? '';
+        const m = /^L_([A-Za-z][A-Za-z0-9_]*)_([A-Za-z][A-Za-z0-9_]*)_/.exec(dataId);
         if (m) {
           this.selectGraphEdge(m[1], m[2]);
           e.stopPropagation();
@@ -340,8 +350,12 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelectorAll('path.flowchart-link.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
+    // Look up the path by `data-id` rather than `id` — see the comment in
+    // wireClickHandlers about underscores-vs-dashes. We match the `_<counter>`
+    // tail so a `data-id="L_A_B_0"` matches but `L_A_BB_0` doesn't (the
+    // underscore-counter suffix anchors the prefix).
     const svgEl = this.renderedEl.querySelector(
-      `path.flowchart-link[id*="L-${from}-${to}-"]`,
+      `path.flowchart-link[data-id^="L_${from}_${to}_"]`,
     );
     svgEl?.classList.add('mermaid-selected');
     // Mutual exclusivity: close the node popover, open the edge one.

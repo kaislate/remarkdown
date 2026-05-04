@@ -376,6 +376,79 @@ test.describe('edit mode — mermaid', () => {
     await expect(popover.locator('.mermaid-popover-label')).toHaveValue('Start');
   });
 
+  test('clicking an edge LABEL (not the path line) opens the edge popover', async ({ page }) => {
+    // Regression test for Bug 1: previously the click handler matched
+    // `path.flowchart-link[id*="L-"]` but mermaid 11 emits edge ids as
+    // `L_A_B_0` (UNDERSCORES), and edge labels are entirely separate
+    // <g class="edgeLabels"> children — clicks on the "Yes"/"No" text
+    // never hit the path. Both surfaces now carry `data-id="L_A_B_0"`,
+    // and we match on that.
+    //
+    // Re-seed with a doc that has an edge LABEL (the default fixture
+    // doesn't), then click the label and assert the edge popover is
+    // visible.
+    const EDGE_LABEL_PATH = '/e2e/edit-mermaid-edge-label-fixture.md';
+    const EDGE_LABEL_MD = `# Doc\n\n\`\`\`mermaid\nflowchart TD\nA[Start]\nB[End]\nA -->|Yes| B\n\`\`\`\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [EDGE_LABEL_PATH, EDGE_LABEL_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      EDGE_LABEL_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for the edge label to render. mermaid emits `<g class="label"
+    // data-id="L_A_B_0">` inside the edgeLabels group.
+    await page.locator('.editor-surface .mermaid-rendered g.label[data-id^="L_A_B_"]').first().waitFor();
+    // Dispatch a click directly on the label group (or its inner span /
+    // foreignObject text). The click handler walks up via
+    // [data-id^="L_"] so any descendant click is fine.
+    await page.evaluate(() => {
+      const el = document.querySelector(
+        '.editor-surface .mermaid-rendered g.label[data-id^="L_A_B_"]',
+      );
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // Edge popover should now be visible. The edge popover has class
+    // .mermaid-edge-popover (mirrors the node popover's structure).
+    await expect(page.locator('.mermaid-edge-popover').first()).toBeVisible();
+  });
+
+  test('toolbar Callout button still inserts when a mermaid block is also in the doc', async ({ page }) => {
+    // Regression test: previously, having a mermaid block in the doc broke
+    // the OTHER toolbar buttons. The seeded fixture for this describe already
+    // has a mermaid block, so we just exercise the Callout toolbar action and
+    // assert a callout shows up in the saved markdown.
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for both the editor surface and the mermaid render to settle.
+    await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+    await expect(page.locator('.editor-surface .mermaid-rendered svg').first()).toBeVisible();
+    // Click into the heading paragraph (NOT the mermaid block) so the cursor
+    // sits in a normal block. The fixture's first heading is "Doc".
+    const heading = page.locator('.editor-surface .ProseMirror h1', { hasText: 'Doc' });
+    await heading.click();
+    await page.keyboard.press('End');
+    // Fire the toolbar Callout button via DOM-native .click() (same workaround
+    // as the other toolbar tests).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="insert-callout"]') as HTMLElement | null)?.click();
+    });
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    // The seeded mermaid block is preserved AND a fresh `[!info]` callout is added.
+    expect(last.markdown).toMatch(/\[!info\]/);
+    expect(last.markdown).toMatch(/```mermaid/);
+  });
+
   test('toolbar Diagram button inserts a fresh mermaid block', async ({ page }) => {
     // Override the describe-level beforeEach fixture (which seeds a doc with an
     // existing mermaid fence) — we need a clean slate so the assertion proves
