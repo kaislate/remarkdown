@@ -170,6 +170,18 @@ export class MermaidNodeView implements NodeView {
 
     const rendered = document.createElement('div');
     rendered.className = 'mermaid-rendered';
+    // Mark the rendered SVG container non-editable so:
+    //   1. The browser can't put PM's text cursor inside it on click —
+    //      otherwise clicks on the diagram land the cursor inside the
+    //      mermaid code_block, and every toolbar insert (callout / code
+    //      / tasks / table / mermaid) refuses because they all guard
+    //      on `$from.parent.type.name === 'code_block'`.
+    //   2. Mermaid renders edge labels and node text inside <foreignObject>
+    //      (HTML inside SVG). Without contenteditable=false those inherit
+    //      PM's contenteditable=true and the user can type directly into
+    //      the live SVG — corrupting the doc since PM doesn't know about
+    //      the change. Click-to-edit goes through our popovers only.
+    rendered.contentEditable = 'false';
 
     // Source container — required by PM as contentDOM but hidden from
     // the user. We use a <pre><code> shape so any future debug-toggle
