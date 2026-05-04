@@ -13,11 +13,14 @@ import type {
 import { mount, unmount } from 'svelte';
 import { writable, type Writable } from 'svelte/store';
 import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
+import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
 import { parseMermaid } from './mermaid-parser';
 import {
   setNodeLabel,
   setNodeShape,
   deleteNode,
+  setEdgeLabel,
+  deleteEdge,
   type MermaidGraph,
   type MermaidShape,
 } from './mermaid-graph';
@@ -73,6 +76,29 @@ const HIDDEN_POPOVER_STATE: PopoverState = {
   onClose: () => {},
 };
 
+// Edge popover mirrors the node popover but smaller — just label +
+// delete. Same store-backed pattern so the input keeps focus across
+// re-renders.
+interface EdgePopoverState {
+  visible: boolean;
+  x: number;
+  y: number;
+  label: string;
+  onLabelChange: (label: string) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}
+
+const HIDDEN_EDGE_POPOVER_STATE: EdgePopoverState = {
+  visible: false,
+  x: 0,
+  y: 0,
+  label: '',
+  onLabelChange: () => {},
+  onDelete: () => {},
+  onClose: () => {},
+};
+
 export class MermaidNodeView implements NodeView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
@@ -81,6 +107,7 @@ export class MermaidNodeView implements NodeView {
   private getPos: () => number | undefined;
   private renderedEl: HTMLElement;
   private popoverHost: HTMLElement;
+  private edgePopoverHost: HTMLElement;
   private selected: MermaidSelection = null;
   // Latest successfully-parsed graph, refreshed in renderFromNode. Used
   // by edit handlers to mutate -> serialize -> commit. null when the
@@ -91,6 +118,11 @@ export class MermaidNodeView implements NodeView {
   // preserves the input's focus/caret while typing.
   private popoverStore: Writable<PopoverState>;
   private popoverInstance: ReturnType<typeof mount> | null = null;
+  // Edge popover — separate host/store/instance so its DOM doesn't
+  // collide with the node popover's, and so we can show one or the
+  // other (mutual exclusivity is enforced in selectGraph*).
+  private edgePopoverStore: Writable<EdgePopoverState>;
+  private edgePopoverInstance: ReturnType<typeof mount> | null = null;
 
   constructor(
     node: Node,
@@ -120,27 +152,37 @@ export class MermaidNodeView implements NodeView {
     code.className = 'language-mermaid';
     pre.appendChild(code);
 
-    // Host element for the Svelte popover. Absolute-positioned children
-    // (the popover itself) are placed via inline left/top set from the
-    // SVG's bounding rect. The host has no styling of its own.
+    // Host elements for the Svelte popovers. Absolute-positioned
+    // children (the popovers themselves) are placed via inline left/top
+    // set from the SVG's bounding rect. Hosts have no styling of their
+    // own. Two separate hosts so the two popovers' DOMs don't collide.
     const popoverHost = document.createElement('div');
     popoverHost.className = 'mermaid-popover-host';
+    const edgePopoverHost = document.createElement('div');
+    edgePopoverHost.className = 'mermaid-popover-host mermaid-edge-popover-host';
 
     wrap.appendChild(rendered);
     wrap.appendChild(pre);
     wrap.appendChild(popoverHost);
+    wrap.appendChild(edgePopoverHost);
 
     this.dom = wrap;
     this.contentDOM = code;
     this.renderedEl = rendered;
     this.popoverHost = popoverHost;
+    this.edgePopoverHost = edgePopoverHost;
 
-    // Mount the popover once. We update its state via the store so the
-    // input keeps focus/caret across re-renders.
+    // Mount the popovers once. We update their state via the stores so
+    // the inputs keep focus/caret across re-renders.
     this.popoverStore = writable<PopoverState>({ ...HIDDEN_POPOVER_STATE });
     this.popoverInstance = mount(MermaidNodePopover, {
       target: this.popoverHost,
       props: { stateStore: this.popoverStore },
+    });
+    this.edgePopoverStore = writable<EdgePopoverState>({ ...HIDDEN_EDGE_POPOVER_STATE });
+    this.edgePopoverInstance = mount(MermaidEdgePopover, {
+      target: this.edgePopoverHost,
+      props: { stateStore: this.edgePopoverStore },
     });
 
     // Wire click delegation once on the rendered container. Subsequent
@@ -200,6 +242,8 @@ export class MermaidNodeView implements NodeView {
       `g.node[id^="flowchart-${id}-"]`,
     );
     svgEl?.classList.add('mermaid-selected');
+    // Mutual exclusivity: switching to a node closes the edge popover.
+    this.closeEdgePopover();
     this.openNodePopover(id, svgEl);
   }
 
@@ -209,12 +253,13 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelectorAll('path.flowchart-link.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
-    this.renderedEl
-      .querySelector(`path.flowchart-link[id^="L-${from}-${to}-"]`)
-      ?.classList.add('mermaid-selected');
-    // Edge popover is Task 6 — for now make sure any open node popover
-    // closes when the user switches selection to an edge.
+    const svgEl = this.renderedEl.querySelector(
+      `path.flowchart-link[id^="L-${from}-${to}-"]`,
+    );
+    svgEl?.classList.add('mermaid-selected');
+    // Mutual exclusivity: close the node popover, open the edge one.
     this.closePopover();
+    this.openEdgePopover(from, to, svgEl);
   }
 
   private clearSelection(): void {
@@ -224,6 +269,7 @@ export class MermaidNodeView implements NodeView {
       .querySelectorAll('.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
     this.closePopover();
+    this.closeEdgePopover();
   }
 
   // Read-only view of the current selection. Tasks 5-6 use this to
@@ -281,6 +327,7 @@ export class MermaidNodeView implements NodeView {
   // destroyed, etc.). Without this the Svelte component would leak.
   destroy(): void {
     this.closePopover();
+    this.closeEdgePopover();
     if (this.popoverInstance) {
       try {
         unmount(this.popoverInstance);
@@ -288,6 +335,14 @@ export class MermaidNodeView implements NodeView {
         // Best-effort — if Svelte already cleaned up, ignore.
       }
       this.popoverInstance = null;
+    }
+    if (this.edgePopoverInstance) {
+      try {
+        unmount(this.edgePopoverInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.edgePopoverInstance = null;
     }
   }
 
@@ -316,7 +371,14 @@ export class MermaidNodeView implements NodeView {
         // The node we had selected is gone (e.g. user just deleted it).
         this.clearSelection();
       } else if (this.selected?.kind === 'edge') {
-        this.selectGraphEdge(this.selected.from, this.selected.to);
+        const { from, to } = this.selected;
+        const stillExists = this.graph?.edges.some((e) => e.from === from && e.to === to);
+        if (stillExists) {
+          this.selectGraphEdge(from, to);
+        } else {
+          // Edge was deleted (or its endpoints were).
+          this.clearSelection();
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -403,5 +465,65 @@ export class MermaidNodeView implements NodeView {
     this.graph = newGraph;
     this.commitGraphChange(serializeMermaid(newGraph));
     this.closePopover();
+  }
+
+  private openEdgePopover(from: string, to: string, svgEl: Element | null): void {
+    if (!this.graph || !svgEl) {
+      this.closeEdgePopover();
+      return;
+    }
+    // Find the edge index in graph.edges. If multiple edges go from→to,
+    // pick the FIRST. (Duplicates are rare and an edge-edit popover
+    // can't disambiguate visually anyway.)
+    const index = this.graph.edges.findIndex((e) => e.from === from && e.to === to);
+    if (index === -1) {
+      this.closeEdgePopover();
+      return;
+    }
+    const edge = this.graph.edges[index];
+    // Position at the midpoint of the path's bounding rect — edges are
+    // line shapes, so midpoint feels more natural than top-right.
+    let x = 0;
+    let y = 0;
+    if (typeof (svgEl as SVGGraphicsElement).getBoundingClientRect === 'function') {
+      const rect = (svgEl as SVGGraphicsElement).getBoundingClientRect();
+      const shellEl = this.dom.closest<HTMLElement>('.editor-shell');
+      const anchor = shellEl ?? this.dom;
+      const anchorRect = anchor.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = (rect.left + rect.right) / 2 - anchorRect.left;
+      y = (rect.top + rect.bottom) / 2 - anchorRect.top;
+    }
+    this.edgePopoverStore.set({
+      visible: true,
+      x,
+      y,
+      label: edge.label ?? '',
+      onLabelChange: (label) => this.handleEdgeLabelChange(index, label),
+      onDelete: () => this.handleDeleteEdge(index),
+      onClose: () => this.closeEdgePopover(),
+    });
+  }
+
+  private closeEdgePopover(): void {
+    this.edgePopoverStore.set({ ...HIDDEN_EDGE_POPOVER_STATE });
+  }
+
+  private handleEdgeLabelChange(index: number, label: string): void {
+    if (!this.graph) return;
+    const newGraph = setEdgeLabel(this.graph, index, label);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+  }
+
+  private handleDeleteEdge(index: number): void {
+    if (!this.graph) return;
+    const newGraph = deleteEdge(this.graph, index);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+    this.closeEdgePopover();
+    // Selection is now stale — clear it so subsequent re-renders don't
+    // try to re-highlight the deleted edge.
+    this.selected = null;
+    this.dom.classList.remove('mermaid-has-selection');
   }
 }

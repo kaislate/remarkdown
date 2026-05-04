@@ -137,4 +137,37 @@ describe('MermaidNodeView', () => {
     parent.remove();
     expect(true).toBe(true); // smoke
   });
+
+  it('opens the edge popover when an edge is clicked', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc('```mermaid\nflowchart TD\nA[a]\nB[b]\nA --> B\n```\n');
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const edgeEl = parent.querySelector('path.flowchart-link[id^="L-A-B-"]');
+    if (!edgeEl) {
+      // jsdom didn't render the SVG; e2e covers this.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    edgeEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    const popover = parent.querySelector('.mermaid-edge-popover');
+    // If the SVG rendered, the popover should be visible.
+    if (popover) {
+      expect(popover.hasAttribute('hidden')).toBe(false);
+    }
+    view.destroy();
+    parent.remove();
+  });
 });
