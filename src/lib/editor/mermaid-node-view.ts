@@ -519,6 +519,13 @@ export class MermaidNodeView implements NodeView {
       const id = `remarkdown-mermaid-${++renderId}`;
       const { svg } = await mermaid.render(id, source);
       this.renderedEl.innerHTML = svg;
+      // Mermaid draws edges as 1-2px paths whose hit-test area equals
+      // the visible stroke — pixel-precise to click. Inject a wider
+      // transparent sibling path for each edge so users have a forgiving
+      // hit zone without changing the visual line. The click handler
+      // already matches on data-id, so the wider target is picked up
+      // automatically without further wiring.
+      this.injectEdgeHitTargets();
       // After re-rendering the SVG, the previously-selected element no
       // longer exists. Re-apply the highlight + reposition the popover
       // against the new SVG element if a selection is still active.
@@ -545,6 +552,42 @@ export class MermaidNodeView implements NodeView {
       errBox.textContent = `Mermaid error: ${msg}`;
       this.renderedEl.appendChild(errBox);
     }
+  }
+
+  // Inject a wider transparent hit-target path next to each visible
+  // edge path. Mermaid's edges are typically 1.5-2px wide and the
+  // browser's hit-test follows the visible stroke — too thin for
+  // comfortable clicking. Each hit target is the SAME path with the
+  // SAME data-id (so the click handler treats it identically) but
+  // 14px transparent stroke and pointer-events: stroke. Inserted
+  // BEFORE the visible path so the visible one paints on top.
+  private injectEdgeHitTargets(): void {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const paths = this.renderedEl.querySelectorAll(
+      'path.flowchart-link[data-id]',
+    );
+    paths.forEach((path) => {
+      // Don't double-inject if a previous render's hit-target survived
+      // (it shouldn't — innerHTML replace tears them down too — but
+      // guard anyway).
+      const dataId = path.getAttribute('data-id') || '';
+      const parent = path.parentNode;
+      if (!parent) return;
+      const hit = document.createElementNS(SVG_NS, 'path');
+      hit.setAttribute('d', path.getAttribute('d') || '');
+      hit.setAttribute('class', 'flowchart-link mermaid-edge-hit');
+      hit.setAttribute('data-id', dataId);
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '14');
+      hit.setAttribute('fill', 'none');
+      // pointer-events: stroke means the path catches clicks within
+      // its (now 14px wide) stroke region. The visible path on top
+      // still paints normally — pointer-events on it can stay default
+      // because clicks land on whichever path is hit first; either
+      // matches our [data-id^="L_"] selector.
+      hit.style.pointerEvents = 'stroke';
+      parent.insertBefore(hit, path);
+    });
   }
 
   // Replace the code_block's text with newSource. PM applies the
