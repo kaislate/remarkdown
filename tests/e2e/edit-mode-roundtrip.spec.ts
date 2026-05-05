@@ -315,3 +315,184 @@ test.describe('edit mode — tables', () => {
     expect(last.markdown).toMatch(/\| -+ \|/);  // contains a separator row
   });
 });
+
+test.describe('edit mode — mermaid', () => {
+  const MERMAID_FIXTURE_PATH = '/e2e/edit-mermaid-fixture.md';
+  const MERMAID_FIXTURE_MD = `# Doc\n\n\`\`\`mermaid\nflowchart TD\nA[Start]\nB[End]\nA --> B\n\`\`\`\n`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [MERMAID_FIXTURE_PATH, MERMAID_FIXTURE_MD],
+    );
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      MERMAID_FIXTURE_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+  });
+
+  test('toggle on → mermaid block renders editable', async ({ page }) => {
+    await page.locator('.edit-mode-toggle').click();
+    // The wrapper is the marker that the NodeView mounted.
+    await expect(page.locator('.editor-surface .mermaid-block-editor').first()).toBeVisible();
+    // The rendered SVG should be present (mermaid finished render).
+    await expect(page.locator('.editor-surface .mermaid-rendered svg').first()).toBeVisible();
+  });
+
+  test('clicking a node opens the popover with its current label', async ({ page }) => {
+    // mermaid in the browser renders <g.node> with id
+    // `remarkdown-mermaid-N-flowchart-A-0` (the render-id we pass to
+    // mermaid.render() is prepended to every internal element id). The
+    // NodeView matches via `g.node[id*="flowchart-"]` / unanchored regex
+    // (see src/lib/editor/mermaid-node-view.ts) — fixed alongside this test.
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for mermaid render to settle.
+    await page.locator('.editor-surface .mermaid-rendered g.node').first().waitFor();
+    // Click the first node (the "A[Start]" node) via DOM-native click — Playwright's
+    // .click() may not work cleanly on SVG <g> elements (no intrinsic bounding box).
+    // Same selection-blur workaround documented in the callout / code-block describes.
+    // The actual rendered id is `remarkdown-mermaid-N-flowchart-A-0`, so we match
+    // with [id*="flowchart-A-"] (contains) rather than [id^="flowchart-A-"].
+    // Click the inner shape — Playwright's .click() doesn't reliably hit
+    // SVG <g> elements (no intrinsic bounding box), and dispatching on
+    // the inner rect is closer to a real user click anyway. The node id
+    // in the rendered SVG is `remarkdown-mermaid-N-flowchart-A-0`, so we
+    // match with [id*="flowchart-A-"] (contains) rather than the
+    // shorter prefix selector.
+    await page.evaluate(() => {
+      const el = document.querySelector('.editor-surface .mermaid-rendered g.node[id*="flowchart-A-"]') as SVGGElement | null;
+      const innerShape = el?.querySelector('rect, circle, polygon, ellipse, path') as SVGElement | null;
+      (innerShape ?? el)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // Popover should be visible with the label "Start" pre-filled.
+    const popover = page.locator('.mermaid-popover').first();
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.mermaid-popover-label')).toHaveValue('Start');
+  });
+
+  test('clicking an edge LABEL (not the path line) opens the edge popover', async ({ page }) => {
+    // Regression test for Bug 1: previously the click handler matched
+    // `path.flowchart-link[id*="L-"]` but mermaid 11 emits edge ids as
+    // `L_A_B_0` (UNDERSCORES), and edge labels are entirely separate
+    // <g class="edgeLabels"> children — clicks on the "Yes"/"No" text
+    // never hit the path. Both surfaces now carry `data-id="L_A_B_0"`,
+    // and we match on that.
+    //
+    // Re-seed with a doc that has an edge LABEL (the default fixture
+    // doesn't), then click the label and assert the edge popover is
+    // visible.
+    const EDGE_LABEL_PATH = '/e2e/edit-mermaid-edge-label-fixture.md';
+    const EDGE_LABEL_MD = `# Doc\n\n\`\`\`mermaid\nflowchart TD\nA[Start]\nB[End]\nA -->|Yes| B\n\`\`\`\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [EDGE_LABEL_PATH, EDGE_LABEL_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      EDGE_LABEL_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for the edge label to render. mermaid emits `<g class="label"
+    // data-id="L_A_B_0">` inside the edgeLabels group.
+    await page.locator('.editor-surface .mermaid-rendered g.label[data-id^="L_A_B_"]').first().waitFor();
+    // Dispatch a click directly on the label group (or its inner span /
+    // foreignObject text). The click handler walks up via
+    // [data-id^="L_"] so any descendant click is fine.
+    await page.evaluate(() => {
+      const el = document.querySelector(
+        '.editor-surface .mermaid-rendered g.label[data-id^="L_A_B_"]',
+      );
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // Edge popover should now be visible. The edge popover has class
+    // .mermaid-edge-popover (mirrors the node popover's structure).
+    await expect(page.locator('.mermaid-edge-popover').first()).toBeVisible();
+  });
+
+  test('toolbar Callout button still inserts when a mermaid block is also in the doc', async ({ page }) => {
+    // Regression test: previously, having a mermaid block in the doc broke
+    // the OTHER toolbar buttons. The seeded fixture for this describe already
+    // has a mermaid block, so we just exercise the Callout toolbar action and
+    // assert a callout shows up in the saved markdown.
+    await page.locator('.edit-mode-toggle').click();
+    // Wait for both the editor surface and the mermaid render to settle.
+    await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+    await expect(page.locator('.editor-surface .mermaid-rendered svg').first()).toBeVisible();
+    // Click into the heading paragraph (NOT the mermaid block) so the cursor
+    // sits in a normal block. The fixture's first heading is "Doc".
+    const heading = page.locator('.editor-surface .ProseMirror h1', { hasText: 'Doc' });
+    await heading.click();
+    await page.keyboard.press('End');
+    // Fire the toolbar Callout button via DOM-native .click() (same workaround
+    // as the other toolbar tests).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="insert-callout"]') as HTMLElement | null)?.click();
+    });
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    // The seeded mermaid block is preserved AND a fresh `[!info]` callout is added.
+    expect(last.markdown).toMatch(/\[!info\]/);
+    expect(last.markdown).toMatch(/```mermaid/);
+  });
+
+  test('toolbar Diagram button inserts a fresh mermaid block', async ({ page }) => {
+    // Override the describe-level beforeEach fixture (which seeds a doc with an
+    // existing mermaid fence) — we need a clean slate so the assertion proves
+    // the toolbar action wrote a fresh block, not the seed. localStorage-backed
+    // docs persist across the page reload; window-scoped helpers
+    // (__E2E_DIALOG_PATH__, __E2E_WRITES__) do not, so reset & set them AFTER
+    // the goto. Mirrors the code-block / table toolbar tests above.
+    const NO_MERMAID_PATH = '/e2e/edit-mermaid-no-mermaid-fixture.md';
+    const NO_MERMAID_MD = `# Doc\n\nA paragraph.\n`;
+    await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
+    await page.evaluate(
+      ([path, md]) => (window as any).__E2E_SEED_DOC__?.(path, md),
+      [NO_MERMAID_PATH, NO_MERMAID_MD],
+    );
+    await page.goto('/');
+    await page.evaluate(() => { (window as any).__E2E_WRITES__ = []; });
+    await page.evaluate(
+      (path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path),
+      NO_MERMAID_PATH,
+    );
+    await page.getByRole('button', { name: /menu/i }).click();
+    await page.getByRole('menuitem', { name: /open…/i }).click();
+    await page.getByRole('heading', { level: 1 }).waitFor();
+
+    await page.locator('.edit-mode-toggle').click();
+    // Place caret in the trailing paragraph so the toolbar action has a valid target.
+    const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'A paragraph.' });
+    await para.click();
+    await page.keyboard.press('End');
+    // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
+    // use DOM-native .click() to avoid blurring the PM selection (same workaround
+    // as the callout / code-block / task-list / table E2E tests above).
+    await page.evaluate(() => {
+      (document.querySelector('.toolbar-btn[data-action="mermaid"]') as HTMLElement | null)?.click();
+    });
+    // Wait for the autosave debounce to fire.
+    await page.waitForTimeout(800);
+    const writes = await page.evaluate(() => (window as any).__E2E_WRITES__ as Array<{ path: string; markdown: string }>);
+    expect(writes.length).toBeGreaterThan(0);
+    const last = writes[writes.length - 1];
+    expect(last.path).toBe(NO_MERMAID_PATH);
+    // With a no-mermaid seed, both ` ```mermaid ` and `flowchart TD` in the saved
+    // markdown prove the toolbar action — not the fixture — wrote the block.
+    expect(last.markdown).toMatch(/```mermaid/);
+    expect(last.markdown).toMatch(/flowchart TD/);
+  });
+});

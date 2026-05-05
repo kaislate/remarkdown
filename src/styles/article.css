@@ -361,3 +361,142 @@ body.reattach-mode .reader-mode-toggle {
 .md-rendered .selectedCell {
   background: var(--accent-soft);
 }
+
+/* ──────────────────────────────────────────────────────
+   Mermaid editor surface (Phase 2e)
+   ────────────────────────────────────────────────────── */
+
+/* Outer wrapper for an editable mermaid block. Positioned relative so
+   the popovers' position:absolute lands inside it. */
+.mermaid-block-editor {
+  position: relative;
+  margin: 1em 0;
+}
+
+/* PM's contentDOM <pre> wraps the source — kept in the DOM (PM owns
+   the text) but visually hidden. The user never sees the raw mermaid
+   syntax. */
+.mermaid-block-editor .mermaid-source {
+  display: none;
+}
+
+/* Rendered SVG container — centered, with a subtle inset so the SVG
+   doesn't kiss the wrapper edges on small diagrams. */
+.mermaid-block-editor .mermaid-rendered {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.mermaid-block-editor .mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Wider invisible hit target injected next to each visible edge path
+   so users have a forgiving click zone (mermaid's edges are 1-2px wide
+   and otherwise pixel-precise). Dark gray + low opacity so the band
+   reads as a subtle "click track" without overpowering the actual
+   line. cursor:pointer signals interactivity. */
+.mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit {
+  stroke: rgba(180, 180, 200, 0.18);
+  cursor: pointer;
+  transition: stroke 0.15s ease;
+}
+.mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit:hover {
+  stroke: rgba(180, 180, 200, 0.32);
+}
+
+/* Selection styling on rendered SVG nodes. Mermaid sets a `.node`
+   class on each <g>; we add `.mermaid-selected` on click. */
+.mermaid-block-editor .mermaid-rendered g.node {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered g.node:hover {
+  filter: drop-shadow(0 0 6px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered g.node.mermaid-selected {
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+
+/* Selection on rendered SVG edges (mermaid uses `.flowchart-link`). */
+.mermaid-block-editor .mermaid-rendered path.flowchart-link {
+  cursor: pointer;
+  transition: stroke 0.12s ease, filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered path.flowchart-link:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered path.flowchart-link.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+
+/* Connect mode: the user has clicked "+ connect" and is now picking a
+   destination. Cursor turns to crosshair; non-source nodes pulse to
+   invite clicking. */
+.mermaid-block-editor.mermaid-connect-mode .mermaid-rendered {
+  cursor: crosshair;
+}
+.mermaid-block-editor.mermaid-connect-mode .mermaid-rendered g.node {
+  animation: mermaidConnectPulse 1.4s ease-in-out infinite;
+}
+@keyframes mermaidConnectPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(139, 127, 255, 0)); }
+  50% { filter: drop-shadow(0 0 8px rgba(139, 127, 255, 0.55)); }
+}
+
+/* Empty-state placeholder — what the user sees when a fresh mermaid
+   block has no nodes yet. Click → opens the shape picker for the
+   first node. */
+.mermaid-block-editor .mermaid-empty-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mermaid-block-editor .mermaid-empty-state:hover {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+
+/* Fallback hint — shown when our subset parser can't handle the
+   diagram (sequenceDiagram, subgraphs, classDef, etc.). The mermaid
+   render still runs (the SVG appears) but visual editing isn't
+   available, so we surface that to the user. */
+.mermaid-block-editor.mermaid-fallback::after {
+  content: 'Visual editing supports flowcharts only — edit the markdown source to change other diagram types.';
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-2);
+  text-align: center;
+}
+
+/* Popover hosts — no styling, just containers. The popovers themselves
+   are styled in their respective .svelte files. */
+.mermaid-popover-host { position: absolute; inset: 0; pointer-events: none; }
+.mermaid-popover-host .mermaid-popover,
+.mermaid-popover-host .mermaid-edge-popover,
+.mermaid-popover-host .mermaid-connect-banner {
+  pointer-events: auto;
+}

@@ -20,6 +20,7 @@ import { editorSchema } from './schema';
 import { parseMarkdown, serializeToMarkdown } from './markdown';
 import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
+import { MermaidNodeView } from './mermaid-node-view';
 import { TaskItemNodeView } from './task-item-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 import { tabInTable } from './table-commands';
@@ -164,8 +165,12 @@ export function createEditorView(
       // mutates DOM and would be lost on the next state apply).
       callout: (node, editorView, getPos) =>
         new CalloutNodeView(node, editorView, getPos),
-      code_block: (node, editorView, getPos) =>
-        new CodeBlockNodeView(node, editorView, getPos),
+      code_block: (node, editorView, getPos) => {
+        if (String(node.attrs.language || '') === 'mermaid') {
+          return new MermaidNodeView(node, editorView, getPos);
+        }
+        return new CodeBlockNodeView(node, editorView, getPos);
+      },
       list_item: (node, editorView, getPos) =>
         new TaskItemNodeView(node, editorView, getPos),
     },
@@ -276,3 +281,4 @@ export function insertTaskList() {
 }
 
 export { insertTable } from './table-commands';
+export { insertMermaid } from './mermaid-commands';

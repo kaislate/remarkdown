@@ -3,6 +3,7 @@
   import Code from 'phosphor-svelte/lib/Code';
   import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
   import Table from 'phosphor-svelte/lib/Table';
+  import FlowArrow from 'phosphor-svelte/lib/FlowArrow';
 
   type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'mermaid' | 'image';
 
@@ -61,6 +62,18 @@
     <Table size={18} weight="regular" />
     <span class="label">Table</span>
   </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="mermaid"
+    title="Insert diagram"
+    aria-label="Insert diagram"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('mermaid')}
+  >
+    <FlowArrow size={18} weight="regular" />
+    <span class="label">Diagram</span>
+  </button>
 </div>
 
 <style>
@@ -73,7 +86,18 @@
     border-bottom: 1px solid var(--glass-border);
     position: sticky;
     top: 0;
-    z-index: 5;
+    /* The Tauri title-bar drag region (TitleBar.svelte's
+       `.titlebar-drag`) is `position: fixed; top: 0; height: 38px;
+       z-index: 50` and covers the middle of the top edge. With the
+       toolbar's old z-index of 5 the drag region sat ON TOP of the
+       toolbar buttons and Tauri's window-drag handler intercepted
+       every pointerdown before the click could reach our buttons —
+       the user saw a perfectly normal-looking toolbar that did
+       absolutely nothing when clicked. Raising the toolbar above
+       the drag region (51 > 50) makes the buttons actually
+       clickable; the title-bar drag still works in the regions to
+       the left and right of the toolbar where they don't overlap. */
+    z-index: 51;
   }
   .toolbar-btn {
     display: inline-flex;
