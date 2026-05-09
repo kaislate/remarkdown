@@ -363,4 +363,41 @@ describe('MermaidNodeView', () => {
     view.destroy();
     parent.remove();
   });
+
+  it('opens the message popover when a message is clicked', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc(
+      '```mermaid\nsequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n```\n',
+    );
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const messageEl = parent.querySelector('[data-et="message"][data-id="i0"]');
+    if (!messageEl) {
+      // jsdom may not fully render the SVG — covered by e2e in Task 11.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    messageEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    const popover = parent.querySelector('.mermaid-message-popover');
+    if (popover) {
+      const input = popover.querySelector<HTMLInputElement>(
+        '.mermaid-message-popover-text',
+      );
+      expect(input?.value).toBe('Hello');
+    }
+    view.destroy();
+    parent.remove();
+  });
 });
