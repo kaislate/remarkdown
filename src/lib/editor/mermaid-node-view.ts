@@ -17,6 +17,7 @@ import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
 import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import MermaidParticipantPopover from '../../components/MermaidParticipantPopover.svelte';
 import MermaidMessagePopover from '../../components/MermaidMessagePopover.svelte';
+import MermaidNotePopover from '../../components/MermaidNotePopover.svelte';
 import { parseMermaid } from './mermaid-parser';
 import { parseSequence } from './mermaid-sequence-parser';
 import {
@@ -25,8 +26,12 @@ import {
   setMessageText,
   setMessageStyle,
   deleteMessage,
+  setNoteText,
+  setNotePosition,
+  deleteNote,
   type SequenceGraph,
   type MessageStyle,
+  type NotePosition,
 } from './mermaid-sequence-graph';
 import { serializeSequence } from './mermaid-sequence-serializer';
 import { detectDiagramType, type MermaidDiagramType } from './mermaid-detect';
@@ -184,6 +189,43 @@ const HIDDEN_MESSAGE_POPOVER_STATE: MessagePopoverState = {
   onClose: () => {},
 };
 
+// Note popover state (Task 7 of Phase 2g). Sequence-diagram analogue of
+// MessagePopoverState — text input + 3-button position picker (leftOf /
+// rightOf / over) + optional second participant <select> (only shown
+// when position === 'over') + delete. Same store-backed pattern so the
+// input keeps focus across re-renders.
+interface NotePopoverState {
+  visible: boolean;
+  x: number;
+  y: number;
+  text: string;
+  position: NotePosition;
+  primaryParticipant: string;
+  secondaryParticipant: string;
+  availableParticipants: string[];
+  onTextChange: (text: string) => void;
+  onPositionChange: (position: NotePosition) => void;
+  onSecondaryChange: (secondaryId: string) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}
+
+const HIDDEN_NOTE_POPOVER_STATE: NotePopoverState = {
+  visible: false,
+  x: 0,
+  y: 0,
+  text: '',
+  position: 'rightOf',
+  primaryParticipant: '',
+  secondaryParticipant: '',
+  availableParticipants: [],
+  onTextChange: () => {},
+  onPositionChange: () => {},
+  onSecondaryChange: () => {},
+  onDelete: () => {},
+  onClose: () => {},
+};
+
 // Connect-mode banner state (Task 7). Shown while the NodeView is in
 // connect mode (after the user clicks "+ connect" on a node popover).
 // The banner offers a "+ Add new node" shortcut and a Cancel button;
@@ -250,6 +292,13 @@ export class MermaidNodeView implements NodeView {
   private messagePopoverHost: HTMLElement;
   private messagePopoverStore: Writable<MessagePopoverState>;
   private messagePopoverInstance: ReturnType<typeof mount> | null = null;
+  // Note popover (Task 7 of Phase 2g) — separate host/store/instance for
+  // the sequence-diagram note editor. Mutually exclusive with every
+  // other popover; selectNote closes the participant + message + flow-
+  // chart popovers before opening this one.
+  private notePopoverHost: HTMLElement;
+  private notePopoverStore: Writable<NotePopoverState>;
+  private notePopoverInstance: ReturnType<typeof mount> | null = null;
   // Connect-mode state (Task 7). Non-null while the user is picking a
   // target for a new edge. The banner is mounted at construction time,
   // visibility is toggled via the store. The Esc listener is attached
@@ -317,6 +366,10 @@ export class MermaidNodeView implements NodeView {
     const messagePopoverHost = document.createElement('div');
     messagePopoverHost.className =
       'mermaid-popover-host mermaid-message-popover-host';
+    // Sequence note popover host (Task 7 of Phase 2g). Same shared host class.
+    const notePopoverHost = document.createElement('div');
+    notePopoverHost.className =
+      'mermaid-popover-host mermaid-note-popover-host';
     // Banner host shares the popover-host class so stopEvent / ignore-
     // mutation gates apply to it too — clicks on the banner are real
     // UI events, not PM input.
@@ -329,6 +382,7 @@ export class MermaidNodeView implements NodeView {
     wrap.appendChild(edgePopoverHost);
     wrap.appendChild(participantPopoverHost);
     wrap.appendChild(messagePopoverHost);
+    wrap.appendChild(notePopoverHost);
     wrap.appendChild(connectBannerHost);
 
     this.dom = wrap;
@@ -338,6 +392,7 @@ export class MermaidNodeView implements NodeView {
     this.edgePopoverHost = edgePopoverHost;
     this.participantPopoverHost = participantPopoverHost;
     this.messagePopoverHost = messagePopoverHost;
+    this.notePopoverHost = notePopoverHost;
     this.connectBannerHost = connectBannerHost;
 
     // Mount the popovers once. We update their state via the stores so
@@ -365,6 +420,13 @@ export class MermaidNodeView implements NodeView {
     this.messagePopoverInstance = mount(MermaidMessagePopover, {
       target: this.messagePopoverHost,
       props: { stateStore: this.messagePopoverStore },
+    });
+    this.notePopoverStore = writable<NotePopoverState>({
+      ...HIDDEN_NOTE_POPOVER_STATE,
+    });
+    this.notePopoverInstance = mount(MermaidNotePopover, {
+      target: this.notePopoverHost,
+      props: { stateStore: this.notePopoverStore },
     });
     this.connectBannerStore = writable<BannerState>({ ...HIDDEN_BANNER_STATE });
     this.connectBannerInstance = mount(MermaidConnectBanner, {
@@ -559,6 +621,7 @@ export class MermaidNodeView implements NodeView {
     this.closeEdgePopover();
     this.closeParticipantPopover();
     this.closeMessagePopover();
+    this.closeNotePopover();
     this.openNodePopover(id, svgEl);
   }
 
@@ -581,6 +644,7 @@ export class MermaidNodeView implements NodeView {
     this.closePopover();
     this.closeParticipantPopover();
     this.closeMessagePopover();
+    this.closeNotePopover();
     this.openEdgePopover(from, to, svgEl);
   }
 
@@ -596,6 +660,7 @@ export class MermaidNodeView implements NodeView {
     // but clear them in case of a stale state from a diagram-type swap.
     this.closeParticipantPopover();
     this.closeMessagePopover();
+    this.closeNotePopover();
   }
 
   // Read-only view of the current selection. Tasks 5-6 use this to
@@ -627,10 +692,11 @@ export class MermaidNodeView implements NodeView {
       }
     });
     // Mutual exclusivity: close every other popover (only one visible at
-    // a time across diagram modes). closeNotePopover lands in Task 7.
+    // a time across diagram modes).
     this.closePopover();
     this.closeEdgePopover();
     this.closeMessagePopover();
+    this.closeNotePopover();
     this.openParticipantPopover(id);
   }
 
@@ -644,10 +710,11 @@ export class MermaidNodeView implements NodeView {
       .querySelector(`[data-et="message"][data-id="i${index}"]`)
       ?.classList.add('sequence-selected');
     // Mutual exclusivity: close every other popover (only one visible at
-    // a time across diagram modes). closeNotePopover lands in Task 7.
+    // a time across diagram modes).
     this.closePopover();
     this.closeEdgePopover();
     this.closeParticipantPopover();
+    this.closeNotePopover();
     this.openMessagePopover(index);
   }
 
@@ -660,7 +727,13 @@ export class MermaidNodeView implements NodeView {
     this.renderedEl
       .querySelector(`g[data-et="note"][data-id="i${index}"]`)
       ?.classList.add('sequence-selected');
-    // Popover wiring lands in Task 7.
+    // Mutual exclusivity: close every other popover (only one visible at
+    // a time across diagram modes).
+    this.closePopover();
+    this.closeEdgePopover();
+    this.closeParticipantPopover();
+    this.closeMessagePopover();
+    this.openNotePopover(index);
   }
 
   private clearSequenceSelection(): void {
@@ -671,7 +744,7 @@ export class MermaidNodeView implements NodeView {
       .forEach((el) => el.classList.remove('sequence-selected'));
     this.closeParticipantPopover();
     this.closeMessagePopover();
-    // closeNotePopover() lands in Task 7.
+    this.closeNotePopover();
   }
 
   update(node: Node): boolean {
@@ -739,6 +812,7 @@ export class MermaidNodeView implements NodeView {
     this.closeEdgePopover();
     this.closeParticipantPopover();
     this.closeMessagePopover();
+    this.closeNotePopover();
     // Belt-and-braces: exitConnectMode also removes the listener, but
     // PM may tear us down without the user explicitly leaving connect-
     // mode first.
@@ -777,6 +851,14 @@ export class MermaidNodeView implements NodeView {
         // Best-effort — if Svelte already cleaned up, ignore.
       }
       this.messagePopoverInstance = null;
+    }
+    if (this.notePopoverInstance) {
+      try {
+        unmount(this.notePopoverInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.notePopoverInstance = null;
     }
     if (this.connectBannerInstance) {
       try {
@@ -1300,6 +1382,112 @@ export class MermaidNodeView implements NodeView {
     this.sequenceGraph = newGraph;
     this.commitGraphChange(serializeSequence(newGraph));
     this.closeMessagePopover();
+    // Selection is now stale — clear it so the post-render selection
+    // restore (in renderFromNode) doesn't try to re-highlight a deleted
+    // event index.
+    this.sequenceSelected = null;
+    this.dom.classList.remove('mermaid-has-selection');
+  }
+
+  // Note popover lifecycle (Task 7 of Phase 2g). Mirrors openMessagePopover —
+  // anchor against the note rect's `g[data-et="note"][data-id="i<N>"]`
+  // element. Position the popover to the right of the note (left/top of
+  // the note's bounding rect) in WRAPPER coords, matching the participant-
+  // popover convention.
+  private openNotePopover(index: number): void {
+    if (!this.sequenceGraph) return;
+    const ev = this.sequenceGraph.events[index];
+    if (!ev || ev.kind !== 'note') {
+      this.closeNotePopover();
+      return;
+    }
+    const svgEl = this.renderedEl.querySelector(
+      `g[data-et="note"][data-id="i${index}"]`,
+    );
+    let x = 0;
+    let y = 0;
+    if (
+      svgEl &&
+      typeof (svgEl as SVGGraphicsElement).getBoundingClientRect === 'function'
+    ) {
+      const rect = (svgEl as SVGGraphicsElement).getBoundingClientRect();
+      const wrapperRect = this.dom.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = rect.right - wrapperRect.left + 8;
+      y = rect.top - wrapperRect.top;
+    }
+    const primary = ev.participants[0] ?? '';
+    const secondary = ev.participants[1] ?? '';
+    const available = Array.from(this.sequenceGraph.participants.keys());
+    this.notePopoverStore.set({
+      visible: true,
+      x,
+      y,
+      text: ev.text,
+      position: ev.position,
+      primaryParticipant: primary,
+      secondaryParticipant: secondary,
+      availableParticipants: available,
+      onTextChange: (text) => this.handleNoteTextChange(index, text),
+      onPositionChange: (position) => this.handleNotePositionChange(index, position),
+      onSecondaryChange: (secondaryId) =>
+        this.handleNoteSecondaryChange(index, secondaryId),
+      onDelete: () => this.handleDeleteNote(index),
+      onClose: () => this.closeNotePopover(),
+    });
+  }
+
+  private closeNotePopover(): void {
+    this.notePopoverStore.set({ ...HIDDEN_NOTE_POPOVER_STATE });
+  }
+
+  private handleNoteTextChange(index: number, text: string): void {
+    if (!this.sequenceGraph) return;
+    const newGraph = setNoteText(this.sequenceGraph, index, text);
+    this.sequenceGraph = newGraph;
+    this.commitGraphChange(serializeSequence(newGraph));
+  }
+
+  private handleNotePositionChange(index: number, position: NotePosition): void {
+    if (!this.sequenceGraph) return;
+    const ev = this.sequenceGraph.events[index];
+    if (!ev || ev.kind !== 'note') return;
+    // leftOf / rightOf only allow ONE participant — truncate if the
+    // note was previously `over A,B`. For 'over' itself, keep the
+    // existing participants array intact (the secondary <select>
+    // controls additions/removals separately).
+    const participants =
+      position === 'over'
+        ? ev.participants
+        : ev.participants.slice(0, 1);
+    const newGraph = setNotePosition(this.sequenceGraph, index, {
+      participants,
+      position,
+    });
+    this.sequenceGraph = newGraph;
+    this.commitGraphChange(serializeSequence(newGraph));
+  }
+
+  private handleNoteSecondaryChange(index: number, secondaryId: string): void {
+    if (!this.sequenceGraph) return;
+    const ev = this.sequenceGraph.events[index];
+    if (!ev || ev.kind !== 'note') return;
+    const primary = ev.participants[0] ?? '';
+    if (!primary) return;
+    const participants = secondaryId ? [primary, secondaryId] : [primary];
+    const newGraph = setNotePosition(this.sequenceGraph, index, {
+      participants,
+      position: 'over',
+    });
+    this.sequenceGraph = newGraph;
+    this.commitGraphChange(serializeSequence(newGraph));
+  }
+
+  private handleDeleteNote(index: number): void {
+    if (!this.sequenceGraph) return;
+    const newGraph = deleteNote(this.sequenceGraph, index);
+    this.sequenceGraph = newGraph;
+    this.commitGraphChange(serializeSequence(newGraph));
+    this.closeNotePopover();
     // Selection is now stale — clear it so the post-render selection
     // restore (in renderFromNode) doesn't try to re-highlight a deleted
     // event index.
