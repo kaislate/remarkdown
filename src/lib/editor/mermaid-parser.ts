@@ -5,8 +5,10 @@
 // Supported:
 //   - `flowchart TD/TB/LR/BT/RL` directive (TB is normalized to TD)
 //   - Node shapes: rect `A[label]`, rounded `A(label)`, circle `A((label))`,
-//     diamond `A{label}`
-//   - Edges: `A --> B` and labelled `A -->|text| B`
+//     diamond `A{label}`, hexagon `A{{label}}`, cylinder `A[(label)]`,
+//     stadium `A([label])`, parallelogram `A[/label/]`
+//   - Edges: arrow `A --> B`, line `A --- B`, dotted `A -.-> B`,
+//     thick `A ==> B`, all with optional `|text|` labels
 //   - Inline node definitions on edge lines: `A[a] --> B[b] --> C[c]`
 //   - Quoted labels: `A["has [brackets]"]` and the `""` escape for
 //     embedded quotes
@@ -18,13 +20,14 @@
 //     the surface minimal; users can rewrite the directive once)
 //   - Subgraphs (`subgraph` ... `end`)
 //   - classDef / class / click directives
-//   - Other shapes (asymmetric `A>...]`, parallelogram `A[/.../]`, etc.)
-//   - Other edge styles (`A --- B`, `A ==> B`, `A -.- B`)
+//   - Other shapes (asymmetric `A>...]`, trapezoid `A[\...\]`, etc.)
+//   - Other edge styles (`A -.- B` un-arrowed dotted, etc.)
 import {
   emptyGraph,
   type MermaidGraph,
   type MermaidShape,
   type MermaidDirection,
+  type EdgeStyle,
 } from './mermaid-graph';
 
 type ParseResult =
@@ -37,10 +40,24 @@ type ParseResult =
 type LineToken =
   | { kind: 'node'; id: string; shape: MermaidShape; label: string }
   | { kind: 'noderef'; id: string }
-  | { kind: 'arrow'; label?: string };
+  | { kind: 'arrow'; label?: string; style: EdgeStyle };
 
 const ID_RE = /^[A-Za-z][A-Za-z0-9_]*/;
-const SHAPE_RE = /^(\[\[|\(\(|\[|\(|\{)/;
+// Priority matters: multi-char shape openers MUST come before
+// single-char ones (e.g. `[(` before `[`) so the regex matches the
+// longer pattern first. The order here is: 2-char openers grouped
+// alphabetically by first char, then 1-char openers.
+const SHAPE_RE = /^(\[\[|\[\(|\[\/|\(\(|\(\[|\{\{|\[|\(|\{)/;
+
+// Edge tokens: try styles in priority order (longest first so `-.->`
+// doesn't get parsed as `-` plus `-->`). The captured `label` is
+// optional — same `|text|` syntax for all styles.
+const EDGE_PREFIXES: Array<{ prefix: string; style: EdgeStyle }> = [
+  { prefix: '-.->', style: 'dotted' },
+  { prefix: '-->', style: 'arrow' },
+  { prefix: '---', style: 'line' },
+  { prefix: '==>', style: 'thick' },
+];
 
 function tokenizeLine(line: string): LineToken[] | null {
   const tokens: LineToken[] = [];
@@ -51,9 +68,18 @@ function tokenizeLine(line: string): LineToken[] | null {
       s = s.replace(/^\s+/, '');
       continue;
     }
-    // Edge: -->|label| or -->
-    if (s.startsWith('-->')) {
-      let rest = s.slice(3);
+    // Edge: try each style prefix in priority order (longest first so
+    // `-.->` isn't mis-parsed as `-` then `-->`). All styles share the
+    // optional `|label|` syntax.
+    let matched: { prefix: string; style: EdgeStyle } | null = null;
+    for (const e of EDGE_PREFIXES) {
+      if (s.startsWith(e.prefix)) {
+        matched = e;
+        break;
+      }
+    }
+    if (matched) {
+      let rest = s.slice(matched.prefix.length);
       let label: string | undefined;
       if (rest.startsWith('|')) {
         const closeIdx = rest.indexOf('|', 1);
@@ -61,7 +87,7 @@ function tokenizeLine(line: string): LineToken[] | null {
         label = rest.slice(1, closeIdx);
         rest = rest.slice(closeIdx + 1);
       }
-      tokens.push({ kind: 'arrow', label });
+      tokens.push({ kind: 'arrow', label, style: matched.style });
       s = rest.trim();
       continue;
     }
@@ -79,11 +105,20 @@ function tokenizeLine(line: string): LineToken[] | null {
           : open === '(' ? 'rounded'
           : open === '((' ? 'circle'
           : open === '{' ? 'diamond'
+          : open === '{{' ? 'hexagon'
+          : open === '[(' ? 'cylinder'
+          : open === '([' ? 'stadium'
+          : open === '[/' ? 'parallelogram'
           : 'rect';
         const close =
           shape === 'rect' ? ']'
           : shape === 'rounded' ? ')'
           : shape === 'circle' ? '))'
+          : shape === 'diamond' ? '}'
+          : shape === 'hexagon' ? '}}'
+          : shape === 'cylinder' ? ')]'
+          : shape === 'stadium' ? '])'
+          : shape === 'parallelogram' ? '/]'
           : '}';
         s = s.slice(open.length);
         // Read label until matching close. Handle quoted labels.
@@ -173,6 +208,7 @@ export function parseMermaid(source: string): ParseResult {
     // to the next id.
     let previousId: string | null = null;
     let pendingArrowLabel: string | undefined;
+    let pendingArrowStyle: EdgeStyle = 'arrow';
     let hasPendingArrow = false;
 
     for (const tok of tokens) {
@@ -197,13 +233,18 @@ export function parseMermaid(source: string): ParseResult {
           });
         }
         if (hasPendingArrow && previousId !== null) {
+          // Only emit style when non-default; the serializer treats
+          // missing style as 'arrow', so this keeps the round-trip
+          // byte-equal for the common case.
           graph.edges.push({
             from: previousId,
             to: tok.id,
             ...(pendingArrowLabel ? { label: pendingArrowLabel } : {}),
+            ...(pendingArrowStyle !== 'arrow' ? { style: pendingArrowStyle } : {}),
           });
           hasPendingArrow = false;
           pendingArrowLabel = undefined;
+          pendingArrowStyle = 'arrow';
         }
         previousId = tok.id;
       } else if (tok.kind === 'noderef') {
@@ -221,9 +262,11 @@ export function parseMermaid(source: string): ParseResult {
             from: previousId,
             to: tok.id,
             ...(pendingArrowLabel ? { label: pendingArrowLabel } : {}),
+            ...(pendingArrowStyle !== 'arrow' ? { style: pendingArrowStyle } : {}),
           });
           hasPendingArrow = false;
           pendingArrowLabel = undefined;
+          pendingArrowStyle = 'arrow';
         }
         previousId = tok.id;
       } else if (tok.kind === 'arrow') {
@@ -232,6 +275,7 @@ export function parseMermaid(source: string): ParseResult {
         }
         hasPendingArrow = true;
         pendingArrowLabel = tok.label;
+        pendingArrowStyle = tok.style;
       }
     }
 

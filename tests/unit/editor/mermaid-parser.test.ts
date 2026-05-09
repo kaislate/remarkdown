@@ -133,3 +133,82 @@ describe('mermaid parser', () => {
     expect(rt(src)).toBe(src);
   });
 });
+
+describe('mermaid parser — new shapes', () => {
+  it('parses hexagon, cylinder, stadium, parallelogram', () => {
+    const r = parseMermaid('flowchart TD\nA{{h}}\nB[(c)]\nC([s])\nD[/p/]\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')?.shape).toBe('hexagon');
+    expect(r.graph.nodes.get('A')?.label).toBe('h');
+    expect(r.graph.nodes.get('B')?.shape).toBe('cylinder');
+    expect(r.graph.nodes.get('B')?.label).toBe('c');
+    expect(r.graph.nodes.get('C')?.shape).toBe('stadium');
+    expect(r.graph.nodes.get('C')?.label).toBe('s');
+    expect(r.graph.nodes.get('D')?.shape).toBe('parallelogram');
+    expect(r.graph.nodes.get('D')?.label).toBe('p');
+  });
+
+  it('round-trips all 8 shapes', () => {
+    const src = 'flowchart TD\nA[r]\nB(o)\nC((c))\nD{d}\nE{{h}}\nF[(cy)]\nG([s])\nH[/p/]\n';
+    expect(rt(src)).toBe(src);
+  });
+
+  it('does not confuse double-bracket shapes with their single-bracket prefixes', () => {
+    // The order matters: `[(` must match before `[`. If we got the regex
+    // priority wrong, `A[(c)]` would parse as rect with label `(c`.
+    const r = parseMermaid('flowchart TD\nA[(cylinder content)]\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')?.shape).toBe('cylinder');
+    expect(r.graph.nodes.get('A')?.label).toBe('cylinder content');
+  });
+});
+
+describe('mermaid parser — new edge styles', () => {
+  it('parses solid line (---) edges', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA --- B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'line' }]);
+  });
+
+  it('parses dotted (-.->) edges', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -.-> B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'dotted' }]);
+  });
+
+  it('parses thick (==>) edges', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA ==> B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'thick' }]);
+  });
+
+  it('parses labelled non-arrow edges', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -.->|maybe| B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges).toEqual([
+      { from: 'A', to: 'B', label: 'maybe', style: 'dotted' },
+    ]);
+  });
+
+  it('plain --> still parses as arrow style', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA --> B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // arrow is the implicit default — parser should set style: 'arrow'
+    // explicitly OR leave it undefined. Either is acceptable as long as
+    // round-trip preserves the canonical form.
+    expect(r.graph.edges[0].from).toBe('A');
+    expect(r.graph.edges[0].to).toBe('B');
+  });
+
+  it('round-trips all 4 edge styles', () => {
+    const src = 'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\n';
+    expect(rt(src)).toBe(src);
+  });
+});
