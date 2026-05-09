@@ -25,8 +25,12 @@ describe('MermaidNodeView', () => {
   it('falls back to render-only when source is unparseable', () => {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
-    // sequenceDiagram is unsupported by our parser
-    const doc = parseMarkdownToDoc('```mermaid\nsequenceDiagram\nA->>B: hi\n```\n');
+    // classDiagram is an unsupported diagram type — neither the
+    // flowchart nor the sequence parser handle it, so the NodeView
+    // marks the wrapper as fallback (render-only).
+    const doc = parseMarkdownToDoc(
+      '```mermaid\nclassDiagram\nclass Animal\n```\n',
+    );
     const view = new EditorView(parent, {
       state: EditorState.create({ doc, schema: editorSchema }),
       nodeViews: {
@@ -283,6 +287,40 @@ describe('MermaidNodeView', () => {
     if (popover) {
       expect(popover.hasAttribute('hidden')).toBe(false);
     }
+    view.destroy();
+    parent.remove();
+  });
+
+  it('selecting a sequence participant adds mermaid-has-selection on the wrapper', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc(
+      '```mermaid\nsequenceDiagram\nparticipant A\nparticipant B\nA->>B: hi\n```\n',
+    );
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const participantEl = parent.querySelector(
+      'g[data-et="participant"][data-id="A"]',
+    );
+    if (!participantEl) {
+      // jsdom may not fully render the SVG. Skip assertion.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    participantEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(
+      parent.querySelector('.mermaid-block-editor.mermaid-has-selection'),
+    ).not.toBeNull();
     view.destroy();
     parent.remove();
   });

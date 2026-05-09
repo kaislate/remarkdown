@@ -16,6 +16,8 @@ import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
 import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
 import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import { parseMermaid } from './mermaid-parser';
+import { parseSequence } from './mermaid-sequence-parser';
+import type { SequenceGraph } from './mermaid-sequence-graph';
 import { detectDiagramType, type MermaidDiagramType } from './mermaid-detect';
 import {
   addNode,
@@ -51,6 +53,16 @@ let renderId = 0;
 type MermaidSelection =
   | { kind: 'node'; id: string }
   | { kind: 'edge'; from: string; to: string }
+  | null;
+
+// Sequence-diagram selection state (Task 4). Kept in a separate field
+// from `selected` (the flowchart selection) because the two diagram
+// kinds have disjoint click targets and never coexist — diagramType
+// dispatches to one or the other.
+type SequenceSelection =
+  | { kind: 'participant'; id: string }
+  | { kind: 'message'; index: number }
+  | { kind: 'note'; index: number }
   | null;
 
 // State pushed into the popover via a Svelte store. The popover
@@ -139,6 +151,13 @@ export class MermaidNodeView implements NodeView {
   // by edit handlers to mutate -> serialize -> commit. null when the
   // current source doesn't parse (fallback mode); edit ops no-op then.
   private graph: MermaidGraph | null = null;
+  // Parallel field for sequence diagrams (Task 4). Mutually exclusive
+  // with `graph` — at most one of them is non-null at a time, governed
+  // by `diagramType`. null in flowchart mode and in fallback mode.
+  private sequenceGraph: SequenceGraph | null = null;
+  // Sequence-diagram selection state (Task 4). Disjoint from `selected`
+  // (flowchart). When diagramType !== 'sequence' this is always null.
+  private sequenceSelected: SequenceSelection = null;
   // Diagram type detected from the source, refreshed in renderFromNode.
   // The wireClickHandlers dispatch only runs flowchart-specific routing
   // when this is 'flowchart'; sequence (Tasks 2-8) and unsupported
@@ -339,6 +358,78 @@ export class MermaidNodeView implements NodeView {
         }
         // Click on empty diagram area — clear selection.
         this.clearSelection();
+      } else if (this.diagramType === 'sequence') {
+        // Sequence-diagram routing (Task 4). Mermaid's sequenceDiagram
+        // renderer tags every clickable element with `data-et`:
+        //   - `g[data-et="participant"]`  →  participant header (data-id="A")
+        //   - `line[data-et="life-line"]` →  vertical lifeline   (data-id="A")
+        //   - `[data-et="message"]`       →  arrow path/group     (data-id="i<N>")
+        //   - `g[data-et="note"]`         →  note rectangle/text  (data-id="i<N>")
+        // The `i<N>` indexes match this.sequenceGraph.events[N] because
+        // mermaid pushes both messages and notes into one combined array
+        // in source order, and our serializer emits in array order.
+        // Popover wiring lands in Tasks 5-7; this branch only sets the
+        // selection state + the .sequence-selected highlight class.
+
+        // Participant header → select participant.
+        const participantEl = target.closest(
+          'g[data-et="participant"]',
+        ) as Element | null;
+        if (participantEl) {
+          const id = (participantEl as HTMLElement).dataset.id ?? '';
+          if (id && this.sequenceGraph?.participants.has(id)) {
+            this.selectParticipant(id);
+            e.stopPropagation();
+            return;
+          }
+        }
+        // Lifeline → also select participant (clicking the vertical
+        // line is intuitive — it represents the same actor).
+        const lifelineEl = target.closest(
+          'line[data-et="life-line"]',
+        ) as Element | null;
+        if (lifelineEl) {
+          const id = (lifelineEl as HTMLElement).dataset.id ?? '';
+          if (id && this.sequenceGraph?.participants.has(id)) {
+            this.selectParticipant(id);
+            e.stopPropagation();
+            return;
+          }
+        }
+        // Message arrow → select by index.
+        const messageEl = target.closest(
+          '[data-et="message"]',
+        ) as Element | null;
+        if (messageEl) {
+          const dataId = (messageEl as HTMLElement).dataset.id ?? '';
+          const m = /^i(\d+)$/.exec(dataId);
+          if (m) {
+            const idx = Number.parseInt(m[1], 10);
+            const ev = this.sequenceGraph?.events[idx];
+            if (ev?.kind === 'message') {
+              this.selectMessage(idx);
+              e.stopPropagation();
+              return;
+            }
+          }
+        }
+        // Note → select by index.
+        const noteEl = target.closest('g[data-et="note"]') as Element | null;
+        if (noteEl) {
+          const dataId = (noteEl as HTMLElement).dataset.id ?? '';
+          const m = /^i(\d+)$/.exec(dataId);
+          if (m) {
+            const idx = Number.parseInt(m[1], 10);
+            const ev = this.sequenceGraph?.events[idx];
+            if (ev?.kind === 'note') {
+              this.selectNote(idx);
+              e.stopPropagation();
+              return;
+            }
+          }
+        }
+        // Empty area click — clear sequence selection.
+        this.clearSequenceSelection();
       }
     });
   }
@@ -398,6 +489,61 @@ export class MermaidNodeView implements NodeView {
   // state).
   getSelection(): MermaidSelection {
     return this.selected;
+  }
+
+  // Sequence-diagram selection helpers (Task 4). Mirror the flowchart
+  // selectGraph* / clearSelection pattern: set state, toggle the
+  // wrapper class, swap the .sequence-selected highlight on the SVG.
+  // Popover wiring is intentionally absent — it lands in Tasks 5-7.
+  // The .sequence-selected class is unstyled until Task 10; that's
+  // fine, the selection state is what later tasks build on.
+  private selectParticipant(id: string): void {
+    this.sequenceSelected = { kind: 'participant', id };
+    this.dom.classList.add('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('.sequence-selected')
+      .forEach((el) => el.classList.remove('sequence-selected'));
+    // Highlight both the participant header AND the lifeline for the
+    // same id — they represent the same actor.
+    this.renderedEl.querySelectorAll(`[data-id="${id}"]`).forEach((el) => {
+      const et = (el as HTMLElement).dataset.et;
+      if (et === 'participant' || et === 'life-line') {
+        el.classList.add('sequence-selected');
+      }
+    });
+    // Popover wiring lands in Task 5.
+  }
+
+  private selectMessage(index: number): void {
+    this.sequenceSelected = { kind: 'message', index };
+    this.dom.classList.add('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('.sequence-selected')
+      .forEach((el) => el.classList.remove('sequence-selected'));
+    this.renderedEl
+      .querySelector(`[data-et="message"][data-id="i${index}"]`)
+      ?.classList.add('sequence-selected');
+    // Popover wiring lands in Task 6.
+  }
+
+  private selectNote(index: number): void {
+    this.sequenceSelected = { kind: 'note', index };
+    this.dom.classList.add('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('.sequence-selected')
+      .forEach((el) => el.classList.remove('sequence-selected'));
+    this.renderedEl
+      .querySelector(`g[data-et="note"][data-id="i${index}"]`)
+      ?.classList.add('sequence-selected');
+    // Popover wiring lands in Task 7.
+  }
+
+  private clearSequenceSelection(): void {
+    this.sequenceSelected = null;
+    this.dom.classList.remove('mermaid-has-selection');
+    this.renderedEl
+      .querySelectorAll('.sequence-selected')
+      .forEach((el) => el.classList.remove('sequence-selected'));
   }
 
   update(node: Node): boolean {
@@ -515,16 +661,27 @@ export class MermaidNodeView implements NodeView {
         this.graph = null;
         this.dom.classList.add('mermaid-fallback');
       }
+      // Mutually exclusive with sequenceGraph — clear it when in
+      // flowchart mode so stale state from a previous source can't
+      // leak through diagram-type changes.
+      this.sequenceGraph = null;
     } else if (type === 'sequence') {
-      // Sequence parser lands in Task 3. For now, sequence diagrams
-      // render but aren't visually editable — same as the flowchart
-      // fallback path, just with a different reason.
+      const parsed = parseSequence(source);
+      if (parsed.ok) {
+        this.sequenceGraph = parsed.graph;
+        this.dom.classList.remove('mermaid-fallback');
+      } else {
+        this.sequenceGraph = null;
+        this.dom.classList.add('mermaid-fallback');
+      }
+      // Not a flowchart — clear the flowchart graph so flowchart edit
+      // handlers no-op and stale node/edge highlights don't reapply.
       this.graph = null;
-      this.dom.classList.add('mermaid-fallback');
     } else {
       // Unsupported diagram type (classDiagram, gantt, legacy `graph`,
       // etc.): render via mermaid as fallback, no editing.
       this.graph = null;
+      this.sequenceGraph = null;
       this.dom.classList.add('mermaid-fallback');
     }
 
@@ -582,6 +739,29 @@ export class MermaidNodeView implements NodeView {
         } else {
           // Edge was deleted (or its endpoints were).
           this.clearSelection();
+        }
+      } else if (
+        this.sequenceSelected?.kind === 'participant' &&
+        this.sequenceGraph?.participants.has(this.sequenceSelected.id)
+      ) {
+        this.selectParticipant(this.sequenceSelected.id);
+      } else if (this.sequenceSelected?.kind === 'participant') {
+        this.clearSequenceSelection();
+      } else if (this.sequenceSelected?.kind === 'message') {
+        const idx = this.sequenceSelected.index;
+        const ev = this.sequenceGraph?.events[idx];
+        if (ev?.kind === 'message') {
+          this.selectMessage(idx);
+        } else {
+          this.clearSequenceSelection();
+        }
+      } else if (this.sequenceSelected?.kind === 'note') {
+        const idx = this.sequenceSelected.index;
+        const ev = this.sequenceGraph?.events[idx];
+        if (ev?.kind === 'note') {
+          this.selectNote(idx);
+        } else {
+          this.clearSequenceSelection();
         }
       }
     } catch (err) {
