@@ -500,3 +500,84 @@ body.reattach-mode .reader-mode-toggle {
 .mermaid-popover-host .mermaid-connect-banner {
   pointer-events: auto;
 }
+
+/* ──────────────────────────────────────────────────────
+   Mermaid sequence diagram editor (Phase 2g)
+   ────────────────────────────────────────────────────── */
+
+/* Selection highlights — accent drop-shadow mirrors the flowchart
+   convention. Applied to participant headers, lifelines, message
+   arrows, and notes when they're the active selection. */
+.mermaid-block-editor .mermaid-rendered g[data-et="participant"] {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="participant"]:hover {
+  filter: drop-shadow(0 0 6px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="participant"].sequence-selected {
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered line[data-et="life-line"] {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered line[data-et="life-line"].sequence-selected {
+  stroke: var(--accent) !important;
+  stroke-width: 2 !important;
+}
+.mermaid-block-editor .mermaid-rendered [data-et="message"] {
+  cursor: pointer;
+  transition: stroke 0.12s ease, filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered [data-et="message"]:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered [data-et="message"].sequence-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="note"] {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="note"]:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="note"].sequence-selected {
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+
+/* Add-message mode: crosshair cursor on the rendered area, pulse
+   hint on participants (so the user sees they're the click targets). */
+.mermaid-block-editor.mermaid-add-message-mode .mermaid-rendered {
+  cursor: crosshair;
+}
+.mermaid-block-editor.mermaid-add-message-mode .mermaid-rendered g[data-et="participant"] {
+  animation: mermaidConnectPulse 1.4s ease-in-out infinite;
+}
+/* The FROM participant once picked: solid glow instead of pulse. */
+.mermaid-block-editor.mermaid-add-message-mode
+  .mermaid-rendered g[data-et="participant"].sequence-pending-from {
+  animation: none;
+  filter: drop-shadow(0 0 10px var(--accent));
+}
+
+/* Sequence-actions floating bar — positioned by the component itself
+   (`top: 8px; right: 8px`); these rules just polish the visual. */
+.mermaid-sequence-actions-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mermaid-sequence-actions-host > .mermaid-sequence-actions {
+  pointer-events: auto;
+}
+
+/* Pop-over hosts for sequence popovers — same pattern as the flowchart
+   ones; we expand the existing pointer-events allow-list to cover the
+   new popovers without rewriting the existing rule. */
+.mermaid-popover-host > .mermaid-participant-popover,
+.mermaid-popover-host > .mermaid-message-popover,
+.mermaid-popover-host > .mermaid-note-popover {
+  pointer-events: auto;
+}
