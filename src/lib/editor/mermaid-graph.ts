@@ -3,15 +3,34 @@
 // then serializes back to mermaid source on every change.
 //
 // Shape names match the mermaid syntax we support:
-//   rect    -> A[label]
-//   rounded -> A(label)
-//   circle  -> A((label))
-//   diamond -> A{label}
+//   rect          -> A[label]
+//   rounded       -> A(label)
+//   circle        -> A((label))
+//   diamond       -> A{label}
+//   hexagon       -> A{{label}}
+//   cylinder      -> A[(label)]
+//   stadium       -> A([label])
+//   parallelogram -> A[/label/]
+//
+// Edge styles map to mermaid's link variants:
+//   arrow  -> A --> B   (default if style is undefined)
+//   line   -> A --- B
+//   dotted -> A -.-> B
+//   thick  -> A ==> B
 //
 // Direction matches mermaid's directives:
 //   TD/TB (top-down), LR (left-right), BT (bottom-up), RL (right-left)
 
-export type MermaidShape = 'rect' | 'rounded' | 'circle' | 'diamond';
+export type MermaidShape =
+  | 'rect'
+  | 'rounded'
+  | 'circle'
+  | 'diamond'
+  | 'hexagon'
+  | 'cylinder'
+  | 'stadium'
+  | 'parallelogram';
+export type EdgeStyle = 'arrow' | 'line' | 'dotted' | 'thick';
 export type MermaidDirection = 'TD' | 'LR' | 'BT' | 'RL';
 
 export interface MermaidNode {
@@ -24,6 +43,7 @@ export interface MermaidEdge {
   from: string;
   to: string;
   label?: string;
+  style?: EdgeStyle;
 }
 
 export interface MermaidGraph {
@@ -113,6 +133,17 @@ export function setEdgeLabel(
   if (index < 0 || index >= graph.edges.length) return graph;
   const edges = [...graph.edges];
   edges[index] = { ...edges[index], label };
+  return { ...graph, edges };
+}
+
+export function setEdgeStyle(
+  graph: MermaidGraph,
+  index: number,
+  style: EdgeStyle,
+): MermaidGraph {
+  if (index < 0 || index >= graph.edges.length) return graph;
+  const edges = [...graph.edges];
+  edges[index] = { ...edges[index], style };
   return { ...graph, edges };
 }
 

@@ -50,4 +50,52 @@ describe('mermaid serializer', () => {
       'flowchart TD\nA["has [brackets] inside"]\n',
     );
   });
+
+  it('emits each new shape correctly', () => {
+    let g = emptyGraph();
+    g = addNode(g, { shape: 'hexagon', label: 'h' }).graph;
+    g = addNode(g, { shape: 'cylinder', label: 'c' }).graph;
+    g = addNode(g, { shape: 'stadium', label: 's' }).graph;
+    g = addNode(g, { shape: 'parallelogram', label: 'p' }).graph;
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA{{h}}\nB[(c)]\nC([s])\nD[/p/]\n',
+    );
+  });
+
+  it('emits each edge style correctly', () => {
+    let g = emptyGraph();
+    const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
+    const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
+    // edge 0: default (arrow)
+    g = addEdge(g, { from: a.id, to: b.id });
+    // edge 1: line
+    g = addEdge(g, { from: a.id, to: b.id, style: 'line' });
+    // edge 2: dotted
+    g = addEdge(g, { from: a.id, to: b.id, style: 'dotted' });
+    // edge 3: thick
+    g = addEdge(g, { from: a.id, to: b.id, style: 'thick' });
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\n',
+    );
+  });
+
+  it('emits labelled non-arrow edges correctly', () => {
+    let g = emptyGraph();
+    const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
+    const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
+    g = addEdge(g, { from: a.id, to: b.id, label: 'maybe', style: 'dotted' });
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA[A]\nB[B]\nA -.->|maybe| B\n',
+    );
+  });
+
+  it('does not emit explicit "arrow" style — it is the default', () => {
+    let g = emptyGraph();
+    const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
+    const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
+    g = addEdge(g, { from: a.id, to: b.id, style: 'arrow' });
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA[A]\nB[B]\nA --> B\n',
+    );
+  });
 });

@@ -6,8 +6,12 @@
   import Trash from 'phosphor-svelte/lib/Trash';
   import Plus from 'phosphor-svelte/lib/Plus';
   import type { Readable } from 'svelte/store';
+  import type { MermaidShape } from '../lib/editor/mermaid-graph';
 
-  type Shape = 'rect' | 'rounded' | 'circle' | 'diamond';
+  // Aliased to keep the rest of the component terse. Widened in Phase
+  // 2f Task 1 to match MermaidShape (8 shapes); the buttons rendered
+  // here still cover the original 4 — Task 3 adds the rest.
+  type Shape = MermaidShape;
 
   // Props are sourced from a Svelte store so the NodeView (plain TS,
   // outside any Svelte component context) can update them imperatively
