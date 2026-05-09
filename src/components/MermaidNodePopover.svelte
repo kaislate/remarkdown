@@ -3,6 +3,12 @@
   import Rectangle from 'phosphor-svelte/lib/Rectangle';
   import Circle from 'phosphor-svelte/lib/Circle';
   import Diamond from 'phosphor-svelte/lib/Diamond';
+  import Hexagon from 'phosphor-svelte/lib/Hexagon';
+  import Cylinder from 'phosphor-svelte/lib/Cylinder';
+  // phosphor-svelte does not ship `OvalVertical`; `Pill` is the closest
+  // visual match for mermaid's stadium/terminator shape (rounded pill).
+  import Pill from 'phosphor-svelte/lib/Pill';
+  import Parallelogram from 'phosphor-svelte/lib/Parallelogram';
   import Trash from 'phosphor-svelte/lib/Trash';
   import Plus from 'phosphor-svelte/lib/Plus';
   import type { Readable } from 'svelte/store';
@@ -123,6 +129,26 @@
         title="Diamond" aria-label="Diamond"
         onmousedown={(e) => e.preventDefault()} onclick={() => current!.onShapeChange('diamond')}>
         <Diamond size={14} />
+      </button>
+      <button type="button" class="mermaid-shape-btn" class:active={current.shape === 'hexagon'}
+        title="Hexagon" aria-label="Hexagon"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onShapeChange('hexagon')}>
+        <Hexagon size={14} />
+      </button>
+      <button type="button" class="mermaid-shape-btn" class:active={current.shape === 'cylinder'}
+        title="Cylinder (database)" aria-label="Cylinder (database)"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onShapeChange('cylinder')}>
+        <Cylinder size={14} />
+      </button>
+      <button type="button" class="mermaid-shape-btn" class:active={current.shape === 'stadium'}
+        title="Stadium (terminator)" aria-label="Stadium"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onShapeChange('stadium')}>
+        <Pill size={14} />
+      </button>
+      <button type="button" class="mermaid-shape-btn" class:active={current.shape === 'parallelogram'}
+        title="Parallelogram (input/output)" aria-label="Parallelogram"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onShapeChange('parallelogram')}>
+        <Parallelogram size={14} />
       </button>
     </div>
     <button type="button" class="mermaid-popover-action"
