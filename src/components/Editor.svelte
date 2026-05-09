@@ -4,7 +4,7 @@
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
   import { TextSelection } from 'prosemirror-state';
-  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid } from '../lib/editor/view';
+  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram } from '../lib/editor/view';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
@@ -166,6 +166,8 @@
       insertTable(3, 2)(v.state, v.dispatch);
     } else if (action === 'mermaid') {
       insertMermaid()(v.state, v.dispatch);
+    } else if (action === 'sequence') {
+      insertSequenceDiagram()(v.state, v.dispatch);
     }
     v.focus();
   }
