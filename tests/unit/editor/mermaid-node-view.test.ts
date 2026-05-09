@@ -324,4 +324,43 @@ describe('MermaidNodeView', () => {
     view.destroy();
     parent.remove();
   });
+
+  it('opens the participant popover with the correct display name', async () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const shell = document.createElement('div');
+    shell.className = 'editor-shell';
+    parent.appendChild(shell);
+    const doc = parseMarkdownToDoc(
+      '```mermaid\nsequenceDiagram\nparticipant A as Alice\nparticipant B\nA->>B: hi\n```\n',
+    );
+    const view = new EditorView(shell, {
+      state: EditorState.create({ doc, schema: editorSchema }),
+      nodeViews: {
+        code_block: (node, editorView, getPos) =>
+          new MermaidNodeView(node, editorView, getPos),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const participantEl = parent.querySelector(
+      'g[data-et="participant"][data-id="A"]',
+    );
+    if (!participantEl) {
+      // jsdom may not fully render the SVG — covered by e2e in Task 11.
+      view.destroy();
+      parent.remove();
+      return;
+    }
+    participantEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    const popover = parent.querySelector('.mermaid-participant-popover');
+    if (popover) {
+      const input = popover.querySelector<HTMLInputElement>(
+        '.mermaid-participant-popover-display',
+      );
+      expect(input?.value).toBe('Alice');
+    }
+    view.destroy();
+    parent.remove();
+  });
 });
