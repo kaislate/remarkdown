@@ -1,6 +1,11 @@
 <script lang="ts">
   import Trash from 'phosphor-svelte/lib/Trash';
+  import ArrowRight from 'phosphor-svelte/lib/ArrowRight';
+  import Minus from 'phosphor-svelte/lib/Minus';
+  import DotsThree from 'phosphor-svelte/lib/DotsThree';
+  import ArrowFatRight from 'phosphor-svelte/lib/ArrowFatRight';
   import type { Readable } from 'svelte/store';
+  import type { EdgeStyle } from '../lib/editor/mermaid-graph';
 
   // Props are sourced from a Svelte store so the NodeView (plain TS,
   // outside any Svelte component context) can update them imperatively
@@ -10,7 +15,9 @@
     x: number;
     y: number;
     label: string;
+    style: EdgeStyle;
     onLabelChange: (label: string) => void;
+    onStyleChange: (style: EdgeStyle) => void;
     onDelete: () => void;
     onClose: () => void;
   }
@@ -84,6 +91,28 @@
       onkeydown={onKey}
       placeholder="Label (optional)"
     />
+    <div class="mermaid-edge-style-row">
+      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'arrow'}
+        title="Solid arrow" aria-label="Solid arrow"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('arrow')}>
+        <ArrowRight size={14} />
+      </button>
+      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'line'}
+        title="Solid line, no arrow" aria-label="Solid line"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('line')}>
+        <Minus size={14} />
+      </button>
+      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'dotted'}
+        title="Dotted arrow (optional)" aria-label="Dotted arrow"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('dotted')}>
+        <DotsThree size={14} />
+      </button>
+      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'thick'}
+        title="Thick arrow (emphasis)" aria-label="Thick arrow"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('thick')}>
+        <ArrowFatRight size={14} />
+      </button>
+    </div>
     <button
       type="button"
       class="mermaid-edge-popover-delete"
@@ -140,5 +169,27 @@
   .mermaid-edge-popover-delete:hover {
     background: var(--bg-2);
     color: var(--danger, #f0a0a0);
+  }
+  .mermaid-edge-style-row {
+    display: flex;
+    gap: 2px;
+  }
+  .mermaid-edge-style-btn {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--fg-1);
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .mermaid-edge-style-btn:hover {
+    background: var(--bg-2);
+    color: var(--fg-0);
+  }
+  .mermaid-edge-style-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 </style>

@@ -2,19 +2,34 @@
 // then edges. The serializer is the source of truth for the
 // `parse(emit(parse(text))) === parse(text)` round-trip property —
 // keep it minimal and stable so future additions don't drift.
-import type { MermaidGraph, MermaidNode, MermaidShape } from './mermaid-graph';
+import type { MermaidGraph, MermaidNode, MermaidShape, EdgeStyle } from './mermaid-graph';
 
 const OPEN: Record<MermaidShape, string> = {
   rect: '[',
   rounded: '(',
   circle: '((',
   diamond: '{',
+  hexagon: '{{',
+  cylinder: '[(',
+  stadium: '([',
+  parallelogram: '[/',
 };
 const CLOSE: Record<MermaidShape, string> = {
   rect: ']',
   rounded: ')',
   circle: '))',
   diamond: '}',
+  hexagon: '}}',
+  cylinder: ')]',
+  stadium: '])',
+  parallelogram: '/]',
+};
+
+const EDGE_DELIM: Record<EdgeStyle, string> = {
+  arrow: '-->',
+  line: '---',
+  dotted: '-.->',
+  thick: '==>',
 };
 
 // Reserved-ish characters that force us to wrap the label in double
@@ -42,10 +57,11 @@ export function serializeMermaid(graph: MermaidGraph): string {
     lines.push(emitNode(node));
   }
   for (const edge of graph.edges) {
+    const delim = EDGE_DELIM[edge.style ?? 'arrow'];
     if (edge.label) {
-      lines.push(`${edge.from} -->|${edge.label}| ${edge.to}`);
+      lines.push(`${edge.from} ${delim}|${edge.label}| ${edge.to}`);
     } else {
-      lines.push(`${edge.from} --> ${edge.to}`);
+      lines.push(`${edge.from} ${delim} ${edge.to}`);
     }
   }
   return lines.join('\n') + '\n';

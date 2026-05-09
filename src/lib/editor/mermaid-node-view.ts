@@ -23,9 +23,11 @@ import {
   setNodeShape,
   deleteNode,
   setEdgeLabel,
+  setEdgeStyle,
   deleteEdge,
   type MermaidGraph,
   type MermaidShape,
+  type EdgeStyle,
 } from './mermaid-graph';
 import { serializeMermaid } from './mermaid-serializer';
 
@@ -79,15 +81,17 @@ const HIDDEN_POPOVER_STATE: PopoverState = {
   onClose: () => {},
 };
 
-// Edge popover mirrors the node popover but smaller — just label +
-// delete. Same store-backed pattern so the input keeps focus across
-// re-renders.
+// Edge popover mirrors the node popover but smaller — label, style
+// picker (4 styles: arrow / line / dotted / thick), delete. Same
+// store-backed pattern so the input keeps focus across re-renders.
 interface EdgePopoverState {
   visible: boolean;
   x: number;
   y: number;
   label: string;
+  style: EdgeStyle;
   onLabelChange: (label: string) => void;
+  onStyleChange: (style: EdgeStyle) => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -97,7 +101,9 @@ const HIDDEN_EDGE_POPOVER_STATE: EdgePopoverState = {
   x: 0,
   y: 0,
   label: '',
+  style: 'arrow',
   onLabelChange: () => {},
+  onStyleChange: () => {},
   onDelete: () => {},
   onClose: () => {},
 };
@@ -774,7 +780,9 @@ export class MermaidNodeView implements NodeView {
       x,
       y,
       label: edge.label ?? '',
+      style: edge.style ?? 'arrow',
       onLabelChange: (label) => this.handleEdgeLabelChange(index, label),
+      onStyleChange: (style) => this.handleEdgeStyleChange(index, style),
       onDelete: () => this.handleDeleteEdge(index),
       onClose: () => this.closeEdgePopover(),
     });
@@ -787,6 +795,13 @@ export class MermaidNodeView implements NodeView {
   private handleEdgeLabelChange(index: number, label: string): void {
     if (!this.graph) return;
     const newGraph = setEdgeLabel(this.graph, index, label);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+  }
+
+  private handleEdgeStyleChange(index: number, style: EdgeStyle): void {
+    if (!this.graph) return;
+    const newGraph = setEdgeStyle(this.graph, index, style);
     this.graph = newGraph;
     this.commitGraphChange(serializeMermaid(newGraph));
   }
