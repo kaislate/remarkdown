@@ -16,6 +16,7 @@ import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
 import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
 import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import { parseMermaid } from './mermaid-parser';
+import { detectDiagramType, type MermaidDiagramType } from './mermaid-detect';
 import {
   addNode,
   addEdge,
@@ -138,6 +139,11 @@ export class MermaidNodeView implements NodeView {
   // by edit handlers to mutate -> serialize -> commit. null when the
   // current source doesn't parse (fallback mode); edit ops no-op then.
   private graph: MermaidGraph | null = null;
+  // Diagram type detected from the source, refreshed in renderFromNode.
+  // The wireClickHandlers dispatch only runs flowchart-specific routing
+  // when this is 'flowchart'; sequence (Tasks 2-8) and unsupported
+  // diagrams skip the popover wiring.
+  private diagramType: MermaidDiagramType = 'unsupported';
   // Single popover instance, mounted once and updated via the store.
   // Keeping it mounted (rather than re-mounting on every selection)
   // preserves the input's focus/caret while typing.
@@ -257,76 +263,83 @@ export class MermaidNodeView implements NodeView {
       const target = e.target as Element | null;
       if (!target) return;
 
-      // Connect mode (Task 7): clicks pick a target for a new edge,
-      // or fall through to cancel. We check this BEFORE the normal
-      // selection paths so that e.g. clicking an existing node while
-      // in connect-mode adds an edge instead of selecting it.
-      if (this.connectMode) {
+      // Diagram-type dispatch. Flowchart routing (node/edge selection,
+      // connect-mode) only applies to flowchart sources. Sequence
+      // (Tasks 4-8) and unsupported diagrams fall through with no
+      // popovers wired — sequence-specific click routing is Task 4's
+      // job, and unsupported diagrams stay render-only.
+      if (this.diagramType === 'flowchart') {
+        // Connect mode (Task 7): clicks pick a target for a new edge,
+        // or fall through to cancel. We check this BEFORE the normal
+        // selection paths so that e.g. clicking an existing node while
+        // in connect-mode adds an edge instead of selecting it.
+        if (this.connectMode) {
+          const nodeEl = target.closest(
+            'g.node[id*="flowchart-"]',
+          ) as SVGGElement | null;
+          if (nodeEl) {
+            const m = /flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
+            if (m) {
+              const targetId = m[1];
+              // Self-loop: silently ignore the click but exit connect-
+              // mode (no edge added). Either ignore-only or ignore+exit
+              // is acceptable per spec; exiting is less surprising.
+              if (targetId !== this.connectMode.sourceId && this.graph) {
+                const newGraph = addEdge(this.graph, {
+                  from: this.connectMode.sourceId,
+                  to: targetId,
+                });
+                this.graph = newGraph;
+                this.commitGraphChange(serializeMermaid(newGraph));
+              }
+              this.exitConnectMode();
+              e.stopPropagation();
+              return;
+            }
+          }
+          // Empty-area click in connect-mode: cancel without an edge.
+          this.exitConnectMode();
+          e.stopPropagation();
+          return;
+        }
+
         const nodeEl = target.closest(
           'g.node[id*="flowchart-"]',
         ) as SVGGElement | null;
         if (nodeEl) {
           const m = /flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
           if (m) {
-            const targetId = m[1];
-            // Self-loop: silently ignore the click but exit connect-
-            // mode (no edge added). Either ignore-only or ignore+exit
-            // is acceptable per spec; exiting is less surprising.
-            if (targetId !== this.connectMode.sourceId && this.graph) {
-              const newGraph = addEdge(this.graph, {
-                from: this.connectMode.sourceId,
-                to: targetId,
-              });
-              this.graph = newGraph;
-              this.commitGraphChange(serializeMermaid(newGraph));
-            }
-            this.exitConnectMode();
+            this.selectGraphNode(m[1]);
             e.stopPropagation();
             return;
           }
         }
-        // Empty-area click in connect-mode: cancel without an edge.
-        this.exitConnectMode();
-        e.stopPropagation();
-        return;
-      }
-
-      const nodeEl = target.closest(
-        'g.node[id*="flowchart-"]',
-      ) as SVGGElement | null;
-      if (nodeEl) {
-        const m = /flowchart-([A-Za-z][A-Za-z0-9_]*)/.exec(nodeEl.id);
-        if (m) {
-          this.selectGraphNode(m[1]);
-          e.stopPropagation();
-          return;
+        // Edge detection. Mermaid 11 emits two clickable surfaces per edge:
+        //   1. The path: `<path class="flowchart-link" id="${diagramId}-L_A_B_0"
+        //      data-id="L_A_B_0">`
+        //   2. The label: `<g class="edgeLabel">` containing
+        //      `<g class="label" data-id="L_A_B_0">` wrapping a <foreignObject>.
+        //      Clicks on the "Yes"/"No" text land somewhere inside the
+        //      foreignObject (a <span>), which is a sibling of the path —
+        //      walking up via `path.flowchart-link` would never find it.
+        // Both surfaces carry a `data-id="L_${from}_${to}_${counter}"` (NOTE:
+        // underscores, not dashes — this differs from mermaid's `flowchart-A-0`
+        // node ids which DO use dashes). The previous selector matched
+        // `[id*="L-"]` and never fired in the browser. Match by data-id, which
+        // works for both the path and the label container.
+        const edgeWithDataId = target.closest('[data-id^="L_"]') as Element | null;
+        if (edgeWithDataId) {
+          const dataId = edgeWithDataId.getAttribute('data-id') ?? '';
+          const m = /^L_([A-Za-z][A-Za-z0-9_]*)_([A-Za-z][A-Za-z0-9_]*)_/.exec(dataId);
+          if (m) {
+            this.selectGraphEdge(m[1], m[2]);
+            e.stopPropagation();
+            return;
+          }
         }
+        // Click on empty diagram area — clear selection.
+        this.clearSelection();
       }
-      // Edge detection. Mermaid 11 emits two clickable surfaces per edge:
-      //   1. The path: `<path class="flowchart-link" id="${diagramId}-L_A_B_0"
-      //      data-id="L_A_B_0">`
-      //   2. The label: `<g class="edgeLabel">` containing
-      //      `<g class="label" data-id="L_A_B_0">` wrapping a <foreignObject>.
-      //      Clicks on the "Yes"/"No" text land somewhere inside the
-      //      foreignObject (a <span>), which is a sibling of the path —
-      //      walking up via `path.flowchart-link` would never find it.
-      // Both surfaces carry a `data-id="L_${from}_${to}_${counter}"` (NOTE:
-      // underscores, not dashes — this differs from mermaid's `flowchart-A-0`
-      // node ids which DO use dashes). The previous selector matched
-      // `[id*="L-"]` and never fired in the browser. Match by data-id, which
-      // works for both the path and the label container.
-      const edgeWithDataId = target.closest('[data-id^="L_"]') as Element | null;
-      if (edgeWithDataId) {
-        const dataId = edgeWithDataId.getAttribute('data-id') ?? '';
-        const m = /^L_([A-Za-z][A-Za-z0-9_]*)_([A-Za-z][A-Za-z0-9_]*)_/.exec(dataId);
-        if (m) {
-          this.selectGraphEdge(m[1], m[2]);
-          e.stopPropagation();
-          return;
-        }
-      }
-      // Click on empty diagram area — clear selection.
-      this.clearSelection();
     });
   }
 
@@ -485,11 +498,32 @@ export class MermaidNodeView implements NodeView {
 
   private async renderFromNode(node: Node): Promise<void> {
     const source = node.textContent;
-    const parsed = parseMermaid(source);
-    if (parsed.ok) {
-      this.graph = parsed.graph;
-      this.dom.classList.remove('mermaid-fallback');
+    const type = detectDiagramType(source);
+    this.diagramType = type;
+
+    // Track whether the flowchart parser succeeded so the empty-state
+    // placeholder check below can still see it. Sequence + unsupported
+    // skip the parser entirely and never show the placeholder.
+    let flowchartParsed: ReturnType<typeof parseMermaid> | null = null;
+
+    if (type === 'flowchart') {
+      flowchartParsed = parseMermaid(source);
+      if (flowchartParsed.ok) {
+        this.graph = flowchartParsed.graph;
+        this.dom.classList.remove('mermaid-fallback');
+      } else {
+        this.graph = null;
+        this.dom.classList.add('mermaid-fallback');
+      }
+    } else if (type === 'sequence') {
+      // Sequence parser lands in Task 3. For now, sequence diagrams
+      // render but aren't visually editable — same as the flowchart
+      // fallback path, just with a different reason.
+      this.graph = null;
+      this.dom.classList.add('mermaid-fallback');
     } else {
+      // Unsupported diagram type (classDiagram, gantt, legacy `graph`,
+      // etc.): render via mermaid as fallback, no editing.
       this.graph = null;
       this.dom.classList.add('mermaid-fallback');
     }
@@ -499,7 +533,7 @@ export class MermaidNodeView implements NodeView {
     // shape" affordance instead. mermaid would render an empty SVG and
     // there's nothing for the user to click; the placeholder gives them
     // an entry point that opens the node popover for a brand-new node.
-    if (parsed.ok && parsed.graph.nodes.size === 0) {
+    if (flowchartParsed?.ok && flowchartParsed.graph.nodes.size === 0) {
       // Any popover/banner from a previous render would now be orphaned —
       // there are no SVG nodes left to anchor against.
       this.clearSelection();
