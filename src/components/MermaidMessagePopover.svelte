@@ -4,6 +4,7 @@
   import DotsThree from 'phosphor-svelte/lib/DotsThree';
   import ArrowFatRight from 'phosphor-svelte/lib/ArrowFatRight';
   import Trash from 'phosphor-svelte/lib/Trash';
+  import Plus from 'phosphor-svelte/lib/Plus';
   import type { Readable } from 'svelte/store';
   import type { MessageStyle } from '../lib/editor/mermaid-sequence-graph';
 
@@ -20,6 +21,10 @@
     onTextChange: (text: string) => void;
     onStyleChange: (style: MessageStyle) => void;
     onDelete: () => void;
+    // "+ after" button (Task 8 of Phase 2g) — adds a new message right
+    // below the current one with the same style and empty text, then
+    // opens the new message's popover so the user can type immediately.
+    onAddAfter: () => void;
     onClose: () => void;
   }
 
@@ -119,6 +124,17 @@
     </div>
     <button
       type="button"
+      class="mermaid-message-popover-add-after"
+      title="Add message after"
+      aria-label="Add message after"
+      onmousedown={(e) => e.preventDefault()}
+      onclick={() => current!.onAddAfter()}
+    >
+      <Plus size={14} />
+      <span>after</span>
+    </button>
+    <button
+      type="button"
       class="mermaid-message-popover-delete"
       title="Delete message"
       aria-label="Delete message"
@@ -181,6 +197,23 @@
   .mermaid-message-style-btn.active {
     background: var(--accent-soft);
     color: var(--accent);
+  }
+  .mermaid-message-popover-add-after {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: transparent;
+    border: 0;
+    color: var(--fg-1);
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 11px;
+  }
+  .mermaid-message-popover-add-after:hover {
+    background: var(--bg-2);
+    color: var(--fg-0);
   }
   .mermaid-message-popover-delete {
     display: inline-flex;

@@ -18,14 +18,18 @@ import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import MermaidParticipantPopover from '../../components/MermaidParticipantPopover.svelte';
 import MermaidMessagePopover from '../../components/MermaidMessagePopover.svelte';
 import MermaidNotePopover from '../../components/MermaidNotePopover.svelte';
+import MermaidSequenceActions from '../../components/MermaidSequenceActions.svelte';
 import { parseMermaid } from './mermaid-parser';
 import { parseSequence } from './mermaid-sequence-parser';
 import {
+  addParticipant,
   setParticipantDisplay,
   deleteParticipant,
+  addMessage,
   setMessageText,
   setMessageStyle,
   deleteMessage,
+  addNote,
   setNoteText,
   setNotePosition,
   deleteNote,
@@ -174,6 +178,7 @@ interface MessagePopoverState {
   onTextChange: (text: string) => void;
   onStyleChange: (style: MessageStyle) => void;
   onDelete: () => void;
+  onAddAfter: () => void;
   onClose: () => void;
 }
 
@@ -186,6 +191,7 @@ const HIDDEN_MESSAGE_POPOVER_STATE: MessagePopoverState = {
   onTextChange: () => {},
   onStyleChange: () => {},
   onDelete: () => {},
+  onAddAfter: () => {},
   onClose: () => {},
 };
 
@@ -240,6 +246,31 @@ const HIDDEN_BANNER_STATE: BannerState = {
   visible: false,
   onAddNewNode: () => {},
   onCancel: () => {},
+};
+
+// Floating action-bar state (Task 8 of Phase 2g). The bar lives over
+// the rendered SVG and exposes "+ Participant" / "+ Message" / "+ Note"
+// entry points. Visibility is conditional on diagram type + participant
+// count: hidden when in flowchart / unsupported / fallback / empty
+// states (the empty-state placeholder handles the empty case itself).
+interface ActionsState {
+  visible: boolean;
+  canAddParticipant: boolean;
+  canAddMessage: boolean;
+  canAddNote: boolean;
+  onAddParticipant: () => void;
+  onAddMessage: () => void;
+  onAddNote: () => void;
+}
+
+const HIDDEN_ACTIONS_STATE: ActionsState = {
+  visible: false,
+  canAddParticipant: false,
+  canAddMessage: false,
+  canAddNote: false,
+  onAddParticipant: () => {},
+  onAddMessage: () => {},
+  onAddNote: () => {},
 };
 
 export class MermaidNodeView implements NodeView {
@@ -308,6 +339,18 @@ export class MermaidNodeView implements NodeView {
   private connectBannerStore: Writable<BannerState>;
   private connectBannerInstance: ReturnType<typeof mount> | null = null;
   private escListener: ((e: KeyboardEvent) => void) | null = null;
+  // Add-message mode (Task 8 of Phase 2g). Two-step: first click on a
+  // participant header records FROM; second click records TO and
+  // commits a new message + opens its popover. Esc / empty-area click
+  // cancels. Reuses the connectBanner store for visual feedback (a slight
+  // semantic stretch — banner copy is generic enough).
+  private addMessageMode: { from: string | null } | null = null;
+  // Floating action bar (Task 8 of Phase 2g) — hosts "+ Participant" /
+  // "+ Message" / "+ Note" buttons. Visibility + per-button enablement
+  // are recomputed in refreshActionsBar after every render.
+  private sequenceActionsHost: HTMLElement;
+  private sequenceActionsStore: Writable<ActionsState>;
+  private sequenceActionsInstance: ReturnType<typeof mount> | null = null;
 
   constructor(
     node: Node,
@@ -375,6 +418,12 @@ export class MermaidNodeView implements NodeView {
     // UI events, not PM input.
     const connectBannerHost = document.createElement('div');
     connectBannerHost.className = 'mermaid-popover-host mermaid-connect-banner-host';
+    // Action-bar host (Task 8 of Phase 2g). Same shared host class so
+    // stopEvent / ignoreMutation gates apply — clicks on the bar are
+    // real UI events, not PM input.
+    const sequenceActionsHost = document.createElement('div');
+    sequenceActionsHost.className =
+      'mermaid-popover-host mermaid-sequence-actions-host';
 
     wrap.appendChild(rendered);
     wrap.appendChild(pre);
@@ -384,6 +433,7 @@ export class MermaidNodeView implements NodeView {
     wrap.appendChild(messagePopoverHost);
     wrap.appendChild(notePopoverHost);
     wrap.appendChild(connectBannerHost);
+    wrap.appendChild(sequenceActionsHost);
 
     this.dom = wrap;
     this.contentDOM = code;
@@ -394,6 +444,7 @@ export class MermaidNodeView implements NodeView {
     this.messagePopoverHost = messagePopoverHost;
     this.notePopoverHost = notePopoverHost;
     this.connectBannerHost = connectBannerHost;
+    this.sequenceActionsHost = sequenceActionsHost;
 
     // Mount the popovers once. We update their state via the stores so
     // the inputs keep focus/caret across re-renders.
@@ -432,6 +483,13 @@ export class MermaidNodeView implements NodeView {
     this.connectBannerInstance = mount(MermaidConnectBanner, {
       target: this.connectBannerHost,
       props: { stateStore: this.connectBannerStore },
+    });
+    this.sequenceActionsStore = writable<ActionsState>({
+      ...HIDDEN_ACTIONS_STATE,
+    });
+    this.sequenceActionsInstance = mount(MermaidSequenceActions, {
+      target: this.sequenceActionsHost,
+      props: { stateStore: this.sequenceActionsStore },
     });
 
     // Wire click delegation once on the rendered container. Subsequent
@@ -525,6 +583,64 @@ export class MermaidNodeView implements NodeView {
         // Click on empty diagram area — clear selection.
         this.clearSelection();
       } else if (this.diagramType === 'sequence') {
+        // Add-message mode (Task 8 of Phase 2g): clicks pick FROM, then
+        // TO — checked BEFORE normal selection routing so clicks on
+        // existing participants add a message instead of selecting.
+        if (this.addMessageMode && this.sequenceGraph) {
+          const pendingEl = target.closest(
+            'g[data-et="participant"]',
+          ) as Element | null;
+          if (pendingEl) {
+            const id = (pendingEl as HTMLElement).dataset.id ?? '';
+            if (id && this.sequenceGraph.participants.has(id)) {
+              if (this.addMessageMode.from === null) {
+                // Pick FROM. Highlight the picked participant header so
+                // the user can see what they chose.
+                this.addMessageMode = { from: id };
+                this.renderedEl
+                  .querySelectorAll('.sequence-pending-from')
+                  .forEach((el) => el.classList.remove('sequence-pending-from'));
+                pendingEl.classList.add('sequence-pending-from');
+                e.stopPropagation();
+                return;
+              }
+              // Pick TO. Self-messages (FROM === TO) are intentionally
+              // out of scope for this MVP — clicking the same participant
+              // a second time is a no-op (we keep the user in mode so
+              // they can pick a different TO).
+              if (id === this.addMessageMode.from) {
+                e.stopPropagation();
+                return;
+              }
+              const from = this.addMessageMode.from;
+              const eventsBefore = this.sequenceGraph.events.length;
+              const newGraph = addMessage(this.sequenceGraph, {
+                from,
+                to: id,
+                text: '',
+                style: 'arrow',
+              });
+              this.sequenceGraph = newGraph;
+              this.commitGraphChange(serializeSequence(newGraph));
+              this.exitAddMessageMode();
+              // Wait one tick for mermaid to re-render the new arrow
+              // before opening its popover, so the popover anchors to a
+              // real SVG rect.
+              setTimeout(() => {
+                const ev = this.sequenceGraph?.events[eventsBefore];
+                if (ev?.kind === 'message') {
+                  this.selectMessage(eventsBefore);
+                }
+              }, 50);
+              e.stopPropagation();
+              return;
+            }
+          }
+          // Empty-area click while in add-message mode: cancel.
+          this.exitAddMessageMode();
+          e.stopPropagation();
+          return;
+        }
         // Sequence-diagram routing (Task 4). Mermaid's sequenceDiagram
         // renderer tags every clickable element with `data-et`:
         //   - `g[data-et="participant"]`  →  participant header (data-id="A")
@@ -868,6 +984,14 @@ export class MermaidNodeView implements NodeView {
       }
       this.connectBannerInstance = null;
     }
+    if (this.sequenceActionsInstance) {
+      try {
+        unmount(this.sequenceActionsInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.sequenceActionsInstance = null;
+    }
   }
 
   private async renderFromNode(node: Node): Promise<void> {
@@ -936,6 +1060,36 @@ export class MermaidNodeView implements NodeView {
         this.createFirstNode();
       });
       this.renderedEl.appendChild(placeholder);
+      // Keep the action-bar hidden in flowchart empty-state.
+      this.refreshActionsBar();
+      return;
+    }
+
+    // Empty sequence diagram (e.g. fresh `sequenceDiagram\n` from the
+    // toolbar): same idea as the flowchart placeholder above. Show a
+    // "+ Add first participant" button instead of a participant-less
+    // SVG (which mermaid renders as a near-empty sliver). The action-
+    // bar stays hidden in this state too — the placeholder is the entry
+    // point.
+    if (
+      type === 'sequence' &&
+      this.sequenceGraph &&
+      this.sequenceGraph.participants.size === 0
+    ) {
+      this.clearSequenceSelection();
+      this.renderedEl.innerHTML = '';
+      const placeholder = document.createElement('button');
+      placeholder.type = 'button';
+      placeholder.className = 'mermaid-empty-state';
+      placeholder.textContent = '+ Add first participant';
+      placeholder.addEventListener('mousedown', (e) => e.preventDefault());
+      placeholder.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleAddParticipant();
+      });
+      this.renderedEl.appendChild(placeholder);
+      this.refreshActionsBar();
       return;
     }
 
@@ -992,6 +1146,9 @@ export class MermaidNodeView implements NodeView {
           this.clearSequenceSelection();
         }
       }
+      // Refresh the action-bar AFTER the SVG paint so visibility +
+      // canAddMessage track the latest participant count.
+      this.refreshActionsBar();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.renderedEl.innerHTML = '';
@@ -999,6 +1156,9 @@ export class MermaidNodeView implements NodeView {
       errBox.className = 'mermaid-error';
       errBox.textContent = `Mermaid error: ${msg}`;
       this.renderedEl.appendChild(errBox);
+      // Keep the action-bar hidden when mermaid threw — bare error text
+      // means there's no diagram to add to.
+      this.refreshActionsBar();
     }
   }
 
@@ -1354,6 +1514,7 @@ export class MermaidNodeView implements NodeView {
       onTextChange: (text) => this.handleMessageTextChange(index, text),
       onStyleChange: (style) => this.handleMessageStyleChange(index, style),
       onDelete: () => this.handleDeleteMessage(index),
+      onAddAfter: () => this.handleAddMessageAfter(index),
       onClose: () => this.closeMessagePopover(),
     });
   }
@@ -1493,5 +1654,145 @@ export class MermaidNodeView implements NodeView {
     // event index.
     this.sequenceSelected = null;
     this.dom.classList.remove('mermaid-has-selection');
+  }
+
+  // Add-element handlers for sequence diagrams (Task 8 of Phase 2g).
+  // Mirrors the flowchart `createFirstNode` / `addNewNodeInConnectMode`
+  // pattern: mutate the graph, commit through PM, then schedule a
+  // popover-open after a short delay so mermaid has a tick to re-render
+  // and the popover can anchor against the new SVG element.
+
+  // Refresh the action-bar state from the current sequenceGraph. Called
+  // at the end of every sequence render. The bar is hidden in the
+  // empty-state (the placeholder serves the entry point), in flowchart
+  // mode, and in unsupported / fallback mode.
+  private refreshActionsBar(): void {
+    if (this.diagramType !== 'sequence' || !this.sequenceGraph) {
+      this.sequenceActionsStore.set({ ...HIDDEN_ACTIONS_STATE });
+      return;
+    }
+    const pCount = this.sequenceGraph.participants.size;
+    this.sequenceActionsStore.set({
+      visible: pCount > 0, // hidden in empty-state — the placeholder owns that
+      canAddParticipant: true,
+      canAddMessage: pCount >= 2,
+      canAddNote: pCount >= 1,
+      onAddParticipant: () => this.handleAddParticipant(),
+      onAddMessage: () => this.enterAddMessageMode(),
+      onAddNote: () => this.handleAddNote(),
+    });
+  }
+
+  // One-click: add an empty-display participant, then open its popover
+  // so the user types a display name immediately. The id-generation in
+  // mermaid-sequence-graph picks A, B, C, ... so the new id is fresh.
+  private handleAddParticipant(): void {
+    if (!this.sequenceGraph) return;
+    const result = addParticipant(this.sequenceGraph, { display: '' });
+    this.sequenceGraph = result.graph;
+    this.commitGraphChange(serializeSequence(this.sequenceGraph));
+    setTimeout(() => {
+      if (this.sequenceGraph?.participants.has(result.id)) {
+        this.selectParticipant(result.id);
+      }
+    }, 50);
+  }
+
+  // One-click: add a leftOf-positioned note on the first participant
+  // with empty text, then open its popover so the user can edit the
+  // text / position / second participant.
+  private handleAddNote(): void {
+    if (!this.sequenceGraph) return;
+    const firstId = Array.from(this.sequenceGraph.participants.keys())[0];
+    if (!firstId) return;
+    // The new note will be appended (addNote pushes onto events), so
+    // its index is the current length.
+    const newIndex = this.sequenceGraph.events.length;
+    const newGraph = addNote(this.sequenceGraph, {
+      participants: [firstId],
+      position: 'leftOf',
+      text: '',
+    });
+    this.sequenceGraph = newGraph;
+    this.commitGraphChange(serializeSequence(newGraph));
+    setTimeout(() => {
+      const ev = this.sequenceGraph?.events[newIndex];
+      if (ev?.kind === 'note') {
+        this.selectNote(newIndex);
+      }
+    }, 50);
+  }
+
+  // Two-step: enter add-message mode. The next click on a participant
+  // header records FROM; the click after that records TO and commits a
+  // new message. Esc / empty-area click cancels. Reuses the connect-
+  // banner store for visual feedback (a slight semantic stretch — the
+  // banner copy "Click a node to connect" is generic enough for now).
+  private enterAddMessageMode(): void {
+    if (!this.sequenceGraph) return;
+    this.addMessageMode = { from: null };
+    this.dom.classList.add('mermaid-add-message-mode');
+    // Mutually exclusive with every popover.
+    this.closePopover();
+    this.closeEdgePopover();
+    this.closeParticipantPopover();
+    this.closeMessagePopover();
+    this.closeNotePopover();
+    this.connectBannerStore.set({
+      visible: true,
+      onAddNewNode: () => {
+        // Not applicable in sequence add-message mode — the banner's
+        // "+ Add new node" button would need its own copy/UX. For now
+        // make it a no-op.
+      },
+      onCancel: () => this.exitAddMessageMode(),
+    });
+    this.escListener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && this.addMessageMode) {
+        e.preventDefault();
+        this.exitAddMessageMode();
+      }
+    };
+    document.addEventListener('keydown', this.escListener);
+  }
+
+  private exitAddMessageMode(): void {
+    this.addMessageMode = null;
+    this.dom.classList.remove('mermaid-add-message-mode');
+    this.connectBannerStore.set({ ...HIDDEN_BANNER_STATE });
+    // Clear any "pending FROM" highlight from the SVG.
+    this.renderedEl
+      .querySelectorAll('.sequence-pending-from')
+      .forEach((el) => el.classList.remove('sequence-pending-from'));
+    if (this.escListener) {
+      document.removeEventListener('keydown', this.escListener);
+      this.escListener = null;
+    }
+  }
+
+  // "+ after" entry point on the message popover. Inserts a new message
+  // at index+1 (right below the current one) with the SAME from/to/style
+  // and empty text, so the user only has to type the text. Open the new
+  // popover after re-render.
+  private handleAddMessageAfter(index: number): void {
+    if (!this.sequenceGraph) return;
+    const ev = this.sequenceGraph.events[index];
+    if (!ev || ev.kind !== 'message') return;
+    const events = [...this.sequenceGraph.events];
+    events.splice(index + 1, 0, {
+      kind: 'message',
+      from: ev.from,
+      to: ev.to,
+      text: '',
+      style: ev.style,
+    });
+    this.sequenceGraph = { ...this.sequenceGraph, events };
+    this.commitGraphChange(serializeSequence(this.sequenceGraph));
+    setTimeout(() => {
+      const newEv = this.sequenceGraph?.events[index + 1];
+      if (newEv?.kind === 'message') {
+        this.selectMessage(index + 1);
+      }
+    }, 50);
   }
 }
