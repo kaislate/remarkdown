@@ -5,6 +5,7 @@
   import { toggleMark } from 'prosemirror-commands';
   import { TextSelection } from 'prosemirror-state';
   import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram } from '../lib/editor/view';
+  import { insertFootnote } from '../lib/editor/footnote-commands';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
@@ -164,6 +165,8 @@
       insertTaskList()(v.state, v.dispatch);
     } else if (action === 'table') {
       insertTable(3, 2)(v.state, v.dispatch);
+    } else if (action === 'footnote') {
+      insertFootnote(v.state, v.dispatch);
     } else if (action === 'mermaid') {
       insertMermaid()(v.state, v.dispatch);
     } else if (action === 'sequence') {

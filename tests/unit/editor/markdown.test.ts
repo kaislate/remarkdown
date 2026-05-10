@@ -70,6 +70,31 @@ describe('markdown round-trip', () => {
     const src = 'Mix H~2~O and E=mc^2^.\n';
     expect(roundTrip(src)).toBe(src);
   });
+
+  it('preserves a single footnote round-trip', () => {
+    const src = 'Some claim.[^1]\n\n[^1]: Citation here.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves named-label footnotes', () => {
+    const src = 'See above.[^note]\n\n[^note]: Long form citation.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves multiple footnotes in document order', () => {
+    const src = 'A[^a] then B[^b].\n\n[^a]: First.\n\n[^b]: Second.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('dedupes a footnote referenced twice', () => {
+    const src = 'Mention[^x] and remention[^x].\n\n[^x]: Body.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves multi-paragraph footnote bodies with 4-space continuation', () => {
+    const src = 'See.[^p]\n\n[^p]: First paragraph.\n\n    Second paragraph.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
 });
 
 import { createEditorView } from '../../../src/lib/editor/view';

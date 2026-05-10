@@ -3,10 +3,11 @@
   import Code from 'phosphor-svelte/lib/Code';
   import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
   import Table from 'phosphor-svelte/lib/Table';
+  import Asterisk from 'phosphor-svelte/lib/Asterisk';
   import FlowArrow from 'phosphor-svelte/lib/FlowArrow';
   import CaretDown from 'phosphor-svelte/lib/CaretDown';
 
-  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'mermaid' | 'sequence' | 'image';
+  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'footnote' | 'mermaid' | 'sequence' | 'image';
 
   interface Props {
     onInsert: (action: ToolbarAction) => void;
@@ -71,6 +72,18 @@
   >
     <Table size={18} weight="regular" />
     <span class="label">Table</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="footnote"
+    title="Insert footnote"
+    aria-label="Insert footnote"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('footnote')}
+  >
+    <Asterisk size={18} weight="regular" />
+    <span class="label">Footnote</span>
   </button>
   <details class="toolbar-dropdown">
     <summary

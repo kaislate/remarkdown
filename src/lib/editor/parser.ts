@@ -19,6 +19,8 @@ import { calloutsPlugin } from '../markdown-it-callouts';
 import { tasksPlugin } from '../markdown-it-tasks';
 import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
+import footnotePlugin from 'markdown-it-footnote';
+import { footnoteAttachBodyPlugin } from './parser-footnote';
 import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
@@ -32,6 +34,8 @@ md.use(calloutsPlugin);
 md.use(tasksPlugin);
 md.use(subPlugin);
 md.use(supPlugin);
+md.use(footnotePlugin);
+md.use(footnoteAttachBodyPlugin);
 
 // Rename `blockquote_open`/`blockquote_close` tokens to `callout_open`/
 // `callout_close` whenever calloutsPlugin marked them. We track a stack
@@ -109,6 +113,16 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
   sub: { mark: 'sub' },
   // Superscript: markdown-it-sup emits `sup_open` / `sup_close` for `^text^`.
   sup: { mark: 'sup' },
+  // Footnote: markdown-it-footnote emits `footnote_ref` tokens; our
+  // core rule (parser-footnote.ts) attaches `meta.body` so we can
+  // store the definition's text alongside the label here.
+  footnote_ref: {
+    node: 'footnote',
+    getAttrs: (tok: Token) => ({
+      label: String(tok.meta?.label ?? ''),
+      body: String((tok.meta as { body?: string } | undefined)?.body ?? ''),
+    }),
+  },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {
