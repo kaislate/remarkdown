@@ -16,28 +16,8 @@
 
 import { defaultMarkdownSerializer, MarkdownSerializer, MarkdownSerializerState } from 'prosemirror-markdown';
 import type { Node } from 'prosemirror-model';
-
-// prosemirror-markdown's dist .d.ts marks the MarkdownSerializerState
-// constructor, `nodes`, `marks`, and `out` as @internal (stripped during
-// the d.ts build), even though they exist at runtime and are required
-// for spawning a sub-state to render a single cell to a string buffer.
-// This typed shim re-exposes them so the table serializer below can
-// instantiate a sub-state and read its accumulated output without
-// triggering svelte-check / tsc errors.
-type MarkdownSerializerStateInternals = MarkdownSerializerState & {
-  out: string;
-  // The shapes here mirror the runtime types declared in
-  // node_modules/prosemirror-markdown/src/to_markdown.ts (lines 187-193).
-  nodes: { [name: string]: (state: MarkdownSerializerState, node: Node, parent: Node, index: number) => void };
-  marks: Record<string, unknown>;
-};
-type MarkdownSerializerStateCtor = new (
-  nodes: MarkdownSerializerStateInternals['nodes'],
-  marks: MarkdownSerializerStateInternals['marks'],
-  options: MarkdownSerializerState['options'],
-) => MarkdownSerializerStateInternals;
-const MarkdownSerializerStateImpl =
-  MarkdownSerializerState as unknown as MarkdownSerializerStateCtor;
+import { MarkdownSerializerStateImpl } from './serializer-internals';
+import type { MarkdownSerializerStateInternals } from './serializer-internals';
 
 // Composes the [!type][fold] title line that opens a callout block.
 function calloutHeader(node: Node): string {
