@@ -26,19 +26,31 @@ const NOTE_PREFIX: Record<NotePosition, string> = {
 
 function emitParticipant(p: Participant): string {
   if (!p.display) return `participant ${p.id}`;
-  return `participant ${p.id} as ${p.display}`;
+  return `participant ${p.id} as ${flat(p.display)}`;
+}
+
+// Strip newlines from text fields before they reach a single-line
+// mermaid statement. Without this, any stray \n in a message or note
+// text turns into a serialized line break that mermaid then reads as
+// the next statement — and since the next statement is invariably
+// gibberish from the parser's POV, it errors out (we saw reports of
+// "Expecting 'TXT', got 'NEWLINE'" with glued-together event lines).
+// Replace with a single space so user content stays readable.
+function flat(text: string): string {
+  return text.replace(/\r?\n+/g, ' ');
 }
 
 function emitMessage(m: MessageEvent): string {
   const arrow = MESSAGE_DELIM[m.style];
-  if (m.text) return `${m.from}${arrow}${m.to}: ${m.text}`;
+  const text = flat(m.text);
+  if (text) return `${m.from}${arrow}${m.to}: ${text}`;
   return `${m.from}${arrow}${m.to}`;
 }
 
 function emitNote(n: NoteEvent): string {
   const prefix = NOTE_PREFIX[n.position];
   const targets = n.participants.join(',');
-  return `${prefix} ${targets}: ${n.text}`;
+  return `${prefix} ${targets}: ${flat(n.text)}`;
 }
 
 export function serializeSequence(graph: SequenceGraph): string {

@@ -88,4 +88,46 @@ describe('sequence serializer', () => {
       'sequenceDiagram\nparticipant A\nparticipant B as Bob\n',
     );
   });
+
+  // Defensive: text fields must never produce a serialized line break,
+  // even if a stray \n leaks into the graph (e.g., paste, future
+  // multi-line UI). Without this every event after the offender would
+  // be glued to the line below in mermaid's eyes, producing parse
+  // errors like "Expecting 'TXT', got 'NEWLINE'".
+  it('flattens newlines in message text to spaces', () => {
+    let g = emptySequenceGraph();
+    const a = addParticipant(g, { display: 'A' }); g = a.graph;
+    const b = addParticipant(g, { display: 'B' }); g = b.graph;
+    g = addMessage(g, { from: a.id, to: b.id, text: 'line one\nline two', style: 'arrow' });
+    g = addMessage(g, { from: b.id, to: a.id, text: '', style: 'reply' });
+    const out = serializeSequence(g);
+    expect(out).toContain('A->>B: line one line two\n');
+    expect(out).toContain('\nB-->>A\n');
+    // Confirm: every non-empty line is exactly one statement.
+    const lines = out.split('\n').filter(Boolean);
+    expect(lines).toEqual([
+      'sequenceDiagram',
+      'participant A as A',
+      'participant B as B',
+      'A->>B: line one line two',
+      'B-->>A',
+    ]);
+  });
+
+  it('flattens newlines in note text to spaces', () => {
+    let g = emptySequenceGraph();
+    const a = addParticipant(g, { display: 'A' }); g = a.graph;
+    g = addNote(g, { participants: [a.id], position: 'leftOf', text: 'first\nsecond' });
+    expect(serializeSequence(g)).toBe(
+      'sequenceDiagram\nparticipant A as A\nNote left of A: first second\n',
+    );
+  });
+
+  it('flattens newlines in participant display to spaces', () => {
+    let g = emptySequenceGraph();
+    g = addParticipant(g, { display: 'Long\nname' }).graph;
+    expect(serializeSequence(g)).toBe(
+      'sequenceDiagram\nparticipant A as Long name\n',
+    );
+  });
 });

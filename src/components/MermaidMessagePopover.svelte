@@ -128,7 +128,7 @@
       title="Add message after"
       aria-label="Add message after"
       onmousedown={(e) => e.preventDefault()}
-      onclick={() => current!.onAddAfter()}
+      onclick={() => { commitText(); current!.onAddAfter(); }}
     >
       <Plus size={14} />
       <span>after</span>
