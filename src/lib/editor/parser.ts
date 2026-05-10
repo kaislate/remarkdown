@@ -19,6 +19,8 @@ import { calloutsPlugin } from '../markdown-it-callouts';
 import { tasksPlugin } from '../markdown-it-tasks';
 import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
+import footnotePlugin from 'markdown-it-footnote';
+import { footnoteAttachBodyPlugin } from './parser-footnote';
 import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
@@ -32,6 +34,8 @@ md.use(calloutsPlugin);
 md.use(tasksPlugin);
 md.use(subPlugin);
 md.use(supPlugin);
+md.use(footnotePlugin);
+md.use(footnoteAttachBodyPlugin);
 
 // Rename `blockquote_open`/`blockquote_close` tokens to `callout_open`/
 // `callout_close` whenever calloutsPlugin marked them. We track a stack
