@@ -130,14 +130,19 @@ const table = (state: MarkdownSerializerState, node: Node) => {
   const colCount = Math.max(...matrix.map((r) => r.length));
   // Pad each row to colCount so the matrix is rectangular.
   for (const r of matrix) while (r.length < colCount) r.push('');
-  // Per-column widths are fixed at 1 — NOT max-of-column. GFM accepts
-  // single-dash separators, and the canonical round-trip shape from
-  // markdown-it's table parser uses single-space cell padding without
-  // column alignment. Wider content (e.g. `**a**`) is left as-is by
-  // padEnd(1) (which is a no-op when the string is already longer);
-  // empty cells get padded to a single space so `|   |` stays well-
-  // formed; the separator row is always `-` per column.
-  const widths: number[] = new Array(colCount).fill(1);
+  // Per-column width = max of every cell's rendered length in that
+  // column, floored at 3 so the separator row always has at least
+  // `---` (some markdown parsers require ≥3 dashes; markdown-it
+  // accepts shorter, but 3 is the de-facto convention). Content rows
+  // pad with trailing spaces to the column width so the output reads
+  // as a clean rectangle. GFM strips this padding on parse, so the
+  // round-trip property still holds.
+  const widths: number[] = new Array(colCount).fill(3);
+  for (const r of matrix) {
+    for (let c = 0; c < colCount; c++) {
+      if (r[c].length > widths[c]) widths[c] = r[c].length;
+    }
+  }
   const renderRow = (r: string[]) =>
     '| ' + r.map((c, i) => c.padEnd(widths[i])).join(' | ') + ' |';
   const sepRow =
