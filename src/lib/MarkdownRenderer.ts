@@ -2,6 +2,8 @@ import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
+import subPlugin from 'markdown-it-sub';
+import supPlugin from 'markdown-it-sup';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
@@ -21,6 +23,8 @@ const md = new MarkdownIt({
   .use(footnote)
   .use(taskLists, { enabled: true, label: false })
   .use(katex.default ?? katex)
+  .use(subPlugin)
+  .use(supPlugin)
   .use(calloutsPlugin);
 
 // Matches fenced mermaid blocks specifically (before Shiki touches them).
