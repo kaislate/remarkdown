@@ -90,17 +90,21 @@
       tableMenu = { ...tableMenu, visible: false };
       return;
     }
-    // Coordinates just inside the table's open token. coordsAtPos is
-    // viewport-relative; subtract the editor-shell rect (the bubble's
-    // containing block — see updateBubble) to get shell-local coords.
-    const coords = v.coordsAtPos(ps.active.tablePos + 1);
+    // Use the table's actual DOM bounding rect to center the menu
+    // horizontally over the table — view.nodeDOM returns the rendered
+    // <table> element; its rect gives us a true center, not the
+    // approximation that coordsAtPos(tablePos + 1) yields (which is
+    // anchored at the first cell's left edge).
+    const tableEl = v.nodeDOM(ps.active.tablePos);
+    if (!(tableEl instanceof HTMLElement)) {
+      tableMenu = { ...tableMenu, visible: false };
+      return;
+    }
+    const tableRect = tableEl.getBoundingClientRect();
     const shellEl = parentEl?.closest<HTMLElement>('.editor-shell');
     const shellRect = shellEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
-    // Approximate horizontal centering — true centering needs the
-    // table's actual width. 100px right of the left edge is a
-    // reasonable v1 anchor; refined in Task 10 if needed.
-    const x = coords.left - shellRect.left + 100;
-    const y = coords.top - shellRect.top;
+    const x = tableRect.left - shellRect.left + tableRect.width / 2;
+    const y = tableRect.top - shellRect.top;
     tableMenu = { visible: true, x, y };
   }
 
