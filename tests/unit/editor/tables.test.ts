@@ -54,22 +54,51 @@ describe('table round-trip', () => {
 
   it('round-trips a 2x2 table', () => {
     const src = '| A | B |\n| - | - |\n| 1 | 2 |\n';
-    expect(rt(src)).toBe(src);
+    // After Phase 2j: max col widths are 1 each, padded to a 3-dash
+    // separator minimum so the table reads as a clean rectangle.
+    const expected = '| A   | B   |\n| --- | --- |\n| 1   | 2   |\n';
+    expect(rt(src)).toBe(expected);
   });
 
   it('round-trips a 3x3 table', () => {
     const src = '| a | b | c |\n| - | - | - |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n';
-    expect(rt(src)).toBe(src);
+    const expected = '| a   | b   | c   |\n| --- | --- | --- |\n| 1   | 2   | 3   |\n| 4   | 5   | 6   |\n';
+    expect(rt(src)).toBe(expected);
   });
 
   it('round-trips a table with empty cells', () => {
     const src = '| a | b |\n| - | - |\n|   | 2 |\n';
-    expect(rt(src)).toBe(src);
+    const expected = '| a   | b   |\n| --- | --- |\n|     | 2   |\n';
+    expect(rt(src)).toBe(expected);
   });
 
   it('round-trips a table with inline marks (bold, italic, code)', () => {
     const src = '| **a** | *b* |\n| - | - |\n| `c` | d |\n';
-    expect(rt(src)).toBe(src);
+    // Col 0 max width = max(`**a**`(5), `-`(1), `` `c` ``(3)) = 5
+    // Col 1 max width = max(`*b*`(3), `-`(1), `d`(1)) = 3
+    const expected = '| **a** | *b* |\n| ----- | --- |\n| `c`   | d   |\n';
+    expect(rt(src)).toBe(expected);
+  });
+
+  it('aligns columns when content widths differ across rows', () => {
+    const src = '| short | a-very-long-header |\n| - | - |\n| ok | tiny |\n';
+    const out = rt(src);
+    // Column 0 width = max("short"(5), "-"(1), "ok"(2)) = 5
+    // Column 1 width = max("a-very-long-header"(18), "-"(1), "tiny"(4)) = 18
+    expect(out).toBe(
+      '| short | a-very-long-header |\n' +
+      '| ----- | ------------------ |\n' +
+      '| ok    | tiny               |\n',
+    );
+  });
+
+  it('separator row uses at least 3 dashes per column', () => {
+    const src = '| a | b |\n| - | - |\n| x | y |\n';
+    const out = rt(src);
+    // Both columns have max content width 1, but the separator row
+    // forces a minimum of 3 dashes — content rows pad to match.
+    expect(out).toContain('| --- | --- |');
+    expect(out).toContain('| a   | b   |');
   });
 });
 

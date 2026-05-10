@@ -16,28 +16,8 @@
 
 import { defaultMarkdownSerializer, MarkdownSerializer, MarkdownSerializerState } from 'prosemirror-markdown';
 import type { Node } from 'prosemirror-model';
-
-// prosemirror-markdown's dist .d.ts marks the MarkdownSerializerState
-// constructor, `nodes`, `marks`, and `out` as @internal (stripped during
-// the d.ts build), even though they exist at runtime and are required
-// for spawning a sub-state to render a single cell to a string buffer.
-// This typed shim re-exposes them so the table serializer below can
-// instantiate a sub-state and read its accumulated output without
-// triggering svelte-check / tsc errors.
-type MarkdownSerializerStateInternals = MarkdownSerializerState & {
-  out: string;
-  // The shapes here mirror the runtime types declared in
-  // node_modules/prosemirror-markdown/src/to_markdown.ts (lines 187-193).
-  nodes: { [name: string]: (state: MarkdownSerializerState, node: Node, parent: Node, index: number) => void };
-  marks: Record<string, unknown>;
-};
-type MarkdownSerializerStateCtor = new (
-  nodes: MarkdownSerializerStateInternals['nodes'],
-  marks: MarkdownSerializerStateInternals['marks'],
-  options: MarkdownSerializerState['options'],
-) => MarkdownSerializerStateInternals;
-const MarkdownSerializerStateImpl =
-  MarkdownSerializerState as unknown as MarkdownSerializerStateCtor;
+import { MarkdownSerializerStateImpl } from './serializer-internals';
+import type { MarkdownSerializerStateInternals } from './serializer-internals';
 
 // Composes the [!type][fold] title line that opens a callout block.
 function calloutHeader(node: Node): string {
@@ -130,14 +110,19 @@ const table = (state: MarkdownSerializerState, node: Node) => {
   const colCount = Math.max(...matrix.map((r) => r.length));
   // Pad each row to colCount so the matrix is rectangular.
   for (const r of matrix) while (r.length < colCount) r.push('');
-  // Per-column widths are fixed at 1 — NOT max-of-column. GFM accepts
-  // single-dash separators, and the canonical round-trip shape from
-  // markdown-it's table parser uses single-space cell padding without
-  // column alignment. Wider content (e.g. `**a**`) is left as-is by
-  // padEnd(1) (which is a no-op when the string is already longer);
-  // empty cells get padded to a single space so `|   |` stays well-
-  // formed; the separator row is always `-` per column.
-  const widths: number[] = new Array(colCount).fill(1);
+  // Per-column width = max of every cell's rendered length in that
+  // column, floored at 3 so the separator row always has at least
+  // `---` (some markdown parsers require ≥3 dashes; markdown-it
+  // accepts shorter, but 3 is the de-facto convention). Content rows
+  // pad with trailing spaces to the column width so the output reads
+  // as a clean rectangle. GFM strips this padding on parse, so the
+  // round-trip property still holds.
+  const widths: number[] = new Array(colCount).fill(3);
+  for (const r of matrix) {
+    for (let c = 0; c < colCount; c++) {
+      if (r[c].length > widths[c]) widths[c] = r[c].length;
+    }
+  }
   const renderRow = (r: string[]) =>
     '| ' + r.map((c, i) => c.padEnd(widths[i])).join(' | ') + ' |';
   const sepRow =
