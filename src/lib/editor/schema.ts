@@ -147,6 +147,45 @@ const listItemNode: NodeSpec = {
   },
 };
 
+// Footnote inline reference. Stores the definition body as a plain-text
+// `body` attr. We DO NOT model the body as PM content because editing
+// rich inline marks inside a popover is finicky and the user's product
+// framing ("markdown for people who don't know markdown") doesn't need
+// it. The body string round-trips verbatim — markdown-it-footnote
+// re-tokenizes it in read mode, so any inline markup the user types
+// (like `**bold**`) renders correctly when read.
+//
+// `atom: true` makes PM treat the node as opaque: the cursor steps over
+// it like a single character, no contentEditable propagation needed.
+const footnoteNode: NodeSpec = {
+  attrs: {
+    label: { default: '' },
+    body: { default: '' },
+  },
+  inline: true,
+  group: 'inline',
+  atom: true,
+  draggable: false,
+  parseDOM: [
+    {
+      tag: 'sup.footnote-ref',
+      getAttrs: (dom: HTMLElement) => ({
+        label: dom.getAttribute('data-label') || '',
+        body: dom.getAttribute('data-body') || '',
+      }),
+    },
+  ],
+  toDOM(node) {
+    const label = String(node.attrs.label);
+    const body = String(node.attrs.body);
+    return [
+      'sup',
+      { class: 'footnote-ref', 'data-label': label, 'data-body': body },
+      ['a', { href: `#fn-${label}` }, `[${label}]`],
+    ];
+  },
+};
+
 // OrderedMap.update() REPLACES the spec wholesale rather than merging,
 // so `codeBlockNode` must be a complete NodeSpec — fields like
 // `marks: ''`, `content: 'text*'`, `code: true`, etc. are restated on
@@ -155,6 +194,7 @@ const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
   .update('list_item', listItemNode)
   .addBefore('blockquote', 'callout', calloutNode)
+  .addToEnd('footnote', footnoteNode)
   .addToEnd('table', tableNodes.table)
   .addToEnd('table_row', tableNodes.table_row)
   .addToEnd('table_cell', tableNodes.table_cell)

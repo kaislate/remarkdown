@@ -203,4 +203,33 @@ describe('editorSchema', () => {
     const sup = editorSchema.marks.sup.spec.toDOM!({} as never, false);
     expect(sup).toEqual(['sup', 0]);
   });
+
+  it('defines footnote node', () => {
+    expect(editorSchema.nodes.footnote).toBeDefined();
+  });
+
+  it('footnote node is inline atom', () => {
+    const fn = editorSchema.nodes.footnote;
+    expect(fn.isInline).toBe(true);
+    expect(fn.isAtom).toBe(true);
+    expect(fn.isLeaf).toBe(true);
+  });
+
+  it('footnote node carries label and body attrs', () => {
+    const node = editorSchema.nodes.footnote.create({ label: '1', body: 'Hello' });
+    expect(node.attrs.label).toBe('1');
+    expect(node.attrs.body).toBe('Hello');
+  });
+
+  it('footnote toDOM emits sup.footnote-ref with data attrs', () => {
+    const node = editorSchema.nodes.footnote.create({ label: 'note', body: 'Body text' });
+    const out = editorSchema.nodes.footnote.spec.toDOM!(node);
+    // Shape: ['sup', { class, data-label, data-body }, ['a', { href }, '[label]']]
+    expect(Array.isArray(out)).toBe(true);
+    const arr = out as unknown as [string, Record<string, string>, unknown];
+    expect(arr[0]).toBe('sup');
+    expect(arr[1].class).toBe('footnote-ref');
+    expect(arr[1]['data-label']).toBe('note');
+    expect(arr[1]['data-body']).toBe('Body text');
+  });
 });
