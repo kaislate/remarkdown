@@ -581,3 +581,63 @@ body.reattach-mode .reader-mode-toggle {
 .mermaid-popover-host > .mermaid-note-popover {
   pointer-events: auto;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Footnotes (Phase 2i)
+   ─────────────────────────────────────────────────────────────────
+   Inline reference: <sup class="footnote-ref">[1]</sup> — wrapping
+   an <a href="#fn-1"> with bracketed numeric/textual label. Render
+   as a small superscript pill that's clearly clickable but doesn't
+   take much vertical space.
+
+   Definition section: read-mode emits
+       <hr class="footnotes-sep">
+       <section class="footnotes">
+         <ol class="footnotes-list">
+           <li id="fn-1" class="footnote-item">
+             <p>Body text <a class="footnote-backref">↩︎</a></p>
+           </li>
+         </ol>
+       </section>
+   Style the <hr>, the <ol>, and tighten up the backref arrow. */
+.md-rendered sup.footnote-ref {
+  font-size: 0.85em;
+  vertical-align: super;
+  line-height: 0;
+}
+.md-rendered sup.footnote-ref a {
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: background 0.12s ease;
+}
+.md-rendered sup.footnote-ref a:hover {
+  background: var(--accent-soft);
+}
+.md-rendered hr.footnotes-sep {
+  margin: 32px 0 16px;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+}
+.md-rendered section.footnotes {
+  font-size: 0.92em;
+  color: var(--fg-1);
+}
+.md-rendered ol.footnotes-list {
+  padding-left: 24px;
+}
+.md-rendered .footnote-item p {
+  margin: 4px 0;
+}
+.md-rendered a.footnote-backref {
+  color: var(--accent);
+  text-decoration: none;
+  margin-left: 4px;
+  font-size: 0.9em;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+}
+.md-rendered a.footnote-backref:hover {
+  opacity: 1;
+}
