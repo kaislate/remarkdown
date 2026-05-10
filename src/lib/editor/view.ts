@@ -22,6 +22,7 @@ import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
 import { MermaidNodeView } from './mermaid-node-view';
 import { TaskItemNodeView } from './task-item-node-view';
+import { FootnoteNodeView } from './footnote-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 import { tabInTable } from './table-commands';
 import { createTableActionsPlugin } from './table-actions-plugin';
@@ -177,6 +178,8 @@ export function createEditorView(
       },
       list_item: (node, editorView, getPos) =>
         new TaskItemNodeView(node, editorView, getPos),
+      footnote: (node, editorView, getPos) =>
+        new FootnoteNodeView(node, editorView, getPos),
     },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);
