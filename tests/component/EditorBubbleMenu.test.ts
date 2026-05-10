@@ -44,4 +44,36 @@ describe('EditorBubbleMenu', () => {
     expect(container.querySelector('[data-mark="code"]')?.getAttribute('aria-pressed')).toBe('false');
     expect(container.querySelector('[data-mark="link"]')?.getAttribute('aria-pressed')).toBe('false');
   });
+
+  it('renders sub and sup mark buttons when visible', () => {
+    const { container } = render(EditorBubbleMenu, {
+      props: { visible: true, x: 0, y: 0, onMark: () => {}, onApplyLink: () => {}, activeMarks: new Set(), linkHref: '' },
+    });
+    expect(container.querySelector('[data-mark="sub"]')).not.toBeNull();
+    expect(container.querySelector('[data-mark="sup"]')).not.toBeNull();
+  });
+
+  it('clicking sub button calls onMark("sub")', async () => {
+    const onMark = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorBubbleMenu, {
+      props: { visible: true, x: 0, y: 0, onMark, onApplyLink: () => {}, activeMarks: new Set(), linkHref: '' },
+    });
+    const btn = container.querySelector('[data-mark="sub"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onMark).toHaveBeenCalledWith('sub');
+    cleanup();
+  });
+
+  it('clicking sup button calls onMark("sup")', async () => {
+    const onMark = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorBubbleMenu, {
+      props: { visible: true, x: 0, y: 0, onMark, onApplyLink: () => {}, activeMarks: new Set(), linkHref: '' },
+    });
+    const btn = container.querySelector('[data-mark="sup"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onMark).toHaveBeenCalledWith('sup');
+    cleanup();
+  });
 });
