@@ -130,4 +130,50 @@ describe('sequence serializer', () => {
       'sequenceDiagram\nparticipant A as Long name\n',
     );
   });
+
+  // Defense in depth: if a text field somehow accumulates a glued
+  // statement (we've seen "X->>Y" appear inside a message text in the
+  // wild without being able to reproduce the upstream mutation),
+  // truncate at the glue point so mermaid can still render the line.
+  it('truncates message text at an embedded arrow statement', () => {
+    let g = emptySequenceGraph();
+    const a = addParticipant(g, { display: 'A' }); g = a.graph;
+    const b = addParticipant(g, { display: 'B' }); g = b.graph;
+    g = addMessage(g, {
+      from: a.id,
+      to: b.id,
+      text: '"latest update available"B->>A',
+      style: 'arrow',
+    });
+    g = addMessage(g, { from: b.id, to: a.id, text: '', style: 'reply' });
+    const out = serializeSequence(g);
+    // First message keeps the visible text up to the glue; the trailing
+    // arrow-shaped substring is dropped. Second message renders cleanly
+    // on its own line.
+    expect(out).toContain('A->>B: "latest update available"\n');
+    expect(out).toContain('\nB-->>A\n');
+    const lines = out.split('\n').filter(Boolean);
+    expect(lines).toEqual([
+      'sequenceDiagram',
+      'participant A as A',
+      'participant B as B',
+      'A->>B: "latest update available"',
+      'B-->>A',
+    ]);
+  });
+
+  it('keeps text intact when no arrow shape is present', () => {
+    let g = emptySequenceGraph();
+    const a = addParticipant(g, { display: 'A' }); g = a.graph;
+    const b = addParticipant(g, { display: 'B' }); g = b.graph;
+    g = addMessage(g, {
+      from: a.id,
+      to: b.id,
+      text: 'plain text with - dashes - but no arrow',
+      style: 'arrow',
+    });
+    expect(serializeSequence(g)).toContain(
+      'A->>B: plain text with - dashes - but no arrow\n',
+    );
+  });
 });
