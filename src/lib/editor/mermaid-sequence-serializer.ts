@@ -45,6 +45,7 @@ function emitParticipant(p: Participant): string {
 // document.
 const ARROW_RE = /[\s\S]*?(?=\s*[A-Za-z][A-Za-z0-9_]*\s*(?:-->>|-->|->>|->)\s*[A-Za-z])/;
 function flat(text: string): string {
+  const original = text;
   let out = text.replace(/\r?\n+/g, ' ');
   // If any arrow-shaped statement appears, drop everything from there
   // on. ARROW_RE captures the prefix (lazy) before the lookahead;
@@ -53,6 +54,18 @@ function flat(text: string): string {
   const m = ARROW_RE.exec(out);
   if (m && m[0].length < out.length) {
     out = m[0].trimEnd();
+  }
+  // Visible diagnostic when the defense actually engages — helps the
+  // user confirm they're running the latest build AND helps us locate
+  // the upstream mutation that put this content into the text field.
+  if (out !== original) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[mermaid-sequence-serializer] flat() rewrote text:',
+      JSON.stringify(original),
+      '→',
+      JSON.stringify(out),
+    );
   }
   return out;
 }
