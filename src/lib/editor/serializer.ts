@@ -167,11 +167,21 @@ const table_row = (_state: MarkdownSerializerState, _node: Node) => {};
 const table_cell = (_state: MarkdownSerializerState, _node: Node) => {};
 const table_header = (_state: MarkdownSerializerState, _node: Node) => {};
 
+// Footnote inline atom — emits `[^label]` at the reference site. The
+// definition body is appended to the doc tail by serializeDocToMarkdown
+// below (NOT here), since the def can't be inserted at the reference
+// position in the markdown stream.
+const footnote = (state: MarkdownSerializerState, node: Node) => {
+  const label = String(node.attrs.label || '');
+  state.write(`[^${label}]`);
+};
+
 const editorMarkdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
     callout,
     code_block,
+    footnote,
     list_item,
     table,
     table_row,
@@ -210,7 +220,41 @@ const editorMarkdownSerializer = new MarkdownSerializer(
 );
 
 export function serializeDocToMarkdown(doc: Node): string {
-  const out = editorMarkdownSerializer.serialize(doc);
+  let out = editorMarkdownSerializer.serialize(doc);
+
+  // Walk the doc once to collect footnote definitions in document
+  // order, deduped by label. The first occurrence wins — subsequent
+  // references to the same label keep referencing the same body so
+  // there's only ONE [^label]: ... block per label in the output.
+  const seen = new Set<string>();
+  const definitions: Array<{ label: string; body: string }> = [];
+  doc.descendants(node => {
+    if (node.type.name !== 'footnote') return;
+    const label = String(node.attrs.label || '');
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    definitions.push({ label, body: String(node.attrs.body || '') });
+  });
+
+  if (definitions.length > 0) {
+    if (!out.endsWith('\n')) out += '\n';
+    out += '\n'; // blank line between body and definitions
+    for (let d = 0; d < definitions.length; d++) {
+      const def = definitions[d];
+      // markdown-it-footnote requires continuation lines (paragraph 2+)
+      // to be indented by 4 spaces. Treat each \n\n as a paragraph break
+      // and indent every line after the first.
+      const lines = def.body.split('\n');
+      const indented = lines
+        .map((line, i) => (i === 0 ? line : line === '' ? '' : '    ' + line))
+        .join('\n');
+      out += `[^${def.label}]: ${indented}\n`;
+      // Blank line between definitions so each `[^label]:` block is
+      // its own paragraph for markdown-it-footnote to re-parse cleanly.
+      if (d < definitions.length - 1) out += '\n';
+    }
+  }
+
   // POSIX trailing newline (same convention as Phase 1's serializer).
   return out.endsWith('\n') ? out : out + '\n';
 }
