@@ -29,15 +29,32 @@ function emitParticipant(p: Participant): string {
   return `participant ${p.id} as ${flat(p.display)}`;
 }
 
-// Strip newlines from text fields before they reach a single-line
-// mermaid statement. Without this, any stray \n in a message or note
-// text turns into a serialized line break that mermaid then reads as
-// the next statement — and since the next statement is invariably
-// gibberish from the parser's POV, it errors out (we saw reports of
-// "Expecting 'TXT', got 'NEWLINE'" with glued-together event lines).
-// Replace with a single space so user content stays readable.
+// Strip anything that would terminate the current single-line mermaid
+// statement and start a new one. Two failure modes are guarded:
+//   1) a stray \n in text (e.g., paste, rune-state crossing) — without
+//      this every event after the offender is glued onto the line
+//      below in mermaid's eyes.
+//   2) an arrow-shaped substring inside text that mermaid's parser
+//      reads as a new message statement (e.g., text=`foo"B->>A`).
+//      We've seen this in the wild without being able to reproduce the
+//      upstream mutation; truncating at the first arrow keeps the
+//      visible text and discards the glued tail so mermaid can render.
+// The truncation is intentionally aggressive — losing the trailing
+// part of a text that legitimately contains `->>` is a worse-than-
+// usual edit experience but a far better failure mode than a broken
+// document.
+const ARROW_RE = /[\s\S]*?(?=\s*[A-Za-z][A-Za-z0-9_]*\s*(?:-->>|-->|->>|->)\s*[A-Za-z])/;
 function flat(text: string): string {
-  return text.replace(/\r?\n+/g, ' ');
+  let out = text.replace(/\r?\n+/g, ' ');
+  // If any arrow-shaped statement appears, drop everything from there
+  // on. ARROW_RE captures the prefix (lazy) before the lookahead;
+  // matching means there IS a glued statement; replace the whole input
+  // with just the prefix.
+  const m = ARROW_RE.exec(out);
+  if (m && m[0].length < out.length) {
+    out = m[0].trimEnd();
+  }
+  return out;
 }
 
 function emitMessage(m: MessageEvent): string {
