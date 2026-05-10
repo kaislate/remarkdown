@@ -17,6 +17,8 @@ import MarkdownIt from 'markdown-it';
 import { MarkdownParser, defaultMarkdownParser } from 'prosemirror-markdown';
 import { calloutsPlugin } from '../markdown-it-callouts';
 import { tasksPlugin } from '../markdown-it-tasks';
+import subPlugin from 'markdown-it-sub';
+import supPlugin from 'markdown-it-sup';
 import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
@@ -28,6 +30,8 @@ import type Token from 'markdown-it/lib/token.mjs';
 const md = MarkdownIt();
 md.use(calloutsPlugin);
 md.use(tasksPlugin);
+md.use(subPlugin);
+md.use(supPlugin);
 
 // Rename `blockquote_open`/`blockquote_close` tokens to `callout_open`/
 // `callout_close` whenever calloutsPlugin marked them. We track a stack
@@ -101,6 +105,10 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
   tbody: { ignore: true },
   // Strikethrough: markdown-it emits `s_open` / `s_close` for `~~text~~`.
   s: { mark: 'strike' },
+  // Subscript: markdown-it-sub emits `sub_open` / `sub_close` for `~text~`.
+  sub: { mark: 'sub' },
+  // Superscript: markdown-it-sup emits `sup_open` / `sup_close` for `^text^`.
+  sup: { mark: 'sup' },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {

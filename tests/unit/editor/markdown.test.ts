@@ -50,6 +50,26 @@ describe('markdown round-trip', () => {
     const src = 'A **bold** *italic* ~~strike~~ combo.\n';
     expect(roundTrip(src)).toBe(src);
   });
+
+  it('preserves subscript', () => {
+    const src = 'Water is H~2~O.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves superscript', () => {
+    const src = 'Einstein wrote E=mc^2^.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves subscript mixed with bold and italic', () => {
+    const src = 'A **bold** *italic* H~2~O combo.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  it('preserves both sub and sup in one line', () => {
+    const src = 'Mix H~2~O and E=mc^2^.\n';
+    expect(roundTrip(src)).toBe(src);
+  });
 });
 
 import { createEditorView } from '../../../src/lib/editor/view';
