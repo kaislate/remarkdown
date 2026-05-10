@@ -83,21 +83,32 @@ describe('EditorToolbar', () => {
     cleanup();
   });
 
-  it('has a mermaid (Diagram) button', () => {
+  it('renders the diagram dropdown with Flowchart and Sequence options', () => {
     const { container } = render(EditorToolbar, {
       props: { onInsert: () => {} },
     });
-    const btn = container.querySelector('.toolbar-btn[data-action="mermaid"]');
-    expect(btn).not.toBeNull();
+    expect(container.querySelector('[data-action="diagram-menu"]')).not.toBeNull();
+    expect(container.querySelector('[data-action="flowchart"]')).not.toBeNull();
+    expect(container.querySelector('[data-action="sequence"]')).not.toBeNull();
   });
 
-  it('clicking mermaid fires onInsert with the mermaid action', async () => {
+  it('clicking Flowchart fires onInsert("mermaid")', async () => {
     const onInsert = vi.fn();
     const user = userEvent.setup();
     const { container } = render(EditorToolbar, { props: { onInsert } });
-    const btn = container.querySelector('.toolbar-btn[data-action="mermaid"]') as HTMLButtonElement;
+    const btn = container.querySelector('[data-action="flowchart"]') as HTMLButtonElement;
     await user.click(btn);
     expect(onInsert).toHaveBeenCalledWith('mermaid');
+    cleanup();
+  });
+
+  it('clicking Sequence fires onInsert("sequence")', async () => {
+    const onInsert = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(EditorToolbar, { props: { onInsert } });
+    const btn = container.querySelector('[data-action="sequence"]') as HTMLButtonElement;
+    await user.click(btn);
+    expect(onInsert).toHaveBeenCalledWith('sequence');
     cleanup();
   });
 });

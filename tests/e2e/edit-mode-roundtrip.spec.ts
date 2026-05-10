@@ -478,11 +478,14 @@ test.describe('edit mode — mermaid', () => {
     const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'A paragraph.' });
     await para.click();
     await page.keyboard.press('End');
-    // The toolbar button sits behind the fixed menu-root nav bar (z-index:100);
-    // use DOM-native .click() to avoid blurring the PM selection (same workaround
-    // as the callout / code-block / task-list / table E2E tests above).
+    // The toolbar Diagram entry is now a <details> dropdown (Phase 2g
+    // Task 9). Open the dropdown, then click the Flowchart option. As
+    // with the other toolbar e2e tests, drive the clicks via the DOM
+    // so the PM selection isn't blurred.
     await page.evaluate(() => {
-      (document.querySelector('.toolbar-btn[data-action="mermaid"]') as HTMLElement | null)?.click();
+      const details = document.querySelector('.toolbar-dropdown') as HTMLDetailsElement | null;
+      if (details) details.open = true;
+      (document.querySelector('[data-action="flowchart"]') as HTMLElement | null)?.click();
     });
     // Wait for the autosave debounce to fire.
     await page.waitForTimeout(800);

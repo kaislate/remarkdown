@@ -6,6 +6,7 @@ import type { Command, EditorState, Transaction } from 'prosemirror-state';
 import { editorSchema } from './schema';
 
 const SEED_SOURCE = 'flowchart TD\n';
+const SEED_SEQUENCE_SOURCE = 'sequenceDiagram\n';
 
 export function insertMermaid(): Command {
   return (
@@ -24,6 +25,35 @@ export function insertMermaid(): Command {
       const block = codeBlockType.create(
         { language: 'mermaid' },
         state.schema.text(SEED_SOURCE),
+      );
+      const tr = state.tr.replaceRangeWith(range.start, range.end, block);
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+
+// Parallel to insertMermaid — same code_block + language: 'mermaid'
+// shape, only the seed text differs. The MermaidNodeView's
+// detectDiagramType (Task 1) inspects the source's first non-empty
+// line ("sequenceDiagram") and routes to the sequence parser/renderer.
+export function insertSequenceDiagram(): Command {
+  return (
+    state: EditorState,
+    dispatch?: (tr: Transaction) => void,
+  ): boolean => {
+    const codeBlockType = editorSchema.nodes.code_block;
+    if (!codeBlockType) return false;
+
+    const { $from } = state.selection;
+    if ($from.parent.type.name === 'code_block') return false;
+    const range = $from.blockRange();
+    if (!range) return false;
+
+    if (dispatch) {
+      const block = codeBlockType.create(
+        { language: 'mermaid' },
+        state.schema.text(SEED_SEQUENCE_SOURCE),
       );
       const tr = state.tr.replaceRangeWith(range.start, range.end, block);
       dispatch(tr.scrollIntoView());

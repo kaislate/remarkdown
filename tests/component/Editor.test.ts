@@ -27,8 +27,10 @@ describe('Editor.svelte toolbar inserts', () => {
     expect(
       container.querySelector('.toolbar-btn[data-action="insert-callout"]'),
     ).not.toBeNull();
+    // The Diagram dropdown replaced the single mermaid button in
+    // Phase 2g Task 9; it's a <summary> with data-action=diagram-menu.
     expect(
-      container.querySelector('.toolbar-btn[data-action="mermaid"]'),
+      container.querySelector('[data-action="diagram-menu"]'),
     ).not.toBeNull();
     // The mermaid NodeView mounted alongside.
     expect(container.querySelector('.mermaid-block-editor')).not.toBeNull();

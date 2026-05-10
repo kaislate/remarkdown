@@ -281,4 +281,4 @@ export function insertTaskList() {
 }
 
 export { insertTable } from './table-commands';
-export { insertMermaid } from './mermaid-commands';
+export { insertMermaid, insertSequenceDiagram } from './mermaid-commands';
