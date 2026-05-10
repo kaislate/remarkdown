@@ -64,3 +64,18 @@ function collectFootnoteRefs(tokens: ReturnType<MarkdownIt['parse']>) {
   }
   return out;
 }
+
+import { parseMarkdown } from '../../../src/lib/editor/markdown';
+
+describe('parseMarkdown footnote integration', () => {
+  it('parses footnote ref into an inline footnote node', () => {
+    const doc = parseMarkdown('Claim.[^1]\n\n[^1]: Body here.\n');
+    let found: { label: string; body: string } | null = null;
+    doc.descendants(node => {
+      if (node.type.name === 'footnote') {
+        found = { label: String(node.attrs.label), body: String(node.attrs.body) };
+      }
+    });
+    expect(found).toEqual({ label: '1', body: 'Body here.' });
+  });
+});

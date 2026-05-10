@@ -113,6 +113,16 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
   sub: { mark: 'sub' },
   // Superscript: markdown-it-sup emits `sup_open` / `sup_close` for `^text^`.
   sup: { mark: 'sup' },
+  // Footnote: markdown-it-footnote emits `footnote_ref` tokens; our
+  // core rule (parser-footnote.ts) attaches `meta.body` so we can
+  // store the definition's text alongside the label here.
+  footnote_ref: {
+    node: 'footnote',
+    getAttrs: (tok: Token) => ({
+      label: String(tok.meta?.label ?? ''),
+      body: String((tok.meta as { body?: string } | undefined)?.body ?? ''),
+    }),
+  },
 });
 
 export function parseMarkdownToDoc(markdown: string): Node {
