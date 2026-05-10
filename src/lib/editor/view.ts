@@ -111,6 +111,10 @@ export function createEditorView(
     'Mod-b': toggleMark(editorSchema.marks.strong),
     'Mod-i': toggleMark(editorSchema.marks.em),
     'Mod-`': toggleMark(editorSchema.marks.code),
+    // `Mod-,` and `Mod-.` for sub/sup — same convention as Google Docs.
+    // Matches the bubble-menu's Subscript / Superscript buttons.
+    'Mod-,': toggleMark(editorSchema.marks.sub),
+    'Mod-.': toggleMark(editorSchema.marks.sup),
     // Inside a code_block, Enter inserts a literal newline (don't split
     // the block); Mod-Enter exits to a fresh paragraph below; Tab and
     // Shift-Tab indent / dedent two spaces. Outside code blocks the

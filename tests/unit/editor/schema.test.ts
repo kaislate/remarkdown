@@ -188,4 +188,19 @@ describe('editorSchema', () => {
     const table = editorSchema.node('table', null, [row]);
     expect(table.firstChild!.firstChild!.textContent).toBe('hello');
   });
+
+  it('defines sub and sup marks', () => {
+    expect(editorSchema.marks.sub).toBeDefined();
+    expect(editorSchema.marks.sup).toBeDefined();
+  });
+
+  it('sub mark serializes to <sub> via toDOM', () => {
+    const sub = editorSchema.marks.sub.spec.toDOM!({} as never, false);
+    expect(sub).toEqual(['sub', 0]);
+  });
+
+  it('sup mark serializes to <sup> via toDOM', () => {
+    const sup = editorSchema.marks.sup.spec.toDOM!({} as never, false);
+    expect(sup).toEqual(['sup', 0]);
+  });
 });

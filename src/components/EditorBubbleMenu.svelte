@@ -3,10 +3,12 @@
   import TextB from 'phosphor-svelte/lib/TextB';
   import TextItalic from 'phosphor-svelte/lib/TextItalic';
   import TextStrikethrough from 'phosphor-svelte/lib/TextStrikethrough';
+  import TextSubscript from 'phosphor-svelte/lib/TextSubscript';
+  import TextSuperscript from 'phosphor-svelte/lib/TextSuperscript';
   import Code from 'phosphor-svelte/lib/Code';
   import Link from 'phosphor-svelte/lib/Link';
 
-  type MarkName = 'strong' | 'em' | 'strike' | 'code';
+  type MarkName = 'strong' | 'em' | 'strike' | 'code' | 'sub' | 'sup';
 
   interface Props {
     visible: boolean;
@@ -118,6 +120,30 @@
     onclick={() => onMark('strike')}
   >
     <TextStrikethrough size={16} weight="bold" />
+  </button>
+  <button
+    type="button"
+    class="bubble-btn"
+    data-mark="sub"
+    aria-pressed={activeMarks.has('sub')}
+    title="Subscript (Ctrl+,)"
+    aria-label="Subscript"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onMark('sub')}
+  >
+    <TextSubscript size={16} weight="bold" />
+  </button>
+  <button
+    type="button"
+    class="bubble-btn"
+    data-mark="sup"
+    aria-pressed={activeMarks.has('sup')}
+    title="Superscript (Ctrl+.)"
+    aria-label="Superscript"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onMark('sup')}
+  >
+    <TextSuperscript size={16} weight="bold" />
   </button>
   <button
     type="button"

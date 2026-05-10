@@ -172,7 +172,7 @@
     v.focus();
   }
 
-  function onBubbleMark(name: 'strong' | 'em' | 'strike' | 'code') {
+  function onBubbleMark(name: 'strong' | 'em' | 'strike' | 'code' | 'sub' | 'sup') {
     const v = view;
     if (!v) return;
     const markType = editorSchema.marks[name];

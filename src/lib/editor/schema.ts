@@ -164,12 +164,25 @@ const nodes = baseSchema.spec.nodes
 // `<del>` / `<strike>` HTML aliases. Adding it to the schema lets the
 // editor round-trip `~~text~~` (the parser maps the markdown-it `s`
 // token to this mark; the serializer emits ~~ delimiters).
-const marks = baseSchema.spec.marks.addToEnd('strike', {
-  parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }],
-  toDOM() {
-    return ['s', 0];
-  },
-});
+const marks = baseSchema.spec.marks
+  .addToEnd('strike', {
+    parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }],
+    toDOM() {
+      return ['s', 0];
+    },
+  })
+  .addToEnd('sub', {
+    parseDOM: [{ tag: 'sub' }],
+    toDOM() {
+      return ['sub', 0];
+    },
+  })
+  .addToEnd('sup', {
+    parseDOM: [{ tag: 'sup' }],
+    toDOM() {
+      return ['sup', 0];
+    },
+  });
 
 export const editorSchema = new Schema({
   nodes,
