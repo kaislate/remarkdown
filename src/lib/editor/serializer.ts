@@ -190,6 +190,22 @@ const editorMarkdownSerializer = new MarkdownSerializer(
       mixable: true,
       expelEnclosingWhitespace: true,
     },
+    // Subscript — `~text~` (markdown-it-sub). Single tilde, distinct
+    // from strike's double-tilde. mixable + expelEnclosingWhitespace
+    // for the same reasons strike sets them.
+    sub: {
+      open: '~',
+      close: '~',
+      mixable: true,
+      expelEnclosingWhitespace: true,
+    },
+    // Superscript — `^text^` (markdown-it-sup).
+    sup: {
+      open: '^',
+      close: '^',
+      mixable: true,
+      expelEnclosingWhitespace: true,
+    },
   },
 );
 
