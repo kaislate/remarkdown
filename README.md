@@ -2,7 +2,7 @@
   <img src="assets/logo-animated.svg" alt="remarkdown" width="420">
 </div>
 
-> **A desktop reader for markdown documents with PDF-style annotations** — highlight, leave a re.mark, and doodle on top of your docs. Annotations save as a human-readable JSON sidecar next to the source file.
+> **A desktop reader — and, as of 0.6.0, editor — for markdown documents with PDF-style annotations.** Highlight, leave a re.mark, doodle on top of your docs, then hit `Ctrl+E` and edit the document itself, diagrams included. Annotations save as a human-readable JSON sidecar next to the source file.
 
 <div align="center">
 
@@ -15,21 +15,43 @@
 
 </div>
 
-![Status: Beta](https://img.shields.io/badge/status-0.5.4--beta-2ea44f)
+![Status: 0.6.0](https://img.shields.io/badge/status-0.6.0-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
+![Testers wanted: Linux & macOS](https://img.shields.io/badge/testers%20wanted-Linux%20%26%20macOS-orange)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![License: TBD](https://img.shields.io/badge/license-TBD-lightgrey)
 
 ---
 
-## 🎉 0.5.4 Beta — latest
+## 🎉 0.6.0 — ✍️ EDIT MODE IS HERE
 
-**0.5.4-beta** adds a **right-margin marginalia column** that shows every re.mark as an editable liquid-glass card aligned with its anchor — click to edit in place, with a stream of luminous orbs that flows from the in-doc dot into the card. Cards push each other down to avoid collisions, and a configurable bullet-cap keeps re.marks anchored in list items from spilling context across other items. Also: **Open new documents in Focus mode**, **Minimap popout in Focus mode** with a hover-reveal peek zone, an entirely **redesigned title-bar** with colour-coded blooming hover orbs, and a **reorganized Settings panel** with 6 balanced sections.
+**This is the biggest release remarkdown has ever shipped.** 145 commits since 0.5.4-beta, and they all add up to one headline:
 
-Earlier in the 0.5 line: per-doc reading progress + ToC popover + aggregated changelog + hamburger overlay (0.5.3); mermaid + Obsidian-style callouts + orphan re-attach + file watcher (0.5.2); drawings anchored to text, reader mode, drawing roughness slider (0.5.1).
+> **remarkdown is no longer just a reader.** Hit the pencil (or `Ctrl+E`) and the article becomes a live editor — *"a markdown editor for people who don't know what markdown is."* No syntax, no split panes, no preview button. The document you read is the document you edit.
 
-> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull these betas on its own. **Download the latest installer from the [Releases page](../../releases/latest) and run it once** — every release after this one will arrive automatically via the in-app updater.
+What edit mode can do, all WYSIWYG and all round-tripping back to clean markdown:
+
+- **🧜 A visual mermaid diagram editor.** This one deserves its own bullet — possibly its own parade. Click any node in a **flowchart** to rename it, change its shape (8 shapes), connect it to other nodes, or delete it. Click an edge to label, restyle (arrow/line/dotted/thick), or remove it. Flip the whole layout TD/LR/BT/RL from a floating direction picker. **Sequence diagrams** are editable too: participants, messages, and notes all get click-to-edit popovers. Behind the popovers, a hardened parse→serialize round-trip is validated against mermaid's own grammar in the test suite, so a popover edit can never commit a diagram mermaid won't render.
+- **📋 GFM tables** — insert a table from the toolbar, edit cells in place, add/remove rows and columns from a floating actions menu; serialized output comes back column-aligned.
+- **💬 Callouts, 💻 code blocks, ☑️ task lists** — Obsidian-style callouts insert from the toolbar; code blocks get live Shiki highlighting with a language pill picker; task-list checkboxes toggle with a click in both read AND edit mode.
+- **🦶 Footnotes** — insert, edit label + body via popover, delete; refs and definitions stay paired.
+- **✨ Inline marks** — bold, italic, strikethrough, ~subscript~ and ^superscript^ from a floating bubble menu (`Ctrl+,` / `Ctrl+.` for sub/sup).
+- **💾 Safe by design** — autosaved atomically with a debounce, file watcher paused while editing, and your highlights/re.marks/drawings **re-anchor automatically** when you exit edit mode.
+
+**And the packaging news:** with 0.6.0 the `-beta` suffix is gone from the version — which means Windows **`.msi` installers are back** alongside the NSIS `.exe` (MSI's version field never tolerated the `-beta` tag). Both are signed and both feed the in-app updater.
+
+> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull new versions on its own. **Download the latest installer from the [Releases page](../../releases/latest) and run it once** — every release after that arrives automatically via the in-app updater.
+
+---
+
+## 🐧🍎 Linux & macOS — testers wanted!
+
+The entire stack is cross-platform by construction — Tauri 2 shell, a Rust backend with zero Windows-only code paths (the atomic-write code even has dedicated Unix fsync handling already), file watching via the cross-platform `notify` crate, and platform icons (`.icns`, PNGs) already bundled. A static compatibility review found **no blockers** for Linux or macOS builds.
+
+What we can't do from here is *test* them on real machines — frameless-window behaviour across window managers, the CSS Custom Highlight API on WebKitGTK, drag-and-drop from different file managers, font fallbacks.
+
+**If you run Linux or macOS and want remarkdown on your platform, we want to hear from you.** [Open an issue](../../issues) with your distro/OS version and we'll get you a build to try. Once the platform builds are verified, releases ship for all three OSes.
 
 ---
 
@@ -38,7 +60,7 @@ Earlier in the 0.5 line: per-doc reading progress + ToC popover + aggregated cha
 Pre-built Windows installers are published with each tagged release. Grab the latest from the **[Releases page](../../releases/latest)**:
 
 - `remarkdown_<version>_x64-setup.exe` — NSIS installer (recommended)
-- *MSI installers return for stable releases — beta builds are NSIS-only because Windows MSI's version field doesn't accept alphanumeric pre-release tags like `-beta`.*
+- `remarkdown_<version>_x64_en-US.msi` — MSI installer **(new in 0.6.0!)** for `msiexec` / Group Policy / silent-install workflows
 
 Already installed? Open **Hamburger menu → Check for updates…** to grab the next release without leaving the app.
 
@@ -53,6 +75,15 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 ---
 
 ## 🎨 Features
+
+### ✍️ Edit mode (new in 0.6.0)
+- **🖊 One-key toggle** — pencil pill or `Ctrl+E` swaps the article for a live ProseMirror editor; toggle back and your annotations re-anchor onto the edited text
+- **🧜 Visual mermaid editor** — click-to-edit flowcharts (8 node shapes, 4 edge styles, labels, connect mode, direction picker) and sequence diagrams (participants, messages, notes) with floating popovers; the round-trip serializer is validated against mermaid's real grammar so edits can't produce a broken diagram
+- **📋 Table editing** — insert 3×2 GFM tables, edit cells inline, add/remove rows + columns from a floating menu, column-aligned markdown output
+- **💬 Callout, 💻 code-block, ☑️ task-list editing** — toolbar inserts for each; code blocks highlight live via Shiki with a language pill; checkboxes toggle by click
+- **🦶 Footnote editing** — inline footnote atoms with a label + body popover, refs and definitions kept paired
+- **✨ Bubble menu** — bold / italic / strikethrough / subscript / superscript on selection (`Ctrl+,` / `Ctrl+.`)
+- **💾 Atomic autosave** — debounced writes through the same atomic-write path as sidecars; file watcher pauses while editing and resumes on exit
 
 ### Annotation
 - **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
@@ -106,7 +137,7 @@ remarkdown reads plain markdown from disk, renders it in a clean dark UI, and le
 ### Storage & resilience
 - **💾 Atomic sidecar writes** with configurable debounced saves; retry with exponential backoff on write failures; synchronous flush on window close
 - **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- **🧪 Battle-tested** — 390+ Vitest unit/component tests, Rust tests, Playwright E2E scenarios, zero `svelte-check` warnings
+- **🧪 Battle-tested** — 690+ Vitest unit/component tests, Rust tests, Playwright E2E scenarios, zero `svelte-check` warnings
 
 ---
 
@@ -199,11 +230,17 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cutting a release with the in-app updater enabled requires the Ed25519 signing key — see [RELEASING.md](RELEASING.md) for the full process.
+Produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. Cutting a release with the in-app updater enabled requires the Ed25519 signing key — see [RELEASING.md](RELEASING.md) for the full process.
 
 ---
 
 ## 🗺 Roadmap
+
+### ✅ New in 0.6.0
+- **Edit mode** — full WYSIWYG ProseMirror editor behind a one-key toggle: callouts, code blocks (live Shiki), task lists, GFM tables, footnotes, strikethrough/sub/sup bubble menu, atomic autosave, annotation re-anchor on exit
+- **Visual mermaid editing** — flowcharts (shapes, edges, labels, connect mode, direction picker) and sequence diagrams (participants, messages, notes), with the serializer validated against mermaid's own grammar and hardened against render races, parallel-edge ambiguity, and special characters
+- **MSI installers** — stable semver means Windows `.msi` packages ship alongside NSIS again
+- **Security** — edit-mode mermaid rendering now uses `securityLevel: strict`, matching read mode
 
 ### ✅ Shipped through 0.5.4-beta
 - Reader MVP — Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
@@ -223,9 +260,10 @@ Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cut
 - Dark and light themes; full error matrix (UTF-8 toast, corrupt-sidecar backup, write-retry, 2 MB warning)
 - 390+ Vitest tests, Rust tests, Playwright E2E coverage of the spec scenarios, 0 svelte-check warnings
 
-### 🔮 Post-beta (deferred)
+### 🔮 Deferred
+- **Linux + macOS releases** — no code blockers found; awaiting platform testers (see [call for testers](#-linux--macos--testers-wanted) above)
 - **Marginalia polish** — measured (not estimated) card heights for tighter push-down, wide-doc / narrow-window adaptive layout, optional connector treatments
-- **Edit mode** — slash-command for headings/lists, drag-and-drop mermaid diagrams + inline images. *"a markdown editor for people who don't know what markdown is"*
+- **Edit mode, next round** — slash-command for headings/lists, drag-and-drop inline images, mermaid subgraph/classDef support
 - **Pre-release channel** — wire up the auto-updater so opt-in users actually receive pre-release builds (currently only changelog filtering is implemented)
 - **Undo/redo** action log
 - **Per-doc asset protocol scope** tightening (security hardening)
@@ -239,7 +277,7 @@ Produces a signed NSIS installer in `src-tauri/target/release/bundle/nsis/`. Cut
 ## 🧪 Testing
 
 ```bash
-npm test              # 390+ Vitest unit + component tests
+npm test              # 690+ Vitest unit + component tests
 npm run check         # svelte-check (0 errors, 0 warnings)
 npm run test:e2e      # Playwright end-to-end scenarios
 cd src-tauri && cargo test   # Rust tests
