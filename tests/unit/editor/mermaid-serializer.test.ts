@@ -89,6 +89,30 @@ describe('mermaid serializer', () => {
     );
   });
 
+  it('emits a quoted single space for empty labels (mermaid rejects `A[]`)', () => {
+    let g = emptyGraph();
+    g = addNode(g, { shape: 'rect', label: '' }).graph;
+    expect(serializeMermaid(g)).toBe('flowchart TD\nA[" "]\n');
+  });
+
+  it('escapes embedded double quotes as #quot; (mermaid rejects the "" escape)', () => {
+    let g = emptyGraph();
+    g = addNode(g, { shape: 'rect', label: 'say "hi"' }).graph;
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA["say #quot;hi#quot;"]\n',
+    );
+  });
+
+  it('quote-wraps edge labels containing reserved characters', () => {
+    let g = emptyGraph();
+    const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
+    const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
+    g = addEdge(g, { from: a.id, to: b.id, label: 'yes|no' });
+    expect(serializeMermaid(g)).toBe(
+      'flowchart TD\nA[A]\nB[B]\nA -->|"yes|no"| B\n',
+    );
+  });
+
   it('does not emit explicit "arrow" style — it is the default', () => {
     let g = emptyGraph();
     const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;

@@ -10,8 +10,8 @@
 //   - Edges: arrow `A --> B`, line `A --- B`, dotted `A -.-> B`,
 //     thick `A ==> B`, all with optional `|text|` labels
 //   - Inline node definitions on edge lines: `A[a] --> B[b] --> C[c]`
-//   - Quoted labels: `A["has [brackets]"]` and the `""` escape for
-//     embedded quotes
+//   - Quoted labels: `A["has [brackets]"]` (node and edge labels) with
+//     the `#quot;` entity for embedded quotes
 //   - Blank lines and `%%` comments
 //
 // Not supported (parser bails to `ok: false`):
@@ -59,6 +59,12 @@ const EDGE_PREFIXES: Array<{ prefix: string; style: EdgeStyle }> = [
   { prefix: '==>', style: 'thick' },
 ];
 
+// Decode mermaid's #quot; entity inside quoted labels — the inverse of
+// the serializer's emitLabel escaping.
+function decodeQuotes(label: string): string {
+  return label.replace(/#quot;/g, '"');
+}
+
 function tokenizeLine(line: string): LineToken[] | null {
   const tokens: LineToken[] = [];
   let s = line.trim();
@@ -82,10 +88,20 @@ function tokenizeLine(line: string): LineToken[] | null {
       let rest = s.slice(matched.prefix.length);
       let label: string | undefined;
       if (rest.startsWith('|')) {
-        const closeIdx = rest.indexOf('|', 1);
-        if (closeIdx === -1) return null;
-        label = rest.slice(1, closeIdx);
-        rest = rest.slice(closeIdx + 1);
+        if (rest[1] === '"') {
+          // Quoted edge label — pipes are allowed inside the quotes.
+          // The serializer emits this form for labels with reserved
+          // chars; embedded quotes use mermaid's #quot; entity.
+          const endQuote = rest.indexOf('"', 2);
+          if (endQuote === -1 || rest[endQuote + 1] !== '|') return null;
+          label = decodeQuotes(rest.slice(2, endQuote));
+          rest = rest.slice(endQuote + 2);
+        } else {
+          const closeIdx = rest.indexOf('|', 1);
+          if (closeIdx === -1) return null;
+          label = rest.slice(1, closeIdx);
+          rest = rest.slice(closeIdx + 1);
+        }
       }
       tokens.push({ kind: 'arrow', label, style: matched.style });
       s = rest.trim();
@@ -124,21 +140,15 @@ function tokenizeLine(line: string): LineToken[] | null {
         // Read label until matching close. Handle quoted labels.
         let label = '';
         if (s.startsWith('"')) {
-          // Quoted label: read until unescaped closing "
-          s = s.slice(1);
-          let i = 0;
-          while (i < s.length) {
-            if (s[i] === '"' && s[i + 1] === '"') {
-              label += '"';
-              i += 2;
-              continue;
-            }
-            if (s[i] === '"') break;
-            label += s[i];
-            i++;
-          }
-          if (s[i] !== '"') return null;
-          s = s.slice(i + 1);
+          // Quoted label: read to the closing quote. Embedded quotes
+          // use mermaid's #quot; entity — the doubled-"" escape is NOT
+          // valid mermaid 11 grammar, so we don't accept it either
+          // (such source falls back to render-only, where mermaid
+          // shows its own parse error).
+          const endQuote = s.indexOf('"', 1);
+          if (endQuote === -1) return null;
+          label = decodeQuotes(s.slice(1, endQuote));
+          s = s.slice(endQuote + 1);
         } else {
           // Unquoted: read until close
           const closeIdx = s.indexOf(close);

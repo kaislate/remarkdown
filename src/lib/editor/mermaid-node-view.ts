@@ -13,6 +13,7 @@ import type {
 import { mount, unmount } from 'svelte';
 import { writable, type Writable } from 'svelte/store';
 import MermaidNodePopover from '../../components/MermaidNodePopover.svelte';
+import MermaidDirectionPicker from '../../components/MermaidDirectionPicker.svelte';
 import MermaidEdgePopover from '../../components/MermaidEdgePopover.svelte';
 import MermaidConnectBanner from '../../components/MermaidConnectBanner.svelte';
 import MermaidParticipantPopover from '../../components/MermaidParticipantPopover.svelte';
@@ -48,9 +49,12 @@ import {
   setEdgeLabel,
   setEdgeStyle,
   deleteEdge,
+  edgeDataIds,
+  setDirection,
   type MermaidGraph,
   type MermaidShape,
   type EdgeStyle,
+  type MermaidDirection,
 } from './mermaid-graph';
 import { serializeMermaid } from './mermaid-serializer';
 
@@ -62,7 +66,11 @@ async function getMermaid() {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'dark',
-    securityLevel: 'loose',
+    // 'strict' matches the read-mode MermaidRenderer. The two share
+    // this mermaid singleton's global config, and editable diagrams
+    // don't need loose-mode features (HTML labels, click bindings) —
+    // which would be an XSS surface when opening untrusted .md files.
+    securityLevel: 'strict',
   });
   mermaidSingleton = mermaid;
   return mermaid;
@@ -70,9 +78,12 @@ async function getMermaid() {
 
 let renderId = 0;
 
+// Edges are identified by their INDEX in graph.edges, not a (from,to)
+// pair — parallel edges share endpoints, and the index is what the
+// graph mutation helpers (setEdgeLabel etc.) key on anyway.
 type MermaidSelection =
   | { kind: 'node'; id: string }
-  | { kind: 'edge'; from: string; to: string }
+  | { kind: 'edge'; index: number }
   | null;
 
 // Sequence-diagram selection state (Task 4). Kept in a separate field
@@ -84,6 +95,17 @@ type SequenceSelection =
   | { kind: 'message'; index: number }
   | { kind: 'note'; index: number }
   | null;
+
+// Selection to apply once the in-flight render completes. The add-
+// element flows know the new element's identity before its SVG exists;
+// they stash it here and renderFromNode consumes it after writing the
+// SVG, so the popover anchors against a real element instead of racing
+// the render with a timeout.
+type PendingSelect =
+  | { kind: 'node'; id: string }
+  | { kind: 'participant'; id: string }
+  | { kind: 'message'; index: number }
+  | { kind: 'note'; index: number };
 
 // State pushed into the popover via a Svelte store. The popover
 // component subscribes; the NodeView writes here whenever selection or
@@ -273,6 +295,21 @@ const HIDDEN_ACTIONS_STATE: ActionsState = {
   onAddNote: () => {},
 };
 
+// Direction-picker state. Flowchart analogue of ActionsState — a small
+// floating toolbar over the rendered SVG with the four mermaid layout
+// directions. Visible only for parse-ok, non-empty flowcharts.
+interface DirectionPickerState {
+  visible: boolean;
+  direction: MermaidDirection;
+  onDirectionChange: (direction: MermaidDirection) => void;
+}
+
+const HIDDEN_DIRECTION_PICKER_STATE: DirectionPickerState = {
+  visible: false,
+  direction: 'TD',
+  onDirectionChange: () => {},
+};
+
 export class MermaidNodeView implements NodeView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
@@ -294,6 +331,16 @@ export class MermaidNodeView implements NodeView {
   // Sequence-diagram selection state (Task 4). Disjoint from `selected`
   // (flowchart). When diagramType !== 'sequence' this is always null.
   private sequenceSelected: SequenceSelection = null;
+  // Monotonic counter for renders in flight. renderFromNode captures
+  // the value at entry and bails before touching the DOM if a newer
+  // render has started since — without this, a slow older render (the
+  // first one pays the dynamic import of mermaid) can resolve AFTER a
+  // newer one and clobber the fresh SVG with stale output.
+  private renderSeq = 0;
+  // See PendingSelect above. Set by add-element flows just before they
+  // commit; consumed (and cleared) by renderFromNode once the new SVG
+  // is in the DOM.
+  private pendingSelect: PendingSelect | null = null;
   // Diagram type detected from the source, refreshed in renderFromNode.
   // The wireClickHandlers dispatch only runs flowchart-specific routing
   // when this is 'flowchart'; sequence (Tasks 2-8) and unsupported
@@ -351,6 +398,11 @@ export class MermaidNodeView implements NodeView {
   private sequenceActionsHost: HTMLElement;
   private sequenceActionsStore: Writable<ActionsState>;
   private sequenceActionsInstance: ReturnType<typeof mount> | null = null;
+  // Direction picker — floating toolbar over rendered flowcharts with
+  // the four layout directions. Refreshed alongside the actions bar.
+  private directionPickerHost: HTMLElement;
+  private directionPickerStore: Writable<DirectionPickerState>;
+  private directionPickerInstance: ReturnType<typeof mount> | null = null;
 
   constructor(
     node: Node,
@@ -424,6 +476,12 @@ export class MermaidNodeView implements NodeView {
     const sequenceActionsHost = document.createElement('div');
     sequenceActionsHost.className =
       'mermaid-popover-host mermaid-sequence-actions-host';
+    // Direction-picker host. Same shared host class so stopEvent /
+    // ignoreMutation gates apply — clicks on the picker are real UI
+    // events, not PM input.
+    const directionPickerHost = document.createElement('div');
+    directionPickerHost.className =
+      'mermaid-popover-host mermaid-direction-picker-host';
 
     wrap.appendChild(rendered);
     wrap.appendChild(pre);
@@ -434,6 +492,7 @@ export class MermaidNodeView implements NodeView {
     wrap.appendChild(notePopoverHost);
     wrap.appendChild(connectBannerHost);
     wrap.appendChild(sequenceActionsHost);
+    wrap.appendChild(directionPickerHost);
 
     this.dom = wrap;
     this.contentDOM = code;
@@ -445,6 +504,7 @@ export class MermaidNodeView implements NodeView {
     this.notePopoverHost = notePopoverHost;
     this.connectBannerHost = connectBannerHost;
     this.sequenceActionsHost = sequenceActionsHost;
+    this.directionPickerHost = directionPickerHost;
 
     // Mount the popovers once. We update their state via the stores so
     // the inputs keep focus/caret across re-renders.
@@ -490,6 +550,13 @@ export class MermaidNodeView implements NodeView {
     this.sequenceActionsInstance = mount(MermaidSequenceActions, {
       target: this.sequenceActionsHost,
       props: { stateStore: this.sequenceActionsStore },
+    });
+    this.directionPickerStore = writable<DirectionPickerState>({
+      ...HIDDEN_DIRECTION_PICKER_STATE,
+    });
+    this.directionPickerInstance = mount(MermaidDirectionPicker, {
+      target: this.directionPickerHost,
+      props: { stateStore: this.directionPickerStore },
     });
 
     // Wire click delegation once on the rendered container. Subsequent
@@ -568,14 +635,18 @@ export class MermaidNodeView implements NodeView {
         // Both surfaces carry a `data-id="L_${from}_${to}_${counter}"` (NOTE:
         // underscores, not dashes — this differs from mermaid's `flowchart-A-0`
         // node ids which DO use dashes). The previous selector matched
-        // `[id*="L-"]` and never fired in the browser. Match by data-id, which
-        // works for both the path and the label container.
+        // `[id*="L-"]` and never fired in the browser.
+        //
+        // Resolve the data-id to an edge INDEX by exact lookup against
+        // the ids mermaid will have assigned (edgeDataIds) — parsing the
+        // flat string is ambiguous for underscore node ids, and the
+        // counter suffix is what distinguishes parallel edges.
         const edgeWithDataId = target.closest('[data-id^="L_"]') as Element | null;
-        if (edgeWithDataId) {
+        if (edgeWithDataId && this.graph) {
           const dataId = edgeWithDataId.getAttribute('data-id') ?? '';
-          const m = /^L_([A-Za-z][A-Za-z0-9_]*)_([A-Za-z][A-Za-z0-9_]*)_/.exec(dataId);
-          if (m) {
-            this.selectGraphEdge(m[1], m[2]);
+          const index = edgeDataIds(this.graph).indexOf(dataId);
+          if (index !== -1) {
+            this.selectGraphEdge(index);
             e.stopPropagation();
             return;
           }
@@ -621,17 +692,12 @@ export class MermaidNodeView implements NodeView {
                 style: 'arrow',
               });
               this.sequenceGraph = newGraph;
+              // renderFromNode opens the new arrow's popover via
+              // pendingSelect once mermaid has re-rendered it, so the
+              // popover anchors to a real SVG rect.
+              this.pendingSelect = { kind: 'message', index: eventsBefore };
               this.commitGraphChange(serializeSequence(newGraph));
               this.exitAddMessageMode();
-              // Wait one tick for mermaid to re-render the new arrow
-              // before opening its popover, so the popover anchors to a
-              // real SVG rect.
-              setTimeout(() => {
-                const ev = this.sequenceGraph?.events[eventsBefore];
-                if (ev?.kind === 'message') {
-                  this.selectMessage(eventsBefore);
-                }
-              }, 50);
               e.stopPropagation();
               return;
             }
@@ -741,19 +807,21 @@ export class MermaidNodeView implements NodeView {
     this.openNodePopover(id, svgEl);
   }
 
-  private selectGraphEdge(from: string, to: string): void {
-    this.selected = { kind: 'edge', from, to };
+  private selectGraphEdge(index: number): void {
+    this.selected = { kind: 'edge', index };
     this.dom.classList.add('mermaid-has-selection');
     this.renderedEl
       .querySelectorAll('path.flowchart-link.mermaid-selected')
       .forEach((el) => el.classList.remove('mermaid-selected'));
-    // Look up the path by `data-id` rather than `id` — see the comment in
-    // wireClickHandlers about underscores-vs-dashes. We match the `_<counter>`
-    // tail so a `data-id="L_A_B_0"` matches but `L_A_BB_0` doesn't (the
-    // underscore-counter suffix anchors the prefix).
-    const svgEl = this.renderedEl.querySelector(
-      `path.flowchart-link[data-id^="L_${from}_${to}_"]`,
-    );
+    // Look up the path by exact `data-id` (see edgeDataIds) — the
+    // counter suffix distinguishes parallel edges, so the highlight
+    // lands on the clicked edge and not its first sibling.
+    const dataId = this.graph ? edgeDataIds(this.graph)[index] : undefined;
+    const svgEl = dataId
+      ? this.renderedEl.querySelector(
+          `path.flowchart-link[data-id="${dataId}"]`,
+        )
+      : null;
     svgEl?.classList.add('mermaid-selected');
     // Mutual exclusivity: close the node popover (and any sequence
     // popovers — defensive) and open the edge one.
@@ -761,7 +829,7 @@ export class MermaidNodeView implements NodeView {
     this.closeParticipantPopover();
     this.closeMessagePopover();
     this.closeNotePopover();
-    this.openEdgePopover(from, to, svgEl);
+    this.openEdgePopover(index, svgEl);
   }
 
   private clearSelection(): void {
@@ -992,9 +1060,18 @@ export class MermaidNodeView implements NodeView {
       }
       this.sequenceActionsInstance = null;
     }
+    if (this.directionPickerInstance) {
+      try {
+        unmount(this.directionPickerInstance);
+      } catch {
+        // Best-effort — if Svelte already cleaned up, ignore.
+      }
+      this.directionPickerInstance = null;
+    }
   }
 
   private async renderFromNode(node: Node): Promise<void> {
+    const seq = ++this.renderSeq;
     const source = node.textContent;
     const type = detectDiagramType(source);
     this.diagramType = type;
@@ -1044,7 +1121,10 @@ export class MermaidNodeView implements NodeView {
     // an entry point that opens the node popover for a brand-new node.
     if (flowchartParsed?.ok && flowchartParsed.graph.nodes.size === 0) {
       // Any popover/banner from a previous render would now be orphaned —
-      // there are no SVG nodes left to anchor against.
+      // there are no SVG nodes left to anchor against. A pending select
+      // can't target anything in an empty graph either (defensive —
+      // add-element flows always commit a non-empty graph).
+      this.pendingSelect = null;
       this.clearSelection();
       this.renderedEl.innerHTML = '';
       const placeholder = document.createElement('button');
@@ -1060,8 +1140,10 @@ export class MermaidNodeView implements NodeView {
         this.createFirstNode();
       });
       this.renderedEl.appendChild(placeholder);
-      // Keep the action-bar hidden in flowchart empty-state.
+      // Keep the action-bar + direction picker hidden in flowchart
+      // empty-state.
       this.refreshActionsBar();
+      this.refreshDirectionPicker();
       return;
     }
 
@@ -1076,6 +1158,7 @@ export class MermaidNodeView implements NodeView {
       this.sequenceGraph &&
       this.sequenceGraph.participants.size === 0
     ) {
+      this.pendingSelect = null;
       this.clearSequenceSelection();
       this.renderedEl.innerHTML = '';
       const placeholder = document.createElement('button');
@@ -1090,6 +1173,7 @@ export class MermaidNodeView implements NodeView {
       });
       this.renderedEl.appendChild(placeholder);
       this.refreshActionsBar();
+      this.refreshDirectionPicker();
       return;
     }
 
@@ -1097,6 +1181,9 @@ export class MermaidNodeView implements NodeView {
       const mermaid = await getMermaid();
       const id = `remarkdown-mermaid-${++renderId}`;
       const { svg } = await mermaid.render(id, source);
+      // A newer render started while this one was in flight — drop the
+      // stale result instead of clobbering the fresh SVG.
+      if (seq !== this.renderSeq) return;
       this.renderedEl.innerHTML = svg;
       // Mermaid draws edges as 1-2px paths whose hit-test area equals
       // the visible stroke — pixel-precise to click. Inject a wider
@@ -1105,19 +1192,42 @@ export class MermaidNodeView implements NodeView {
       // already matches on data-id, so the wider target is picked up
       // automatically without further wiring.
       this.injectEdgeHitTargets();
+      // A pending select (from an add-element flow) takes precedence
+      // over restoring the previous selection — the user just created
+      // this element and expects its popover. Stale pendings (element
+      // missing, e.g. an undo landed in between) fall through to the
+      // restore chain below.
+      const pending = this.pendingSelect;
+      this.pendingSelect = null;
       // After re-rendering the SVG, the previously-selected element no
       // longer exists. Re-apply the highlight + reposition the popover
       // against the new SVG element if a selection is still active.
-      if (this.selected?.kind === 'node' && this.graph?.nodes.has(this.selected.id)) {
+      if (pending?.kind === 'node' && this.graph?.nodes.has(pending.id)) {
+        this.selectGraphNode(pending.id);
+      } else if (
+        pending?.kind === 'participant' &&
+        this.sequenceGraph?.participants.has(pending.id)
+      ) {
+        this.selectParticipant(pending.id);
+      } else if (
+        pending?.kind === 'message' &&
+        this.sequenceGraph?.events[pending.index]?.kind === 'message'
+      ) {
+        this.selectMessage(pending.index);
+      } else if (
+        pending?.kind === 'note' &&
+        this.sequenceGraph?.events[pending.index]?.kind === 'note'
+      ) {
+        this.selectNote(pending.index);
+      } else if (this.selected?.kind === 'node' && this.graph?.nodes.has(this.selected.id)) {
         this.selectGraphNode(this.selected.id);
       } else if (this.selected?.kind === 'node') {
         // The node we had selected is gone (e.g. user just deleted it).
         this.clearSelection();
       } else if (this.selected?.kind === 'edge') {
-        const { from, to } = this.selected;
-        const stillExists = this.graph?.edges.some((e) => e.from === from && e.to === to);
-        if (stillExists) {
-          this.selectGraphEdge(from, to);
+        const { index } = this.selected;
+        if (this.graph && index < this.graph.edges.length) {
+          this.selectGraphEdge(index);
         } else {
           // Edge was deleted (or its endpoints were).
           this.clearSelection();
@@ -1146,19 +1256,25 @@ export class MermaidNodeView implements NodeView {
           this.clearSequenceSelection();
         }
       }
-      // Refresh the action-bar AFTER the SVG paint so visibility +
-      // canAddMessage track the latest participant count.
+      // Refresh the action-bar + direction picker AFTER the SVG paint
+      // so visibility tracks the latest graph state.
       this.refreshActionsBar();
+      this.refreshDirectionPicker();
     } catch (err) {
+      // Same staleness rule as the success path: an error from a
+      // superseded render must not paint over the newer result.
+      if (seq !== this.renderSeq) return;
+      this.pendingSelect = null;
       const msg = err instanceof Error ? err.message : String(err);
       this.renderedEl.innerHTML = '';
       const errBox = document.createElement('pre');
       errBox.className = 'mermaid-error';
       errBox.textContent = `Mermaid error: ${msg}`;
       this.renderedEl.appendChild(errBox);
-      // Keep the action-bar hidden when mermaid threw — bare error text
-      // means there's no diagram to add to.
+      // Keep the action-bar + direction picker hidden when mermaid
+      // threw — bare error text means there's no diagram to act on.
       this.refreshActionsBar();
+      this.directionPickerStore.set({ ...HIDDEN_DIRECTION_PICKER_STATE });
     }
   }
 
@@ -1316,19 +1432,15 @@ export class MermaidNodeView implements NodeView {
 
   // Empty-state entry point: the user clicked "+ Add first shape" on
   // a fresh `flowchart TD\n` block. Add a single rect node, commit, and
-  // wait for the re-render before opening the popover for it (the SVG
-  // doesn't exist until mermaid finishes rendering, and the popover
-  // anchors to that SVG element).
+  // let renderFromNode open the popover via pendingSelect once the SVG
+  // exists (it doesn't until mermaid finishes rendering, and the
+  // popover anchors to that SVG element).
   private createFirstNode(): void {
     if (!this.graph) return;
     const result = addNode(this.graph, { shape: 'rect', label: '' });
     this.graph = result.graph;
+    this.pendingSelect = { kind: 'node', id: result.id };
     this.commitGraphChange(serializeMermaid(this.graph));
-    setTimeout(() => {
-      if (this.graph?.nodes.has(result.id)) {
-        this.selectGraphNode(result.id);
-      }
-    }, 50);
   }
 
   private addNewNodeInConnectMode(): void {
@@ -1341,32 +1453,20 @@ export class MermaidNodeView implements NodeView {
     let g = result.graph;
     g = addEdge(g, { from: sourceId, to: result.id });
     this.graph = g;
+    // Mermaid render is async — renderFromNode opens the popover for
+    // the new node via pendingSelect once its SVG element exists
+    // (opening earlier would position the popover at (0,0)).
+    this.pendingSelect = { kind: 'node', id: result.id };
     this.commitGraphChange(serializeMermaid(g));
     this.exitConnectMode();
-    // Mermaid render is async — wait one tick before opening the
-    // popover for the new node, otherwise its SVG element doesn't
-    // exist yet and the popover positioning would fall back to (0,0).
-    setTimeout(() => {
-      if (this.graph?.nodes.has(result.id)) {
-        this.selectGraphNode(result.id);
-      }
-    }, 50);
   }
 
-  private openEdgePopover(from: string, to: string, svgEl: Element | null): void {
-    if (!this.graph || !svgEl) {
+  private openEdgePopover(index: number, svgEl: Element | null): void {
+    const edge = this.graph?.edges[index];
+    if (!edge || !svgEl) {
       this.closeEdgePopover();
       return;
     }
-    // Find the edge index in graph.edges. If multiple edges go from→to,
-    // pick the FIRST. (Duplicates are rare and an edge-edit popover
-    // can't disambiguate visually anyway.)
-    const index = this.graph.edges.findIndex((e) => e.from === from && e.to === to);
-    if (index === -1) {
-      this.closeEdgePopover();
-      return;
-    }
-    const edge = this.graph.edges[index];
     // Position at the midpoint of the path's bounding rect, in WRAPPER
     // coordinates (the popover-host is absolute inside the wrapper).
     let x = 0;
@@ -1658,9 +1758,9 @@ export class MermaidNodeView implements NodeView {
 
   // Add-element handlers for sequence diagrams (Task 8 of Phase 2g).
   // Mirrors the flowchart `createFirstNode` / `addNewNodeInConnectMode`
-  // pattern: mutate the graph, commit through PM, then schedule a
-  // popover-open after a short delay so mermaid has a tick to re-render
-  // and the popover can anchor against the new SVG element.
+  // pattern: mutate the graph, stash a pendingSelect, commit through
+  // PM. renderFromNode opens the popover once mermaid has re-rendered
+  // and the new SVG element exists to anchor against.
 
   // Refresh the action-bar state from the current sequenceGraph. Called
   // at the end of every sequence render. The bar is hidden in the
@@ -1683,6 +1783,33 @@ export class MermaidNodeView implements NodeView {
     });
   }
 
+  // Refresh the direction picker from the current flowchart graph.
+  // Called wherever refreshActionsBar is. Hidden for sequence /
+  // unsupported / fallback sources and in the flowchart empty-state
+  // (no diagram to re-lay-out yet).
+  private refreshDirectionPicker(): void {
+    if (
+      this.diagramType !== 'flowchart' ||
+      !this.graph ||
+      this.graph.nodes.size === 0
+    ) {
+      this.directionPickerStore.set({ ...HIDDEN_DIRECTION_PICKER_STATE });
+      return;
+    }
+    this.directionPickerStore.set({
+      visible: true,
+      direction: this.graph.direction,
+      onDirectionChange: (direction) => this.handleDirectionChange(direction),
+    });
+  }
+
+  private handleDirectionChange(direction: MermaidDirection): void {
+    if (!this.graph) return;
+    const newGraph = setDirection(this.graph, direction);
+    this.graph = newGraph;
+    this.commitGraphChange(serializeMermaid(newGraph));
+  }
+
   // One-click: add an empty-display participant, then open its popover
   // so the user types a display name immediately. The id-generation in
   // mermaid-sequence-graph picks A, B, C, ... so the new id is fresh.
@@ -1690,12 +1817,8 @@ export class MermaidNodeView implements NodeView {
     if (!this.sequenceGraph) return;
     const result = addParticipant(this.sequenceGraph, { display: '' });
     this.sequenceGraph = result.graph;
+    this.pendingSelect = { kind: 'participant', id: result.id };
     this.commitGraphChange(serializeSequence(this.sequenceGraph));
-    setTimeout(() => {
-      if (this.sequenceGraph?.participants.has(result.id)) {
-        this.selectParticipant(result.id);
-      }
-    }, 50);
   }
 
   // One-click: add a leftOf-positioned note on the first participant
@@ -1714,13 +1837,8 @@ export class MermaidNodeView implements NodeView {
       text: '',
     });
     this.sequenceGraph = newGraph;
+    this.pendingSelect = { kind: 'note', index: newIndex };
     this.commitGraphChange(serializeSequence(newGraph));
-    setTimeout(() => {
-      const ev = this.sequenceGraph?.events[newIndex];
-      if (ev?.kind === 'note') {
-        this.selectNote(newIndex);
-      }
-    }, 50);
   }
 
   // Two-step: enter add-message mode. The next click on a participant
@@ -1787,12 +1905,7 @@ export class MermaidNodeView implements NodeView {
       style: ev.style,
     });
     this.sequenceGraph = { ...this.sequenceGraph, events };
+    this.pendingSelect = { kind: 'message', index: index + 1 };
     this.commitGraphChange(serializeSequence(this.sequenceGraph));
-    setTimeout(() => {
-      const newEv = this.sequenceGraph?.events[index + 1];
-      if (newEv?.kind === 'message') {
-        this.selectMessage(index + 1);
-      }
-    }, 50);
   }
 }

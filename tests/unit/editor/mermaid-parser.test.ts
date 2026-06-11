@@ -95,6 +95,29 @@ describe('mermaid parser', () => {
     expect(r.graph.nodes.get('A')?.label).toBe('has [brackets]');
   });
 
+  it('decodes #quot; in quoted node labels', () => {
+    const r = parseMermaid('flowchart TD\nA["say #quot;hi#quot;"]\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')?.label).toBe('say "hi"');
+  });
+
+  it('parses quoted edge labels (pipes allowed inside the quotes)', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -->|"Yes|No"| B\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges[0]?.label).toBe('Yes|No');
+  });
+
+  it('decodes #quot; in quoted edge labels', () => {
+    const r = parseMermaid(
+      'flowchart TD\nA[a]\nB[b]\nA -->|"say #quot;hi#quot;"| B\n',
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.edges[0]?.label).toBe('say "hi"');
+  });
+
   it('skips blank lines and %% comments', () => {
     const r = parseMermaid(
       'flowchart TD\n\n%% a comment\nA[a]\n%% another\n\nB[b]\nA --> B\n',
