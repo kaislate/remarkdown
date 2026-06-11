@@ -8,6 +8,8 @@ import {
   deleteNode,
   setEdgeLabel,
   deleteEdge,
+  edgeDataIds,
+  setDirection,
 } from '../../../src/lib/editor/mermaid-graph';
 import { setEdgeStyle } from '../../../src/lib/editor/mermaid-graph';
 
@@ -109,5 +111,50 @@ describe('mermaid graph', () => {
     expect(g.edges[0].style).toBeUndefined();
     g = setEdgeStyle(g, 0, 'dotted');
     expect(g.edges[0].style).toBe('dotted');
+  });
+
+  it('setDirection returns a new graph with the direction changed', () => {
+    const g0 = emptyGraph();
+    const g1 = setDirection(g0, 'LR');
+    expect(g1.direction).toBe('LR');
+    expect(g0.direction).toBe('TD'); // original untouched
+    expect(g1.nodes).toBe(g0.nodes); // nodes/edges carried over
+  });
+
+  describe('edgeDataIds', () => {
+    function graphWithEdges(edges: Array<[string, string]>) {
+      let g = emptyGraph();
+      const nodes = new Map(g.nodes);
+      for (const [from, to] of edges) {
+        for (const id of [from, to]) {
+          if (!nodes.has(id)) nodes.set(id, { id, shape: 'rect' as const, label: id });
+        }
+      }
+      g = { ...g, nodes };
+      for (const [from, to] of edges) g = addEdge(g, { from, to });
+      return g;
+    }
+
+    it('assigns counter 0 to a single edge', () => {
+      expect(edgeDataIds(graphWithEdges([['A', 'B']]))).toEqual(['L_A_B_0']);
+    });
+
+    it('skips counter 1 for duplicates, matching mermaid flowDb (0, 2, 3, ...)', () => {
+      expect(
+        edgeDataIds(graphWithEdges([['A', 'B'], ['A', 'B'], ['A', 'B']])),
+      ).toEqual(['L_A_B_0', 'L_A_B_2', 'L_A_B_3']);
+    });
+
+    it('counts occurrences per (from,to) pair, interleaved', () => {
+      expect(
+        edgeDataIds(
+          graphWithEdges([['A', 'B'], ['B', 'C'], ['A', 'B'], ['B', 'A']]),
+        ),
+      ).toEqual(['L_A_B_0', 'L_B_C_0', 'L_A_B_2', 'L_B_A_0']);
+    });
+
+    it('emits flat ids for underscore node ids (as mermaid does)', () => {
+      expect(edgeDataIds(graphWithEdges([['A', 'B_C']]))).toEqual(['L_A_B_C_0']);
+    });
   });
 });

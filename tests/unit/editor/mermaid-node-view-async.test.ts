@@ -16,12 +16,15 @@ const mocked = vi.hoisted(() => {
     resolve: (svg: string) => void;
     reject: (err: unknown) => void;
   }> = [];
-  return { renders };
+  const initializeCalls: Array<Record<string, unknown>> = [];
+  return { renders, initializeCalls };
 });
 
 vi.mock('mermaid', () => ({
   default: {
-    initialize: () => {},
+    initialize: (config: Record<string, unknown>) => {
+      mocked.initializeCalls.push(config);
+    },
     render: (_id: string, source: string) =>
       new Promise<{ svg: string }>((res, rej) => {
         mocked.renders.push({
@@ -82,6 +85,17 @@ function setBlockText(view: EditorView, newText: string): void {
 
 beforeEach(() => {
   mocked.renders.length = 0;
+});
+
+describe('MermaidNodeView mermaid config', () => {
+  it('initializes mermaid with securityLevel strict (matching read mode)', async () => {
+    const { view, parent } = makeView('```mermaid\nflowchart TD\nA[a]\n```\n');
+    await flush();
+    expect(mocked.initializeCalls.length).toBeGreaterThan(0);
+    expect(mocked.initializeCalls[0].securityLevel).toBe('strict');
+    view.destroy();
+    parent.remove();
+  });
 });
 
 describe('MermaidNodeView async ordering', () => {
