@@ -39,10 +39,14 @@ const EDGE_DELIM: Record<EdgeStyle, string> = {
 const RESERVED = /[[\](){}|"<>]/;
 
 function emitLabel(label: string): string {
+  // Mermaid rejects empty labels (`A[]` is a parse error) — emit a
+  // quoted single space instead, which renders as a blank shape. The
+  // label round-trips as ' ' from then on.
+  if (label === '') return '" "';
   if (RESERVED.test(label)) {
-    // Escape any embedded quotes by doubling them up — mermaid's
-    // grammar accepts "" inside a quoted literal.
-    return `"${label.replace(/"/g, '""')}"`;
+    // Escape embedded quotes with mermaid's #quot; entity — the
+    // doubled-"" escape is NOT accepted by mermaid 11's grammar.
+    return `"${label.replace(/"/g, '#quot;')}"`;
   }
   return label;
 }
@@ -59,7 +63,10 @@ export function serializeMermaid(graph: MermaidGraph): string {
   for (const edge of graph.edges) {
     const delim = EDGE_DELIM[edge.style ?? 'arrow'];
     if (edge.label) {
-      lines.push(`${edge.from} ${delim}|${edge.label}| ${edge.to}`);
+      // emitLabel quote-wraps when the label contains reserved chars
+      // (notably `|`, which would otherwise terminate the label early
+      // and break the whole line for mermaid AND our parser).
+      lines.push(`${edge.from} ${delim}|${emitLabel(edge.label)}| ${edge.to}`);
     } else {
       lines.push(`${edge.from} ${delim} ${edge.to}`);
     }
