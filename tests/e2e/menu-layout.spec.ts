@@ -30,13 +30,13 @@ test.beforeEach(async ({ page }) => {
     [FIXTURE_PATH, FIXTURE_MD],
   );
   await page.evaluate((path) => (window as any).__E2E_SET_DIALOG_PATH__?.(path), FIXTURE_PATH);
-  await page.getByRole('button', { name: /menu/i }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('menuitem', { name: /open…/i }).click({ force: true });
   await page.getByRole('heading', { level: 1 }).waitFor();
 });
 
 test('menu popover does not overlap the left-hand round buttons', async ({ page }) => {
-  await page.getByRole('button', { name: /menu/i }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const popover = page.locator('.menu-root .popover');
   await expect(popover).toBeVisible();
   // Let the entrance animation settle before measuring.
@@ -51,7 +51,7 @@ test('menu popover does not overlap the left-hand round buttons', async ({ page 
 });
 
 test('every menu item is the topmost element at its own centre', async ({ page }) => {
-  await page.getByRole('button', { name: /menu/i }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.waitForTimeout(400);
   const items = page.locator('.menu-root .popover [role="menuitem"]');
   const count = await items.count();
@@ -67,7 +67,7 @@ test('every menu item is the topmost element at its own centre', async ({ page }
 });
 
 test('round buttons sit under the dimmed backdrop while the menu is open', async ({ page }) => {
-  await page.getByRole('button', { name: /menu/i }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.waitForTimeout(400);
   const btn = page.locator('.edit-mode-toggle').first();
   const covered = await btn.evaluate((el) => {
