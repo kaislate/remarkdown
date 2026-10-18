@@ -38,6 +38,9 @@ export interface DocSession {
   pendingDiskReload: boolean;
   watcherPaused: boolean;
   disposeWatcher: (() => Promise<void>) | null;
+  // Set when the tab is closed, so an in-flight load doesn't install a
+  // watcher (or anything else) on a tab that no longer exists.
+  closed: boolean;
 }
 
 let counter = 0;
@@ -56,6 +59,7 @@ export function createSession(): DocSession {
     pendingDiskReload: false,
     watcherPaused: false,
     disposeWatcher: null,
+    closed: false,
   };
 }
 

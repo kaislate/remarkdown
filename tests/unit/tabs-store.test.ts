@@ -164,4 +164,29 @@ describe('tabs', () => {
     expect(get(activeModal)).toEqual({ kind: 'settings' });
     closeModal();
   });
+
+  it('rapid switches: the last one requested wins even if an earlier one finishes later', async () => {
+    const b = withDoc('/b.md');
+    const c = withDoc('/c.md');
+    addSession(b);
+    addSession(c);
+    let release: () => void = () => {};
+    const slow = new Promise<void>((r) => { release = r; });
+    let first = true;
+    const off = onBeforeSwitch(async () => { if (first) { first = false; await slow; } });
+    const toB = activateSession(b.id);   // stalls in its before-switch hook
+    const toC = activateSession(c.id);   // requested later
+    await toC;
+    release();
+    await toB;
+    off();
+    expect(get(activeSession)).toBe(c);
+  });
+
+  it('closing marks the session closed', async () => {
+    const a = withDoc('/a.md');
+    addSession(a);
+    await closeSession(a.id);
+    expect(a.closed).toBe(true);
+  });
 });

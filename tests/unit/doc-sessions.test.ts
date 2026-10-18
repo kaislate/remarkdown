@@ -106,4 +106,13 @@ describe('per-session loading', () => {
     expect(disposed).toEqual(['/a.md']);
     expect(watchers.has('/b.md')).toBe(true);
   });
+
+  it('a tab closed while its file is loading gets no file watcher', async () => {
+    stubRead('/slow.md');
+    const s = createSession();
+    const loading = loadIntoSession(s, '/slow.md');
+    s.closed = true; // closeSession ran meanwhile
+    await loading;
+    expect(watchers.has('/slow.md')).toBe(false);
+  });
 });

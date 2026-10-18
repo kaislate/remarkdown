@@ -126,8 +126,11 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
     await session.disposeWatcher();
     session.disposeWatcher = null;
   }
-  if (!session.watcherPaused) {
-    session.disposeWatcher = await installFileWatcher(path, () => onFileChanged(session));
+  if (!session.watcherPaused && !session.closed) {
+    const dispose = await installFileWatcher(path, () => onFileChanged(session));
+    // The tab may have been closed while the watcher was being set up.
+    if (session.closed) await dispose();
+    else session.disposeWatcher = dispose;
   }
   return true;
 }

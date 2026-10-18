@@ -80,14 +80,24 @@ function setActive(session: DocSession): void {
   restoreScroll(session);
 }
 
+// Each switch/close takes a ticket; a switch whose before-switch work
+// finishes after a newer request was made doesn't apply (rapid clicks must
+// land on the last tab clicked).
+let switchTicket = 0;
+
 export async function activateSession(id: string): Promise<void> {
   const target = get(sessions).find((s) => s.id === id);
   if (!target || target === get(activeSession)) return;
+  const ticket = ++switchTicket;
   cancelReattach();
   await runBeforeSwitch();
+  if (ticket !== switchTicket || target.closed) return;
   setActive(target);
   if (target.pendingDiskReload) {
     target.pendingDiskReload = false;
+    // Let the incoming tab's page render first: the reload's "N
+    // re-anchored" count compares annotations against it.
+    await tick();
     await reloadSession(target);
   }
 }
@@ -124,18 +134,26 @@ export async function closeSession(id: string): Promise<void> {
   const idx = list.findIndex((s) => s.id === id);
   if (idx < 0) return;
   const closing = list[idx];
+  closing.closed = true;
 
   if (closing === get(activeSession)) {
+    const ticket = ++switchTicket;
     cancelReattach();
     await runBeforeSwitch();
-    const neighbour = list[idx + 1] ?? list[idx - 1] ?? null;
-    if (neighbour) {
-      setActive(neighbour);
-    } else {
-      // Closing the last tab: the window goes back to the empty state.
-      const fresh = createSession();
-      sessions.set([fresh]);
-      setActive(fresh);
+    // A newer switch may have happened meanwhile — then leave it be, unless
+    // the closing tab is somehow still the visible one.
+    if (ticket === switchTicket || get(activeSession) === closing) {
+      const current = get(sessions).filter((s) => s === closing || !s.closed);
+      const i = current.indexOf(closing);
+      const neighbour = current[i + 1] ?? current[i - 1] ?? null;
+      if (neighbour) {
+        setActive(neighbour);
+      } else {
+        // Closing the last tab: the window goes back to the empty state.
+        const fresh = createSession();
+        sessions.set([fresh]);
+        setActive(fresh);
+      }
     }
   }
 
