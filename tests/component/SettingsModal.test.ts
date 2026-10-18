@@ -6,9 +6,15 @@ import { get } from 'svelte/store';
 vi.mock('../../src/lib/tauri-api', () => ({
   loadSettingsJson: vi.fn(),
   saveSettingsJson: vi.fn(),
+  windowLabel: vi.fn(() => 'main'),
+  defaultAppStatus: vi.fn(async () => ({ supported: false, md: false, markdown: false })),
+  makeDefaultApp: vi.fn(async () => {}),
 }));
 
 import { activeModal, openModal, closeModal } from '../../src/stores/modals';
+import { defaultAppStatus, makeDefaultApp } from '../../src/lib/tauri-api';
+import { toasts, clearToasts } from '../../src/stores/toasts';
+import { screen, waitFor } from '@testing-library/svelte';
 import { settings, resetSettings } from '../../src/stores/settings';
 import SettingsModal from '../../src/components/SettingsModal.svelte';
 
@@ -117,5 +123,87 @@ describe('SettingsModal', () => {
     )!;
     await user.click(done);
     expect(get(activeModal)).toBeNull();
+  });
+});
+
+describe('SettingsModal — opening files', () => {
+  it('offers the three open modes and saves the choice', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const select = document.querySelector<HTMLSelectElement>('#setting-open-mode')!;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['tabs', 'replace', 'windows']);
+    expect(select.value).toBe('tabs');
+    await userEvent.setup().selectOptions(select, 'windows');
+    expect(get(settings).openMode).toBe('windows');
+  });
+
+  it('shows "Reopen tabs" only in tabs mode and "Reopen last file" only outside it', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    expect(document.querySelector('#setting-reopen-tabs')).not.toBeNull();
+    expect(document.querySelector('#setting-open-last')).toBeNull();
+    await userEvent.setup().selectOptions(document.querySelector<HTMLSelectElement>('#setting-open-mode')!, 'replace');
+    expect(document.querySelector('#setting-reopen-tabs')).toBeNull();
+    expect(document.querySelector('#setting-open-last')).not.toBeNull();
+  });
+
+  it('the reopen-tabs checkbox updates the setting', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const box = document.querySelector<HTMLInputElement>('#setting-reopen-tabs')!;
+    expect(box.checked).toBe(true);
+    await userEvent.setup().click(box);
+    expect(get(settings).reopenTabsOnLaunch).toBe(false);
+  });
+});
+
+describe('SettingsModal — default app', () => {
+  beforeEach(() => {
+    vi.mocked(makeDefaultApp).mockReset().mockResolvedValue(undefined);
+    clearToasts();
+  });
+
+  it('is hidden where it is not supported', async () => {
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: false, md: false, markdown: false });
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    await Promise.resolve();
+    expect(screen.queryByText(/default app/i)).toBeNull();
+  });
+
+  it('says so when remarkdown is already the default, with no button', async () => {
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: true, markdown: true });
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    expect(await screen.findByText('remarkdown is your default app for .md files')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /make remarkdown the default/i })).toBeNull();
+  });
+
+  it("offers the button when it isn't the default, and calls makeDefaultApp", async () => {
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    expect(await screen.findByText(/isn't your default app for .md files yet/i)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: /make remarkdown the default/i }));
+    expect(makeDefaultApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains the manual route if it fails', async () => {
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
+    vi.mocked(makeDefaultApp).mockImplementation(async () => { throw new Error('access denied'); });
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    await userEvent.setup().click(await screen.findByRole('button', { name: /make remarkdown the default/i }));
+    await waitFor(() => expect(get(toasts).some((t) => t.kind === 'error' && /Open with/.test(t.message))).toBe(true));
+  });
+
+  it('re-checks the status when the window regains focus', async () => {
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    await screen.findByText(/isn't your default app/i);
+    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: true, markdown: true });
+    window.dispatchEvent(new Event('focus'));
+    expect(await screen.findByText('remarkdown is your default app for .md files')).toBeInTheDocument();
   });
 });

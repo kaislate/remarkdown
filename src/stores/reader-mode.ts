@@ -8,9 +8,11 @@
 // mode. We don't persist this because reader mode is a "while I'm
 // reading" choice, not a global preference.
 
-import { writable } from 'svelte/store';
+// Per tab: each tab remembers whether it was in focus mode. Proxy onto the
+// active session's store; see sessions.ts.
+import { activeProxy } from './sessions';
 
-export const readerMode = writable(false);
+export const readerMode = activeProxy((s) => s.readerMode);
 
 export function toggleReaderMode() {
   readerMode.update((v) => !v);

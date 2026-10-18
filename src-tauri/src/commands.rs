@@ -133,6 +133,16 @@ pub fn save_settings(app: tauri::AppHandle, json: String) -> Result<(), CommandE
 }
 
 #[tauri::command]
+pub fn load_session(app: tauri::AppHandle) -> Result<Option<String>, CommandError> {
+    crate::session_file::load_json(&app)
+}
+
+#[tauri::command]
+pub fn save_session(app: tauri::AppHandle, json: String) -> Result<(), CommandError> {
+    crate::session_file::save_json(&app, &json)
+}
+
+#[tauri::command]
 pub fn load_reading_progress(app: tauri::AppHandle) -> Result<Option<String>, CommandError> {
     crate::reading_progress::load_json(&app)
 }

@@ -1,13 +1,15 @@
 import { writable, derived } from 'svelte/store';
 import { resolveAnchor } from '../lib/anchoring';
 import type { Annotation, Drawing } from '../lib/schema';
+import { activeProxy } from './sessions';
 
 export interface ResolvedAnnotation {
   annotation: Annotation;
   range: Range; // for highlights/notes. For drawings this is a placeholder; DrawLayer uses anchorBlock directly.
 }
 
-export const annots = writable<Annotation[]>([]);
+// The active tab's annotations (proxy onto the active session's store).
+export const annots = activeProxy((s) => s.annots);
 
 // The viewer root element used to resolve anchors. Set by Viewer.svelte on mount.
 export const currentViewerRoot = writable<HTMLElement | null>(null);

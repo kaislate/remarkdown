@@ -1,10 +1,10 @@
-// Edit mode is session-scoped — opening the app starts in read mode. We
-// don't persist this because edit mode is a deliberate choice the user
-// makes per session, not a global preference. Toggling enters/exits the
-// PM-backed editor for the active document.
-import { writable } from 'svelte/store';
+// Edit mode is per tab (like separate Word documents) and never persisted —
+// opening the app starts every tab in read mode. Toggling enters/exits the
+// PM-backed editor for the active document. Proxy onto the active session's
+// store; see sessions.ts.
+import { activeProxy } from './sessions';
 
-export const editMode = writable(false);
+export const editMode = activeProxy((s) => s.editMode);
 
 export function enterEditMode(): void {
   editMode.set(true);
