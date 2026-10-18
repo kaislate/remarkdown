@@ -83,3 +83,64 @@ export async function saveReadingProgressJson(json: string): Promise<void> {
 export async function ensureWelcomeDoc(): Promise<string> {
   return await invoke<string>('ensure_welcome_doc');
 }
+
+// ---------------------------------------------------------------------------
+// Launch-file handling. Rust queues paths from our own argv and from second
+// launches (single instance); we drain the queue on startup and whenever Rust
+// emits 'open-requested'.
+
+export async function takePendingOpens(): Promise<string[]> {
+  try {
+    return await invoke<string[]>('take_pending_opens');
+  } catch {
+    return []; // non-Tauri host
+  }
+}
+
+export async function openDocumentWindow(path: string): Promise<void> {
+  await invoke('open_document_window', { path });
+}
+
+export async function loadSessionJson(): Promise<string | null> {
+  return await invoke<string | null>('load_session');
+}
+
+export async function saveSessionJson(json: string): Promise<void> {
+  await invoke('save_session', { json });
+}
+
+// Outside Tauri (vitest, Playwright) listen() rejects. The local set keeps
+// the callback reachable so tests — and the e2e bridge — can fire it.
+const localOpenRequested = new Set<() => void>();
+
+export async function onOpenRequested(cb: () => void): Promise<() => void> {
+  localOpenRequested.add(cb);
+  let unlisten: (() => void) | null = null;
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlisten = await listen('open-requested', () => cb());
+  } catch {
+    // non-Tauri host
+  }
+  return () => {
+    localOpenRequested.delete(cb);
+    unlisten?.();
+  };
+}
+
+export function fireOpenRequestedForTests(): void {
+  for (const cb of [...localOpenRequested]) cb();
+}
+
+// The current webview window's label ('main' for the first window,
+// 'doc-N' for windows opened in new-window mode). 'main' outside Tauri.
+export function windowLabel(): string {
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } };
+    }).__TAURI_INTERNALS__;
+    return internals?.metadata?.currentWindow?.label ?? 'main';
+  } catch {
+    return 'main';
+  }
+}

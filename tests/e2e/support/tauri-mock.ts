@@ -87,6 +87,27 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const paths = args?.paths as string[];
       return paths.map((p) => getDoc(p) !== null);
     }
+    case 'take_pending_opens': {
+      const queued = (window as any).__E2E_PENDING_OPENS__ ?? [];
+      (window as any).__E2E_PENDING_OPENS__ = [];
+      return queued;
+    }
+    case 'open_document_window': {
+      const opened = (window as any).__E2E_WINDOWS__ ?? [];
+      opened.push(args?.path);
+      (window as any).__E2E_WINDOWS__ = opened;
+      return;
+    }
+    case 'load_session':
+      return localStorage.getItem('rmd-session');
+    case 'save_session':
+      localStorage.setItem('rmd-session', args?.json as string);
+      return;
+    case 'load_reading_progress':
+      return localStorage.getItem('rmd-progress');
+    case 'save_reading_progress':
+      localStorage.setItem('rmd-progress', args?.json as string);
+      return;
     case 'backup_corrupt_sidecar': {
       const path = args?.mdPath as string;
       const raw = localStorage.getItem(sidecarKey(path));
@@ -116,6 +137,9 @@ export function convertFileSrc(path: string): string {
 };
 (window as any).__E2E_SET_DIALOG_PATH__ = (path: string | null) => {
   (window as any).__E2E_DIALOG_PATH__ = path;
+};
+(window as any).__E2E_QUEUE_OPENS__ = (paths: string[]) => {
+  (window as any).__E2E_PENDING_OPENS__ = [...((window as any).__E2E_PENDING_OPENS__ ?? []), ...paths];
 };
 (window as any).__E2E_CLEAR_ALL__ = () => {
   for (let i = localStorage.length - 1; i >= 0; i--) {

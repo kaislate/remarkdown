@@ -4,6 +4,7 @@ mod commands;
 mod launch;
 mod reading_progress;
 mod recent;
+mod session_file;
 mod settings;
 mod sidecar;
 mod welcome;
@@ -48,6 +49,8 @@ fn main() {
             commands::load_reading_progress,
             commands::save_reading_progress,
             commands::ensure_welcome_doc,
+            commands::load_session,
+            commands::save_session,
             launch::take_pending_opens,
             launch::open_document_window,
         ])

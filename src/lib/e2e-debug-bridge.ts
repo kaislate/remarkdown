@@ -5,9 +5,14 @@
 import { findEnclosedText, findTextLineAbove } from './drawing-anchor-finders';
 import { recognize } from './drawing-recognize';
 import type { BBox } from './drawing-geometry';
+import { fireOpenRequestedForTests } from './tauri-api';
 
 export function installE2EBridge(): void {
   if (import.meta.env.MODE !== 'e2e') return;
+  // Simulates Rust's 'open-requested' event (a second launch handed us
+  // paths); pair with __E2E_QUEUE_OPENS__ from the tauri mock.
+  (window as unknown as { __E2E_FIRE_OPEN_REQUESTED__: () => void }).__E2E_FIRE_OPEN_REQUESTED__ =
+    fireOpenRequestedForTests;
   (window as unknown as { __E2E_DRAW__: unknown }).__E2E_DRAW__ = {
     findEnclosedText: (bbox: BBox, root: HTMLElement) => {
       const r = findEnclosedText(bbox, root);
