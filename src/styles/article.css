@@ -253,12 +253,13 @@
   font-size: 0.85em;
   text-align: left;
 }
-.mermaid-error-title {
+/* Two-class selectors so `.md-rendered p` margins don't win. */
+.mermaid-error .mermaid-error-title {
   margin: 0;
   color: var(--fg-0);
   font-weight: 600;
 }
-.mermaid-error-hint {
+.mermaid-error .mermaid-error-hint {
   margin: 4px 0 0;
 }
 .mermaid-error-details {
