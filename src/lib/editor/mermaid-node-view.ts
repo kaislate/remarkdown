@@ -1,10 +1,10 @@
 // NodeView for code_block nodes whose fence is mermaid (isMermaidFence:
 // ```mermaid, ```Mermaid, ```mermaid title="…", …).
-// Renders the diagram using the mermaid singleton, layered over PM's
-// hidden source surface. Click selects a node/edge; Task 5 wires a
-// floating popover (label input, shape picker, delete, +connect stub)
-// whose edits flow back through the graph -> serializer -> PM
-// transaction -> NodeView.update() loop, which triggers a re-render.
+// Renders the diagram through the shared mermaid runtime, layered over
+// PM's hidden source surface. Click selects a node/edge; floating
+// popovers (label input, shape picker, delete, +connect) turn edits
+// into source-preserving text changes (mermaid-flowchart-edit.ts) ->
+// PM transaction -> NodeView.update() loop, which triggers a re-render.
 import type { Node } from 'prosemirror-model';
 import type {
   EditorView,
@@ -42,22 +42,17 @@ import {
 import { serializeSequence } from './mermaid-sequence-serializer';
 import { detectDiagramType, type MermaidDiagramType } from './mermaid-detect';
 import {
-  addNode,
-  addEdge,
-  setNodeLabel,
-  setNodeShape,
-  deleteNode,
-  setEdgeLabel,
-  setEdgeStyle,
-  deleteEdge,
   edgeDataIds,
-  setDirection,
   type MermaidGraph,
   type MermaidShape,
   type EdgeStyle,
   type MermaidDirection,
 } from './mermaid-graph';
-import { serializeMermaid } from './mermaid-serializer';
+import {
+  applyFlowchartEdit,
+  type FlowchartEdit,
+  type FlowchartEditResult,
+} from './mermaid-flowchart-edit';
 import { settings } from '../../stores/settings';
 import { isMermaidFence } from '../mermaid-fence';
 import {
@@ -601,12 +596,11 @@ export class MermaidNodeView implements NodeView {
               // mode (no edge added). Either ignore-only or ignore+exit
               // is acceptable per spec; exiting is less surprising.
               if (targetId !== this.connectMode.sourceId && this.graph) {
-                const newGraph = addEdge(this.graph, {
+                this.commitFlowchartEdit({
+                  kind: 'addEdge',
                   from: this.connectMode.sourceId,
                   to: targetId,
                 });
-                this.graph = newGraph;
-                this.commitGraphChange(serializeMermaid(newGraph));
               }
               this.exitConnectMode();
               e.stopPropagation();
@@ -1330,12 +1324,41 @@ export class MermaidNodeView implements NodeView {
     if (pos == null) return;
     const node = this.view.state.doc.nodeAt(pos);
     if (!node) return;
+    // Nothing changed (e.g. TD picked on a TB chart): no transaction, so
+    // no empty undo step.
+    if (node.textContent === newSource) return;
     const tr = this.view.state.tr.replaceWith(
       pos + 1,
       pos + 1 + node.content.size,
       this.view.state.schema.text(newSource),
     );
     this.view.dispatch(tr);
+  }
+
+  // The block's current source, straight from the document.
+  private currentSource(): string | null {
+    const pos = this.getPos();
+    if (pos == null) return null;
+    return this.view.state.doc.nodeAt(pos)?.textContent ?? null;
+  }
+
+  // Flowchart edits change only the source text they are about (see
+  // mermaid-flowchart-edit.ts) — comments, directives and formatting
+  // elsewhere in the block are never rewritten. `beforeCommit` runs
+  // with the edit's result before the transaction is dispatched; the
+  // add-node flows use it to stash pendingSelect for the new id (the
+  // render the commit triggers may complete synchronously on a cache
+  // hit, so it has to be set first).
+  private commitFlowchartEdit(
+    edit: FlowchartEdit,
+    beforeCommit?: (result: FlowchartEditResult) => void,
+  ): void {
+    const source = this.currentSource();
+    if (source == null) return;
+    const result = applyFlowchartEdit(source, edit);
+    if (!result) return;
+    beforeCommit?.(result);
+    this.commitGraphChange(result.source);
   }
 
   private openNodePopover(id: string, svgEl: Element | null): void {
@@ -1377,23 +1400,17 @@ export class MermaidNodeView implements NodeView {
 
   private handleLabelChange(id: string, label: string): void {
     if (!this.graph) return;
-    const newGraph = setNodeLabel(this.graph, id, label);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'setNodeLabel', id, label });
   }
 
   private handleShapeChange(id: string, shape: MermaidShape): void {
     if (!this.graph) return;
-    const newGraph = setNodeShape(this.graph, id, shape);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'setNodeShape', id, shape });
   }
 
   private handleDeleteNode(id: string): void {
     if (!this.graph) return;
-    const newGraph = deleteNode(this.graph, id);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'deleteNode', id });
     this.closePopover();
   }
 
@@ -1441,27 +1458,25 @@ export class MermaidNodeView implements NodeView {
   // popover anchors to that SVG element).
   private createFirstNode(): void {
     if (!this.graph) return;
-    const result = addNode(this.graph, { shape: 'rect', label: '' });
-    this.graph = result.graph;
-    this.pendingSelect = { kind: 'node', id: result.id };
-    this.commitGraphChange(serializeMermaid(this.graph));
+    this.commitFlowchartEdit({ kind: 'addNode', shape: 'rect', label: '' }, (r) => {
+      if (r.id) this.pendingSelect = { kind: 'node', id: r.id };
+    });
   }
 
   private addNewNodeInConnectMode(): void {
     if (!this.connectMode || !this.graph) return;
     const sourceId = this.connectMode.sourceId;
-    // Add the node + edge in ONE graph mutation, commit ONCE. Single
-    // PM transaction means the renderFromNode pass picks up both at
-    // the same time.
-    const result = addNode(this.graph, { shape: 'rect', label: '' });
-    let g = result.graph;
-    g = addEdge(g, { from: sourceId, to: result.id });
-    this.graph = g;
-    // Mermaid render is async — renderFromNode opens the popover for
-    // the new node via pendingSelect once its SVG element exists
-    // (opening earlier would position the popover at (0,0)).
-    this.pendingSelect = { kind: 'node', id: result.id };
-    this.commitGraphChange(serializeMermaid(g));
+    // Add the node + edge in ONE edit, commit ONCE. Single PM
+    // transaction means the renderFromNode pass picks up both at the
+    // same time. renderFromNode opens the popover for the new node via
+    // pendingSelect once its SVG element exists (opening earlier would
+    // position the popover at (0,0)).
+    this.commitFlowchartEdit(
+      { kind: 'addNode', shape: 'rect', label: '', connectFrom: sourceId },
+      (r) => {
+        if (r.id) this.pendingSelect = { kind: 'node', id: r.id };
+      },
+    );
     this.exitConnectMode();
   }
 
@@ -1500,23 +1515,17 @@ export class MermaidNodeView implements NodeView {
 
   private handleEdgeLabelChange(index: number, label: string): void {
     if (!this.graph) return;
-    const newGraph = setEdgeLabel(this.graph, index, label);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'setEdgeLabel', index, label });
   }
 
   private handleEdgeStyleChange(index: number, style: EdgeStyle): void {
     if (!this.graph) return;
-    const newGraph = setEdgeStyle(this.graph, index, style);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'setEdgeStyle', index, style });
   }
 
   private handleDeleteEdge(index: number): void {
     if (!this.graph) return;
-    const newGraph = deleteEdge(this.graph, index);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'deleteEdge', index });
     this.closeEdgePopover();
     // Selection is now stale — clear it so subsequent re-renders don't
     // try to re-highlight the deleted edge.
@@ -1809,9 +1818,7 @@ export class MermaidNodeView implements NodeView {
 
   private handleDirectionChange(direction: MermaidDirection): void {
     if (!this.graph) return;
-    const newGraph = setDirection(this.graph, direction);
-    this.graph = newGraph;
-    this.commitGraphChange(serializeMermaid(newGraph));
+    this.commitFlowchartEdit({ kind: 'setDirection', direction });
   }
 
   // One-click: add an empty-display participant, then open its popover

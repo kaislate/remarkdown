@@ -116,4 +116,32 @@ describe('MermaidNodeView edge identity', () => {
     view.destroy();
     parent.remove();
   });
+
+  it('a popover edit changes only its own token — comments, directives and chains survive', async () => {
+    const source = [
+      '%%{init: {"flowchart": {"curve": "basis"}}}%%',
+      'flowchart TB',
+      '    %% a comment that must survive',
+      '    A[Start] -->|first| B(Middle) --> C',
+      '',
+      '    %% trailing comment',
+      '',
+    ].join('\n');
+    const { view, parent } = makeView('```mermaid\n' + source + '```\n');
+    await flush();
+    const loaded = view.state.doc.textContent;
+    expect(loaded).toContain('%% a comment that must survive');
+    const edge = parent.querySelector('path.flowchart-link[data-id="L_A_B_0"]');
+    expect(edge).not.toBeNull();
+    edge!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush(1);
+    const input = parent.querySelector<HTMLInputElement>('.mermaid-edge-popover .mermaid-edge-popover-label')!;
+    input.value = 'renamed';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush(1);
+    expect(view.state.doc.textContent).toBe(loaded.replace('|first|', '|renamed|'));
+    view.destroy();
+    parent.remove();
+  });
 });
