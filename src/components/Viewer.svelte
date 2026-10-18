@@ -20,6 +20,9 @@
   import { debounce } from '../lib/editor/debounce';
   import type { Debounced } from '../lib/editor/debounce';
   import { settings } from '../stores/settings';
+  import { activeSession } from '../stores/sessions';
+  import { onBeforeSwitch } from '../stores/tabs';
+  import { onDestroy } from 'svelte';
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -169,24 +172,46 @@
 
   let pendingSave: Debounced<[string]> | null = null;
 
+  // CSS Custom Highlight API ranges live in a global registry; the
+  // HighlightLayer component unmounts when entering edit mode but the
+  // ranges it registered persist. Clear them so they don't paint stale
+  // highlights over the editor surface.
+  function clearPaintedHighlights() {
+    if (typeof CSS !== 'undefined' && CSS.highlights) {
+      CSS.highlights.clear();
+    }
+  }
+
+  // Edit mode is per tab, so $editMode also changes when the user merely
+  // switches between a tab that's editing and one that isn't. Only a change
+  // within the SAME tab is the user entering / leaving edit mode — a switch
+  // must not pause watchers or reload anything from disk.
+  let lastSessionId: string | null = null;
+  let lastEditMode = false;
   $effect(() => {
-    if ($editMode) {
-      // CSS Custom Highlight API ranges live in a global registry; the
-      // HighlightLayer component unmounts when entering edit mode but the
-      // ranges it registered persist. Clear them so they don't paint
-      // stale highlights over the editor surface.
-      if (typeof CSS !== 'undefined' && CSS.highlights) {
-        CSS.highlights.clear();
-      }
+    const session = $activeSession;
+    const on = $editMode;
+    if (session.id !== lastSessionId) {
+      lastSessionId = session.id;
+      lastEditMode = on;
+      if (on) clearPaintedHighlights();
+      return;
+    }
+    if (on === lastEditMode) return;
+    lastEditMode = on;
+    if (on) {
+      clearPaintedHighlights();
       void pauseFileWatcher();
     } else {
       // Flush any pending autosave so the file on disk reflects the
       // user's final edits, then reload the doc — re-renders article
       // HTML from the new markdown and runs the existing re-anchor
       // pipeline (annotations re-resolve, orphans go to the orphan
-      // panel via the standard flow).
+      // panel via the standard flow). The stashed editor state belongs
+      // to the edit session that just ended.
       pendingSave?.flush();
-      const currentDoc = get(doc);
+      session.editorState = null;
+      const currentDoc = get(session.doc);
       if (currentDoc) {
         void loadDocument(currentDoc.path).then(() => resumeFileWatcher());
       } else {
@@ -194,6 +219,13 @@
       }
     }
   });
+
+  // Before the active tab changes: write any pending edit-mode autosave to
+  // the outgoing tab's file and remember exactly where it was scrolled.
+  onDestroy(onBeforeSwitch((outgoing) => {
+    pendingSave?.flush();
+    if (scrollEl) outgoing.scrollTop = scrollEl.scrollTop;
+  }));
 
   $effect(() => {
     const currentDoc = $doc;
@@ -244,8 +276,14 @@
                y-coords are computed in text-frame coordinate space. -->
           <MarginaliaColumn />
         {:else}
-          {#key $doc?.path}
-            <Editor initialMarkdown={$doc.markdown} onChange={onEditorChange} />
+          <!-- Keyed on the tab too: two tabs can both be in edit mode, and
+               each needs its own editor (restored from its saved state). -->
+          {#key $activeSession.id + ($doc?.path ?? '')}
+            <Editor
+              initialMarkdown={$doc.markdown}
+              onChange={onEditorChange}
+              session={$activeSession}
+            />
           {/key}
         {/if}
       </div>

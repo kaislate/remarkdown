@@ -1,0 +1,142 @@
+// Tab operations over document sessions: add, switch, close, cycle.
+//
+// Switching never reloads from disk. The outgoing tab gets a chance to
+// stash what only the live UI knows (scroll offset, editor state, pending
+// autosaves) through before-switch hooks registered by the components that
+// own that state; the incoming tab's stores are already complete, so the
+// proxies re-emit and the UI redraws from memory.
+
+import { get } from 'svelte/store';
+import { activeSession, createSession, sessions, type DocSession } from './sessions';
+import { docEpoch } from './annots';
+import { reloadSession } from './doc';
+import { cancelReattach } from './reattach';
+import { viewerScroll } from './viewport';
+import { getProgressFor } from './reading-progress';
+
+type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
+const beforeSwitchHooks = new Set<BeforeSwitchHook>();
+
+// Register work that must happen before the active tab changes or closes
+// (flush saves, capture scroll / editor state). Returns an unregister fn.
+export function onBeforeSwitch(hook: BeforeSwitchHook): () => void {
+  beforeSwitchHooks.add(hook);
+  return () => { beforeSwitchHooks.delete(hook); };
+}
+
+// Runs every before-switch hook for the active tab. Also used on window
+// close so the last edits are flushed.
+export async function runBeforeSwitch(): Promise<void> {
+  const outgoing = get(activeSession);
+  for (const hook of [...beforeSwitchHooks]) {
+    try {
+      await hook(outgoing);
+    } catch (err) {
+      console.error('[remarkdown] before-switch hook failed:', err);
+    }
+  }
+}
+
+// Windows paths: the same file can arrive as C:\Docs\A.md or c:/docs/a.md.
+function normalisePath(p: string): string {
+  return p.replace(/\//g, '\\').toLowerCase();
+}
+
+export function samePath(a: string, b: string): boolean {
+  return normalisePath(a) === normalisePath(b);
+}
+
+export function findSessionByPath(path: string): DocSession | null {
+  return get(sessions).find((s) => {
+    const d = get(s.doc);
+    return !!d && samePath(d.path, path);
+  }) ?? null;
+}
+
+// New tabs open right after the active one, like a browser.
+export function addSession(session: DocSession): void {
+  sessions.update((list) => {
+    const i = list.indexOf(get(activeSession));
+    const next = [...list];
+    next.splice(i + 1, 0, session);
+    return next;
+  });
+}
+
+function setActive(session: DocSession): void {
+  activeSession.set(session);
+  docEpoch.update((e) => e + 1);
+  restoreScroll(session);
+}
+
+export async function activateSession(id: string): Promise<void> {
+  const target = get(sessions).find((s) => s.id === id);
+  if (!target || target === get(activeSession)) return;
+  cancelReattach();
+  await runBeforeSwitch();
+  setActive(target);
+  if (target.pendingDiskReload) {
+    target.pendingDiskReload = false;
+    await reloadSession(target);
+  }
+}
+
+// Put the tab back where the user left it: the exact offset captured on
+// switch-away, or — for a tab never viewed this run (restored / just
+// opened) — the saved reading-progress ratio. Two frames so the article
+// has rendered and laid out.
+export function restoreScroll(session: DocSession): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (get(activeSession) !== session) return;
+      const el = get(viewerScroll);
+      if (!el) return;
+      if (session.scrollTop != null) {
+        el.scrollTop = session.scrollTop;
+        return;
+      }
+      const d = get(session.doc);
+      if (!d) return;
+      const progress = getProgressFor(d.path);
+      const max = el.scrollHeight - el.clientHeight;
+      if (progress && progress.scrollRatio > 0.001 && max > 0) {
+        el.scrollTop = max * progress.scrollRatio;
+      }
+    });
+  });
+}
+
+export async function closeSession(id: string): Promise<void> {
+  const list = get(sessions);
+  const idx = list.findIndex((s) => s.id === id);
+  if (idx < 0) return;
+  const closing = list[idx];
+
+  if (closing === get(activeSession)) {
+    cancelReattach();
+    await runBeforeSwitch();
+    const neighbour = list[idx + 1] ?? list[idx - 1] ?? null;
+    if (neighbour) {
+      setActive(neighbour);
+    } else {
+      // Closing the last tab: the window goes back to the empty state.
+      const fresh = createSession();
+      sessions.set([fresh]);
+      setActive(fresh);
+    }
+  }
+
+  if (closing.disposeWatcher) {
+    await closing.disposeWatcher();
+    closing.disposeWatcher = null;
+  }
+  // When the last tab closed, `sessions` is already [fresh]: a no-op.
+  sessions.update((l) => l.filter((s) => s !== closing));
+}
+
+export async function cycleSession(delta: 1 | -1): Promise<void> {
+  const list = get(sessions);
+  if (list.length < 2) return;
+  const i = list.indexOf(get(activeSession));
+  await activateSession(list[(i + delta + list.length) % list.length].id);
+}

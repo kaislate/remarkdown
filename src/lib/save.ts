@@ -6,6 +6,8 @@ import { annots } from '../stores/annots';
 import { getSettings } from '../stores/settings';
 import type { Sidecar } from './schema';
 import { addToast } from '../stores/toasts';
+import { activeSession } from '../stores/sessions';
+import { onBeforeSwitch } from '../stores/tabs';
 
 const SIZE_WARN_BYTES = 2 * 1024 * 1024;
 let warnedOnceForThisPath: string | null = null;
@@ -91,16 +93,30 @@ export function installSaveWatcher(): () => void {
     lastSerializedSnapshot = null;
     warnedOnceForThisPath = null;
   });
+  // `annots` is a proxy onto the active tab, so it also emits when the user
+  // switches tabs. That's not an edit — only schedule a save when the same
+  // tab's annotations change. The outgoing tab's pending save is flushed by
+  // the before-switch hook below, while it's still the active tab.
+  let lastSessionId = get(activeSession).id;
   let firstAnnots = true;
   const unsubAnnots = annots.subscribe(() => {
     // Skip the initial emit on subscribe.
     if (firstAnnots) { firstAnnots = false; return; }
+    const sessionId = get(activeSession).id;
+    if (sessionId !== lastSessionId) {
+      lastSessionId = sessionId;
+      return;
+    }
     if (!get(doc)) return;
     scheduleSave();
+  });
+  const offBeforeSwitch = onBeforeSwitch(async () => {
+    if (timer) await flushSave(); // only a save that's actually pending
   });
   return () => {
     unsubDoc();
     unsubAnnots();
+    offBeforeSwitch();
     if (timer) { clearTimeout(timer); timer = null; }
   };
 }
