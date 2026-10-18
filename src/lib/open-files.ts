@@ -17,9 +17,27 @@ import { recordRecent } from '../stores/recent';
 import { addToast } from '../stores/toasts';
 import { openDocumentWindow, openFileDialog, takePendingOpens } from './tauri-api';
 
+// Opens run one at a time. They can overlap in practice — the startup
+// drain and an 'open-requested' event (Explorer multi-select launches a
+// process per file), a double-click while saved tabs are restoring — and
+// each one decides "is the start tab empty?" / "is this file already
+// open?" before awaiting a load. Interleaved, two files could load into
+// the same empty tab (one silently lost) or one file into two tabs.
+let openQueue: Promise<unknown> = Promise.resolve();
+
+export function runOpenExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = openQueue.then(fn);
+  openQueue = run.catch(() => undefined);
+  return run;
+}
+
 // Returns how many of `paths` ended up open (including ones that were
 // already open). Failures have already been reported with a toast.
-export async function openPaths(paths: string[]): Promise<number> {
+export function openPaths(paths: string[]): Promise<number> {
+  return runOpenExclusive(() => openPathsNow(paths));
+}
+
+async function openPathsNow(paths: string[]): Promise<number> {
   const mode = get(settings).openMode;
   let opened = 0;
   let toActivate: DocSession | null = null;

@@ -13,6 +13,7 @@ import { loadIntoSession } from './doc';
 import { activateSession, addSession } from './tabs';
 import { settings } from './settings';
 import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
+import { runOpenExclusive } from '../lib/open-files';
 
 const SCHEMA_VERSION = 1;
 const SAVE_DEBOUNCE_MS = 300;
@@ -46,8 +47,13 @@ export function parseSession(raw: string | null): SavedSession | null {
 
 // Reopen the saved tabs. Files that no longer exist are skipped silently;
 // restored tabs are not pushed into recents (the user didn't just open
-// them). The first restored tab reuses the empty start tab.
-export async function restoreSavedTabs(): Promise<void> {
+// them). The first restored tab reuses the empty start tab. Runs in the
+// open queue so a double-click arriving meanwhile waits its turn.
+export function restoreSavedTabs(): Promise<void> {
+  return runOpenExclusive(restoreSavedTabsNow);
+}
+
+async function restoreSavedTabsNow(): Promise<void> {
   let saved: SavedSession | null = null;
   try {
     saved = parseSession(await loadSessionJson());
