@@ -27,7 +27,7 @@ import { isMermaidFence } from '../mermaid-fence';
 
 export const MERMAID_EDIT_META = 'mermaidVisualEdit';
 
-function isDiagram(node: Node | null | undefined): node is Node {
+function isDiagram(node: Node | null | undefined): boolean {
   return !!node && node.type.name === 'code_block' && isMermaidFence(String(node.attrs.language || ''));
 }
 
@@ -38,7 +38,9 @@ export function createMermaidSourceGuard(): Plugin {
       let ok = true;
       state.doc.descendants((node, pos) => {
         if (!ok) return false;
-        if (!isDiagram(node)) return true;
+        // Diagrams are textblocks; no need to walk into other textblocks'
+        // inline content on every keystroke.
+        if (!isDiagram(node)) return !node.isTextblock;
         const start = tr.mapping.mapResult(pos, 1).pos;
         const end = tr.mapping.mapResult(pos + node.nodeSize, -1).pos;
         // Removed as a whole: fine.
@@ -84,7 +86,7 @@ function selectAdjacentDiagram(dir: 1 | -1): Command {
     if (!atEdge) return false;
     const $cut = findCut($pos, dir);
     const neighbour = dir > 0 ? $cut?.nodeAfter : $cut?.nodeBefore;
-    if (!$cut || !isDiagram(neighbour)) return false;
+    if (!$cut || !neighbour || !isDiagram(neighbour)) return false;
     if (dispatch) {
       const tr = state.tr;
       let at = dir > 0 ? $cut.pos : $cut.pos - neighbour.nodeSize;
