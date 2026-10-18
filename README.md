@@ -15,7 +15,7 @@
 
 </div>
 
-![Status: 0.6.0](https://img.shields.io/badge/status-0.6.0-2ea44f)
+![Status: 0.7.0](https://img.shields.io/badge/status-0.7.0-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Testers wanted: Linux & macOS](https://img.shields.io/badge/testers%20wanted-Linux%20%26%20macOS-orange)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
@@ -24,7 +24,21 @@
 
 ---
 
-## 🎉 0.6.0 — ✍️ EDIT MODE IS HERE
+## 🎉 0.7.0 — 🗂️ Tabs, and your files open themselves
+
+**Double-click a `.md` and remarkdown opens *that file*.** Not the welcome page, not a blank window — the file you clicked. Already running? It comes to the front and opens it there.
+
+- **🗂️ Tabs that really stay open.** Open several documents and switch between them in a tab bar up in the title band. Every tab keeps its exact scroll position, its edit mode, and its **undo history** — switch away mid-edit, come back, and `Ctrl+Z` still works. Tabs grow in, shrink out, and an underline glides to the one you pick. `Ctrl+Tab`, `Ctrl+W`, `Ctrl+O`, middle-click to close; your tabs come back next time you launch.
+- **🪟 Your choice of how files open** — *Settings → Startup & files → When opening a file*: in a new tab (default), replacing the current document, or in a new window.
+- **📌 Make remarkdown your default for `.md`.** The installer now registers remarkdown for `.md` and `.markdown` (it shows up under *Open with*), and Settings has a **Make remarkdown the default…** button that takes you straight to the right Windows screen — Windows only lets *you* make that final click.
+- **🧜 Sturdier diagrams.** Diagrams follow theme switches, wide charts (gantt, timeline, C4) scroll instead of shrinking to unreadable, broken diagrams explain themselves politely, and editing a flowchart or sequence diagram now changes *only* what you touched — comments, styling directives and everything else stay exactly as written.
+- **🍔 Menu fix** — the hamburger menu unfolds out of its button and no longer hides under the round buttons beside it.
+
+Thanks to **@jaynothin** for reporting [#23](../../issues/23) and [#24](../../issues/24).
+
+---
+
+## 0.6.0 — ✍️ Edit mode
 
 **This is the biggest release remarkdown has ever shipped.** 145 commits since 0.5.4-beta, and they all add up to one headline:
 
@@ -236,7 +250,13 @@ Produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. Cuttin
 
 ## 🗺 Roadmap
 
-### ✅ New in 0.6.0
+### ✅ New in 0.7.0
+- **Opening files** — double-clicked / "Open with" files open themselves (single instance: a second launch hands its file to the running app); `.md`/`.markdown` file associations; Settings status + one-click route to make remarkdown the Windows default
+- **Tabs** — per-document sessions keep scroll, undo history, edit and focus mode; animated tab bar; keyboard shortcuts; tabs restored on launch; open-mode setting (tab / replace / new window)
+- **Mermaid round 1** — shared render runtime with cache and timeouts, theme-following diagrams, wide-diagram scrolling, friendly errors, and line-preserving visual edits for flowcharts and sequence diagrams
+- **Menu overlap fix** (#23)
+
+### ✅ Shipped in 0.6.0
 - **Edit mode** — full WYSIWYG ProseMirror editor behind a one-key toggle: callouts, code blocks (live Shiki), task lists, GFM tables, footnotes, strikethrough/sub/sup bubble menu, atomic autosave, annotation re-anchor on exit
 - **Visual mermaid editing** — flowcharts (shapes, edges, labels, connect mode, direction picker) and sequence diagrams (participants, messages, notes), with the serializer validated against mermaid's own grammar and hardened against render races, parallel-edge ambiguity, and special characters
 - **MSI installers** — stable semver means Windows `.msi` packages ship alongside NSIS again
