@@ -190,7 +190,10 @@ describe('sequence parser — round-trip', () => {
   });
 
   it('round-trips bare participants and short messages', () => {
-    const src = 'sequenceDiagram\nparticipant A\nparticipant B\nA->B\n';
+    const src = 'sequenceDiagram\nparticipant A\nparticipant B\nA->B:\n';
     expect(rt(src)).toBe(src);
+    // A colon-less message (which mermaid 11 rejects) is still READ, so
+    // such sources stay editable; writing it out adds the colon.
+    expect(rt('sequenceDiagram\nparticipant A\nparticipant B\nA->B\n')).toBe(src);
   });
 });

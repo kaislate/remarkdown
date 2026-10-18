@@ -24,22 +24,15 @@ import MermaidSequenceActions from '../../components/MermaidSequenceActions.svel
 import { parseMermaid } from './mermaid-parser';
 import { parseSequence } from './mermaid-sequence-parser';
 import {
-  addParticipant,
-  setParticipantDisplay,
-  deleteParticipant,
-  addMessage,
-  setMessageText,
-  setMessageStyle,
-  deleteMessage,
-  addNote,
-  setNoteText,
-  setNotePosition,
-  deleteNote,
   type SequenceGraph,
   type MessageStyle,
   type NotePosition,
 } from './mermaid-sequence-graph';
-import { serializeSequence } from './mermaid-sequence-serializer';
+import {
+  applySequenceEdit,
+  type SequenceEdit,
+  type SequenceEditResult,
+} from './mermaid-sequence-edit';
 import { detectDiagramType, type MermaidDiagramType } from './mermaid-detect';
 import {
   edgeDataIds,
@@ -684,19 +677,15 @@ export class MermaidNodeView implements NodeView {
                 return;
               }
               const from = this.addMessageMode.from;
-              const eventsBefore = this.sequenceGraph.events.length;
-              const newGraph = addMessage(this.sequenceGraph, {
-                from,
-                to: id,
-                text: '',
-                style: 'arrow',
-              });
-              this.sequenceGraph = newGraph;
               // renderFromNode opens the new arrow's popover via
               // pendingSelect once mermaid has re-rendered it, so the
               // popover anchors to a real SVG rect.
-              this.pendingSelect = { kind: 'message', index: eventsBefore };
-              this.commitGraphChange(serializeSequence(newGraph));
+              this.commitSequenceEdit(
+                { kind: 'addMessage', from, to: id, text: '', style: 'arrow' },
+                (r) => {
+                  if (r.index !== undefined) this.pendingSelect = { kind: 'message', index: r.index };
+                },
+              );
               this.exitAddMessageMode();
               e.stopPropagation();
               return;
@@ -1525,20 +1514,21 @@ export class MermaidNodeView implements NodeView {
 
   private handleDeleteEdge(index: number): void {
     if (!this.graph) return;
-    this.commitFlowchartEdit({ kind: 'deleteEdge', index });
-    this.closeEdgePopover();
-    // Selection is now stale — clear it so subsequent re-renders don't
-    // try to re-highlight the deleted edge.
+    // Selection is about to be stale — clear it BEFORE committing so the
+    // re-render (synchronous on a cache hit) doesn't re-highlight the
+    // edge that moves into this index.
     this.selected = null;
     this.dom.classList.remove('mermaid-has-selection');
+    this.closeEdgePopover();
+    this.commitFlowchartEdit({ kind: 'deleteEdge', index });
   }
 
   // Participant popover lifecycle (Task 5). Mirrors openEdgePopover —
   // anchor against the participant's <g data-et="participant"> element
   // in WRAPPER coordinates (popover-host is absolute inside the wrapper,
   // not the editor-shell), seed display from the graph, and wire the
-  // edit/delete callbacks back through setParticipantDisplay /
-  // deleteParticipant + serializeSequence.
+  // edit/delete callbacks back through source-preserving sequence
+  // edits (mermaid-sequence-edit.ts).
   private openParticipantPopover(id: string): void {
     if (!this.sequenceGraph) return;
     const participant = this.sequenceGraph.participants.get(id);
@@ -1574,22 +1564,30 @@ export class MermaidNodeView implements NodeView {
 
   private handleParticipantDisplayChange(id: string, display: string): void {
     if (!this.sequenceGraph) return;
-    const newGraph = setParticipantDisplay(this.sequenceGraph, id, display);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setParticipantDisplay', id, display });
   }
 
   private handleDeleteParticipant(id: string): void {
     if (!this.sequenceGraph) return;
-    // deleteParticipant cascades to remove every event involving this
-    // participant (messages from/to it, notes referencing it). The
-    // serializer emits the resulting graph; PM round-trips through
-    // commitGraphChange.
-    const newGraph = deleteParticipant(this.sequenceGraph, id);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    // Cascades: every event involving this participant (messages
+    // from/to it, notes referencing it) goes with it.
+    this.commitSequenceEdit({ kind: 'deleteParticipant', id });
     this.closeParticipantPopover();
     this.clearSequenceSelection();
+  }
+
+  // Sequence counterpart of commitFlowchartEdit: only the lines (or
+  // parts of lines) an edit is about change. See mermaid-sequence-edit.ts.
+  private commitSequenceEdit(
+    edit: SequenceEdit,
+    beforeCommit?: (result: SequenceEditResult) => void,
+  ): void {
+    const source = this.currentSource();
+    if (source == null) return;
+    const result = applySequenceEdit(source, edit);
+    if (!result) return;
+    beforeCommit?.(result);
+    this.commitGraphChange(result.source);
   }
 
   // Message popover lifecycle (Task 6). Mirrors openEdgePopover —
@@ -1638,29 +1636,24 @@ export class MermaidNodeView implements NodeView {
 
   private handleMessageTextChange(index: number, text: string): void {
     if (!this.sequenceGraph) return;
-    const newGraph = setMessageText(this.sequenceGraph, index, text);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setMessageText', index, text });
   }
 
   private handleMessageStyleChange(index: number, style: MessageStyle): void {
     if (!this.sequenceGraph) return;
-    const newGraph = setMessageStyle(this.sequenceGraph, index, style);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setMessageStyle', index, style });
   }
 
   private handleDeleteMessage(index: number): void {
     if (!this.sequenceGraph) return;
-    const newGraph = deleteMessage(this.sequenceGraph, index);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
-    this.closeMessagePopover();
-    // Selection is now stale — clear it so the post-render selection
-    // restore (in renderFromNode) doesn't try to re-highlight a deleted
-    // event index.
+    // Selection is about to be stale — clear it BEFORE committing so the
+    // post-render selection restore (renderFromNode, which can run
+    // synchronously on a cache hit) doesn't re-highlight whatever event
+    // now sits at this index.
     this.sequenceSelected = null;
     this.dom.classList.remove('mermaid-has-selection');
+    this.closeMessagePopover();
+    this.commitSequenceEdit({ kind: 'deleteMessage', index });
   }
 
   // Note popover lifecycle (Task 7 of Phase 2g). Mirrors openMessagePopover —
@@ -1716,9 +1709,7 @@ export class MermaidNodeView implements NodeView {
 
   private handleNoteTextChange(index: number, text: string): void {
     if (!this.sequenceGraph) return;
-    const newGraph = setNoteText(this.sequenceGraph, index, text);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setNoteText', index, text });
   }
 
   private handleNotePositionChange(index: number, position: NotePosition): void {
@@ -1733,12 +1724,7 @@ export class MermaidNodeView implements NodeView {
       position === 'over'
         ? ev.participants
         : ev.participants.slice(0, 1);
-    const newGraph = setNotePosition(this.sequenceGraph, index, {
-      participants,
-      position,
-    });
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setNotePosition', index, participants, position });
   }
 
   private handleNoteSecondaryChange(index: number, secondaryId: string): void {
@@ -1748,25 +1734,17 @@ export class MermaidNodeView implements NodeView {
     const primary = ev.participants[0] ?? '';
     if (!primary) return;
     const participants = secondaryId ? [primary, secondaryId] : [primary];
-    const newGraph = setNotePosition(this.sequenceGraph, index, {
-      participants,
-      position: 'over',
-    });
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit({ kind: 'setNotePosition', index, participants, position: 'over' });
   }
 
   private handleDeleteNote(index: number): void {
     if (!this.sequenceGraph) return;
-    const newGraph = deleteNote(this.sequenceGraph, index);
-    this.sequenceGraph = newGraph;
-    this.commitGraphChange(serializeSequence(newGraph));
-    this.closeNotePopover();
-    // Selection is now stale — clear it so the post-render selection
-    // restore (in renderFromNode) doesn't try to re-highlight a deleted
-    // event index.
+    // Clear the soon-stale selection BEFORE committing (see
+    // handleDeleteMessage).
     this.sequenceSelected = null;
     this.dom.classList.remove('mermaid-has-selection');
+    this.closeNotePopover();
+    this.commitSequenceEdit({ kind: 'deleteNote', index });
   }
 
   // Add-element handlers for sequence diagrams (Task 8 of Phase 2g).
@@ -1826,10 +1804,9 @@ export class MermaidNodeView implements NodeView {
   // mermaid-sequence-graph picks A, B, C, ... so the new id is fresh.
   private handleAddParticipant(): void {
     if (!this.sequenceGraph) return;
-    const result = addParticipant(this.sequenceGraph, { display: '' });
-    this.sequenceGraph = result.graph;
-    this.pendingSelect = { kind: 'participant', id: result.id };
-    this.commitGraphChange(serializeSequence(this.sequenceGraph));
+    this.commitSequenceEdit({ kind: 'addParticipant', display: '' }, (r) => {
+      if (r.id) this.pendingSelect = { kind: 'participant', id: r.id };
+    });
   }
 
   // One-click: add a leftOf-positioned note on the first participant
@@ -1839,17 +1816,12 @@ export class MermaidNodeView implements NodeView {
     if (!this.sequenceGraph) return;
     const firstId = Array.from(this.sequenceGraph.participants.keys())[0];
     if (!firstId) return;
-    // The new note will be appended (addNote pushes onto events), so
-    // its index is the current length.
-    const newIndex = this.sequenceGraph.events.length;
-    const newGraph = addNote(this.sequenceGraph, {
-      participants: [firstId],
-      position: 'leftOf',
-      text: '',
-    });
-    this.sequenceGraph = newGraph;
-    this.pendingSelect = { kind: 'note', index: newIndex };
-    this.commitGraphChange(serializeSequence(newGraph));
+    this.commitSequenceEdit(
+      { kind: 'addNote', participants: [firstId], position: 'leftOf', text: '' },
+      (r) => {
+        if (r.index !== undefined) this.pendingSelect = { kind: 'note', index: r.index };
+      },
+    );
   }
 
   // Two-step: enter add-message mode. The next click on a participant
@@ -1907,16 +1879,11 @@ export class MermaidNodeView implements NodeView {
     if (!this.sequenceGraph) return;
     const ev = this.sequenceGraph.events[index];
     if (!ev || ev.kind !== 'message') return;
-    const events = [...this.sequenceGraph.events];
-    events.splice(index + 1, 0, {
-      kind: 'message',
-      from: ev.from,
-      to: ev.to,
-      text: '',
-      style: ev.style,
-    });
-    this.sequenceGraph = { ...this.sequenceGraph, events };
-    this.pendingSelect = { kind: 'message', index: index + 1 };
-    this.commitGraphChange(serializeSequence(this.sequenceGraph));
+    this.commitSequenceEdit(
+      { kind: 'addMessage', from: ev.from, to: ev.to, text: '', style: ev.style, afterIndex: index },
+      (r) => {
+        if (r.index !== undefined) this.pendingSelect = { kind: 'message', index: r.index };
+      },
+    );
   }
 }
