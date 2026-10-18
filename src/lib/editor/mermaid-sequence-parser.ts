@@ -63,6 +63,9 @@ export interface ParticipantDecl {
   line: number;
   // Column just past the id (where " as Display" starts or would go).
   idEnd: number;
+  // Column just past the display text (before any `# comment`); equals
+  // idEnd when there's no display.
+  tailEnd: number;
   hasDisplay: boolean;
 }
 
@@ -159,8 +162,14 @@ function unencodedSemicolon(line: string): boolean {
   return code.replace(/#\w+;/g, '').includes(';');
 }
 
+// The visible text from `start`: up to an unencoded `#` (a comment to
+// mermaid, kept out of the span so edits leave it in place), trailing
+// spaces excluded.
 function trimmedSpan(lineText: string, start: number): Span {
-  return { start, end: start + lineText.slice(start).trimEnd().length };
+  const rest = lineText.slice(start);
+  const hash = rest.search(/#(?!\w+;)/);
+  const visible = hash === -1 ? rest : rest.slice(0, hash);
+  return { start, end: start + visible.trimEnd().length };
 }
 
 export function parseSequenceSource(source: string): SequenceSourceParseResult {
@@ -224,7 +233,13 @@ export function parseSequenceSource(source: string): SequenceSourceParseResult {
       mention(id, i);
       if (pMatch[3] !== undefined) graph.participants.set(id, { id, display });
       const decls = declarations.get(id) ?? [];
-      decls.push({ line: i, idEnd: pMatch[1].length + id.length, hasDisplay: pMatch[3] !== undefined });
+      const idEnd = pMatch[1].length + id.length;
+      decls.push({
+        line: i,
+        idEnd,
+        tailEnd: pMatch[3] !== undefined ? trimmedSpan(raw, idEnd).end : idEnd,
+        hasDisplay: pMatch[3] !== undefined,
+      });
       declarations.set(id, decls);
       statementLines.push(i);
       continue;

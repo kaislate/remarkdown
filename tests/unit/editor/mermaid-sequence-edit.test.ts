@@ -171,6 +171,18 @@ describe('sequence edits: targeted examples', () => {
     );
   });
 
+  // Review finding: a `# comment` after the text (mermaid ignores it)
+  // was swallowed by text edits.
+  it('keeps a trailing # comment when the text changes', async () => {
+    const src = 'sequenceDiagram\n  participant A as Al # who\n  A->>B: two # todo\n  Note over A: n1 # later\n';
+    expect(edit(src, { kind: 'setMessageText', index: 0, text: 'two!' })).toBe(src.replace('two # todo', 'two! # todo'));
+    const cleared = edit(src, { kind: 'setMessageText', index: 0, text: '' });
+    expect(cleared).toBe(src.replace('A->>B: two # todo', 'A->>B: # todo'));
+    await expect(mermaid.parse(cleared)).resolves.toBeTruthy();
+    expect(edit(src, { kind: 'setNoteText', index: 1, text: 'n2' })).toBe(src.replace('n1 # later', 'n2 # later'));
+    expect(edit(src, { kind: 'setParticipantDisplay', id: 'A', display: 'Bob' })).toBe(src.replace('Al # who', 'Bob # who'));
+  });
+
   it('refuses sources outside the subset', () => {
     expect(applySequenceEdit('sequenceDiagram\n  loop x\n  A->>B: y\n  end\n', { kind: 'deleteMessage', index: 0 })).toBeNull();
   });

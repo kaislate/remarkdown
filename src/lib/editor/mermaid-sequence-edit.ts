@@ -105,7 +105,13 @@ export function applySequenceEdit(source: string, edit: SequenceEdit): SequenceE
       // the last bare one when none has an alias).
       const target = [...decls].reverse().find((d) => d.hasDisplay) ?? decls[decls.length - 1];
       if (target) {
-        lines[target.line] = lines[target.line].slice(0, target.idEnd) + emitParticipantTail(edit.display);
+        // Replace only " as Display" — a trailing `# comment` stays.
+        lines[target.line] = replaceRange(
+          lines[target.line],
+          target.idEnd,
+          target.tailEnd,
+          emitParticipantTail(edit.display),
+        );
         break;
       }
       // Implicit participant: declare it right before the line where it
