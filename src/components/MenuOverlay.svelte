@@ -37,9 +37,12 @@
     cursor: none;
     transition: var(--animation-overlay);
     transition-property: opacity, visibility;
-    z-index: 95;
-    /* Below GlassMenu's popover (z:100 by inheritance from .menu-root)
-       but above all other chrome so the menu floats over a dimmed app. */
+    z-index: 125;
+    /* Below GlassMenu (.menu-root z:130) but above the rest of the
+       chrome — including the left-hand round buttons (z:100–110) — so
+       the menu floats over a dimmed app and stray clicks close it
+       instead of triggering a button. Window controls (z:170+) stay
+       above so the window can still be moved/closed. */
   }
   .menu-overlay.open {
     opacity: 1;

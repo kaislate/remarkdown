@@ -22,3 +22,29 @@ if (typeof window !== 'undefined') {
   // @ts-expect-error adding to global
   window.CSS = g;
 }
+
+// jsdom does not implement the Web Animations API, which Svelte 5
+// transitions (in:/out:/transition:) drive via element.animate(). Stub
+// it with an animation that finishes on the next microtask so
+// transitioned elements still mount, and outro'd elements still
+// unmount, in component tests.
+if (typeof Element !== 'undefined' && !Element.prototype.animate) {
+  Element.prototype.animate = function () {
+    const anim: any = {
+      onfinish: null as null | (() => void),
+      oncancel: null as null | (() => void),
+      currentTime: 0,
+      playState: 'finished',
+      cancel() { anim.oncancel?.(); },
+      finish() { anim.onfinish?.(); },
+      play() {},
+      pause() {},
+      reverse() {},
+      addEventListener() {},
+      removeEventListener() {},
+    };
+    anim.finished = Promise.resolve(anim);
+    queueMicrotask(() => anim.onfinish?.());
+    return anim as Animation;
+  };
+}
