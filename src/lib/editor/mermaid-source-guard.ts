@@ -12,9 +12,10 @@
 //   - Delete at the end of the paragraph before a diagram erased the
 //     diagram's whole source
 // Two layers:
-//   1. diagramKeymap — Backspace / Delete next to a diagram select it
-//      (a NodeSelection, like a picture in a word processor); a second
-//      press removes the diagram as a whole.
+//   1. diagramKeymap — Backspace / Delete behave exactly as PM's
+//      defaults, except where the default would cut into a diagram:
+//      there they select the diagram instead (a NodeSelection, like a
+//      picture in a word processor); a second press removes it whole.
 //   2. createMermaidSourceGuard — a filterTransaction backstop: any
 //      transaction with a step that reaches inside a diagram (its text
 //      would change, or a join/split would cut through it) is dropped
@@ -30,6 +31,7 @@ import {
 } from 'prosemirror-state';
 import { ReplaceStep, ReplaceAroundStep } from 'prosemirror-transform';
 import { isHistoryTransaction } from 'prosemirror-history';
+import { baseKeymap } from 'prosemirror-commands';
 import type { Node, ResolvedPos } from 'prosemirror-model';
 import { isMermaidFence } from '../mermaid-fence';
 
@@ -116,10 +118,34 @@ function selectAdjacentDiagram(dir: 1 | -1): Command {
   };
 }
 
+// Backspace / Delete: run PM's own command, but look at what it would
+// do first (capturing dispatch). If it doesn't reach into a diagram —
+// lifting a list item out of a list, joining two paragraphs, selecting
+// the diagram node — it's dispatched unchanged, exactly as anywhere
+// else in the document. Only when it WOULD cut into a diagram's text
+// (joining a neighbouring paragraph into it, or it into the paragraph)
+// do we select the diagram instead. If neither applies, the key is
+// swallowed: the guard would drop that transaction anyway.
+function guardedDefault(key: 'Backspace' | 'Delete', dir: 1 | -1): Command {
+  const base = baseKeymap[key];
+  return (state, dispatch, view) => {
+    let captured: Transaction | null = null;
+    const handled = base(state, (tr) => { captured = tr; }, view);
+    const tr = captured as Transaction | null;
+    if (!handled) return false;
+    if (!tr || !stepsReachIntoDiagram(tr)) {
+      if (tr && dispatch) dispatch(tr);
+      return true;
+    }
+    selectAdjacentDiagram(dir)(state, dispatch, view);
+    return true;
+  };
+}
+
 // Bound ahead of the base keymap in createEditorView.
 export const diagramKeymap: Record<string, Command> = {
-  Backspace: selectAdjacentDiagram(-1),
-  Delete: selectAdjacentDiagram(1),
-  'Mod-Backspace': selectAdjacentDiagram(-1),
-  'Mod-Delete': selectAdjacentDiagram(1),
+  Backspace: guardedDefault('Backspace', -1),
+  Delete: guardedDefault('Delete', 1),
+  'Mod-Backspace': guardedDefault('Backspace', -1),
+  'Mod-Delete': guardedDefault('Delete', 1),
 };

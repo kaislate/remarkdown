@@ -5,6 +5,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { TextSelection, NodeSelection, AllSelection } from 'prosemirror-state';
 import { undo } from 'prosemirror-history';
+import { baseKeymap } from 'prosemirror-commands';
 import type { EditorView } from 'prosemirror-view';
 import { createEditorView } from '../../../src/lib/editor/view';
 import { MERMAID_EDIT_META } from '../../../src/lib/editor/mermaid-source-guard';
@@ -94,6 +95,48 @@ describe('mermaid source guard', () => {
     expect(v.state.doc.childCount).toBe(before - 1);
     expect(v.state.selection).toBeInstanceOf(NodeSelection);
     expect(mermaidBlock(v)?.text).toBe('flowchart TD\nA --> B');
+  });
+
+  // Review finding: the keymap intercepted whenever a diagram was the
+  // neighbour, so Backspace at the start of a list / quote / callout
+  // after a diagram selected (then deleted) the diagram instead of
+  // lifting the block as usual. It must only step in when the default
+  // would reach into the diagram.
+  describe('only steps in when the default would touch the diagram', () => {
+    const DIAGRAM = '```mermaid\nflowchart TD\nA --> B\n```';
+    const cases: Array<[string, string, string, 'start' | 'end']> = [
+      ['list after', `P.\n\n${DIAGRAM}\n\n- item one\n- item two\n`, 'item one', 'start'],
+      ['quote after', `P.\n\n${DIAGRAM}\n\n> quoted\n`, 'quoted', 'start'],
+      ['callout after', `P.\n\n${DIAGRAM}\n\n> [!note]\n> inside callout\n`, 'inside callout', 'start'],
+      ['list before', `- item one\n- item two\n\n${DIAGRAM}\n\nQ.\n`, 'item two', 'end'],
+    ];
+    for (const [name, md, text, at] of cases) {
+      it(`${name}: ${at === 'start' ? 'Backspace' : 'Delete'} does what it does anywhere else`, () => {
+        const key = at === 'start' ? 'Backspace' : 'Delete';
+        // What PM's own command does on the same state.
+        const ref = setup2(md);
+        caretIn(ref, text, at);
+        let expected = '';
+        baseKeymap[key](ref.state, (tr) => { expected = ref.state.apply(tr).doc.toString(); });
+
+        const v = setup2(md);
+        caretIn(v, text, at);
+        press(v, key);
+        expect(v.state.doc.toString()).toBe(expected);
+        expect(mermaidBlock(v)?.text).toBe('flowchart TD\nA --> B');
+      });
+    }
+
+    it('an empty bullet after a diagram can be removed', () => {
+      const v = setup2(`P.\n\n${DIAGRAM}\n\n- x\n\nQ.\n`);
+      caretIn(v, 'x', 'end');
+      v.dispatch(v.state.tr.delete(v.state.selection.from - 1, v.state.selection.from));
+      const before = v.state.doc.toString();
+      press(v, 'Backspace');
+      expect(v.state.doc.toString()).not.toBe(before);
+      expect(v.state.selection).not.toBeInstanceOf(NodeSelection);
+      expect(mermaidBlock(v)?.text).toBe('flowchart TD\nA --> B');
+    });
   });
 
   it('rejects any other transaction that changes diagram text', () => {
