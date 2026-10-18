@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseMermaid } from '../../../src/lib/editor/mermaid-parser';
 import { parseSequence } from '../../../src/lib/editor/mermaid-sequence-parser';
+import { applyFlowchartEdit } from '../../../src/lib/editor/mermaid-flowchart-edit';
 import { serializeMermaid } from '../../../src/lib/editor/mermaid-serializer';
 
 function rt(src: string): string {
@@ -257,6 +258,24 @@ describe('mermaid parser — new edge styles', () => {
     expect(r.ok && r.graph.nodes.get('A')?.label).toBe('x #99999999; y');
     const s = parseSequence('sequenceDiagram\nA->>B: x #1114112; y\n');
     expect(s.ok && s.graph.events[0].text).toBe('x #1114112; y');
+  });
+
+  // Review finding: `[/in\]` (a trapezoid, not in the subset) was read
+  // as a parallelogram whose label ran on to B's `/]`, so the whole
+  // line became one node — renaming A then deleted B and the edge.
+  it('leaves trapezoids and labels holding shape syntax outside the subset', () => {
+    for (const src of [
+      'flowchart TD\nA[/in\\] --> B[/out/]\n',
+      'flowchart TD\nA[\\in/] --> B\n',
+      'flowchart TD\nA[\\in\\] --> B\n',
+      'flowchart TD\nA(one) --> B(two)\n'.replace('A(one)', 'A(one --> X(x)'),
+      'flowchart TD\nA[x] --> B{y} --> C[[z]]\n',
+    ]) {
+      expect(parseMermaid(src).ok, src).toBe(false);
+      expect(applyFlowchartEdit(src, { kind: 'setNodeLabel', id: 'A', label: 'x' }), src).toBeNull();
+    }
+    // Ordinary labels with punctuation still parse.
+    expect(parseMermaid('flowchart TD\nA[R&D: phase 1 / 2, done?] --> B\n').ok).toBe(true);
   });
 
   it('decodes mermaid entity codes in labels', () => {

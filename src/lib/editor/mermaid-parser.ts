@@ -209,7 +209,22 @@ function tokenizeLine(line: string): FlowToken[] | null {
     } else {
       const closeIdx = line.indexOf(close, pos);
       if (closeIdx === -1) return null;
-      label = decodeMermaidEntities(line.slice(pos, closeIdx));
+      const raw = line.slice(pos, closeIdx);
+      // The closer search can run past the real end of this node into
+      // the next one (`A[/in\] --> B[/out/]` — a trapezoid, not in the
+      // subset — "closes" at B's `/]`), and mermaid itself rejects
+      // unquoted labels holding shape or link syntax. Either way it's
+      // not ours to edit: bail rather than misread the line. Same for
+      // the backslash trapezoid / parallelogram variants.
+      if (
+        /[[\](){}|"]/.test(raw) ||
+        /-->|---|==>|-\.-|<--/.test(raw) ||
+        (open === '[' && raw.startsWith('\\')) ||
+        (open === '[/' && raw.endsWith('\\'))
+      ) {
+        return null;
+      }
+      label = decodeMermaidEntities(raw);
       pos = closeIdx;
     }
     if (!line.startsWith(close, pos)) return null;
