@@ -1,12 +1,21 @@
 // Direction-picker tests with REAL mermaid renders (same jsdom geometry
 // stubs as the edge tests). The picker is a floating control over the
 // rendered flowchart exposing mermaid's four layout directions.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { EditorView } from 'prosemirror-view';
 import { EditorState } from 'prosemirror-state';
 import { editorSchema } from '../../../src/lib/editor/schema';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { MermaidNodeView } from '../../../src/lib/editor/mermaid-node-view';
+import { warmMermaidRuntime } from '../../../src/lib/mermaid-runtime';
+
+// The first mermaid use pays a large dynamic import (plus the
+// flowchart module it lazy-loads). Under a parallel test run that can
+// take seconds — longer than the short render flushes below — which
+// made the first test here flaky. Pay it once, up front, with room.
+beforeAll(async () => {
+  await warmMermaidRuntime();
+}, 60_000);
 
 (SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({
   x: 0,

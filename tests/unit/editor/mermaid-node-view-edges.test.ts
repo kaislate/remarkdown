@@ -3,12 +3,21 @@
 // produced SVG then carries mermaid's actual element structure and
 // data-ids, which is exactly what these tests are about: resolving a
 // clicked edge back to the right index in graph.edges.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { EditorView } from 'prosemirror-view';
 import { EditorState } from 'prosemirror-state';
 import { editorSchema } from '../../../src/lib/editor/schema';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { MermaidNodeView } from '../../../src/lib/editor/mermaid-node-view';
+import { warmMermaidRuntime } from '../../../src/lib/mermaid-runtime';
+
+// The first mermaid use pays a large dynamic import (plus the
+// flowchart module it lazy-loads). Under a parallel test run that can
+// take seconds — longer than the short render flushes below — which
+// made the first test here flaky. Pay it once, up front, with room.
+beforeAll(async () => {
+  await warmMermaidRuntime();
+}, 60_000);
 
 (SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({
   x: 0,
