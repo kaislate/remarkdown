@@ -22,6 +22,7 @@ import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
 import { MermaidNodeView } from './mermaid-node-view';
 import { isMermaidFence } from '../mermaid-fence';
+import { createMermaidSourceGuard, diagramKeymap } from './mermaid-source-guard';
 import { TaskItemNodeView } from './task-item-node-view';
 import { FootnoteNodeView } from './footnote-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
@@ -143,6 +144,10 @@ export function createEditorView(
     doc,
     plugins: [
       history(),
+      // Diagram sources are only changed by the visual editor; see
+      // mermaid-source-guard.ts. The keymap must precede baseKeymap.
+      createMermaidSourceGuard(),
+      keymap(diagramKeymap),
       keymap(baseKeys),
       keymap(baseKeymap),
       createCodeBlockHighlightPlugin(),

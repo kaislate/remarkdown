@@ -48,6 +48,7 @@ import {
 } from './mermaid-flowchart-edit';
 import { settings } from '../../stores/settings';
 import { isMermaidFence } from '../mermaid-fence';
+import { MERMAID_EDIT_META } from './mermaid-source-guard';
 import {
   applyDiagramSizing,
   buildDiagramError,
@@ -1372,6 +1373,9 @@ export class MermaidNodeView implements NodeView {
       pos + 1 + node.content.size,
       this.view.state.schema.text(newSource),
     );
+    // The only sanctioned way to change a diagram's source (see
+    // mermaid-source-guard.ts, which drops untagged changes).
+    tr.setMeta(MERMAID_EDIT_META, true);
     this.view.dispatch(tr);
   }
 
