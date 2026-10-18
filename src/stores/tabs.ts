@@ -7,6 +7,7 @@
 // proxies re-emit and the UI redraws from memory.
 
 import { get } from 'svelte/store';
+import { tick } from 'svelte';
 import { activeSession, createSession, sessions, type DocSession } from './sessions';
 import { docEpoch } from './annots';
 import { reloadSession } from './doc';
@@ -84,26 +85,28 @@ export async function activateSession(id: string): Promise<void> {
 
 // Put the tab back where the user left it: the exact offset captured on
 // switch-away, or — for a tab never viewed this run (restored / just
-// opened) — the saved reading-progress ratio. Two frames so the article
-// has rendered and laid out.
+// opened) — the saved reading-progress ratio.
+//
+// Runs as soon as Svelte has applied the switch to the DOM (tick), not
+// frames later: the tab's content is already in memory, and setting
+// scrollTop forces layout. A deferred restore would race the user — a
+// scroll made right after switching would be yanked back.
 export function restoreScroll(session: DocSession): void {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (get(activeSession) !== session) return;
-      const el = get(viewerScroll);
-      if (!el) return;
-      if (session.scrollTop != null) {
-        el.scrollTop = session.scrollTop;
-        return;
-      }
-      const d = get(session.doc);
-      if (!d) return;
-      const progress = getProgressFor(d.path);
-      const max = el.scrollHeight - el.clientHeight;
-      if (progress && progress.scrollRatio > 0.001 && max > 0) {
-        el.scrollTop = max * progress.scrollRatio;
-      }
-    });
+  void tick().then(() => {
+    if (get(activeSession) !== session) return;
+    const el = get(viewerScroll);
+    if (!el) return;
+    if (session.scrollTop != null) {
+      el.scrollTop = session.scrollTop;
+      return;
+    }
+    const d = get(session.doc);
+    if (!d) return;
+    const progress = getProgressFor(d.path);
+    const max = el.scrollHeight - el.clientHeight;
+    if (progress && progress.scrollRatio > 0.001 && max > 0) {
+      el.scrollTop = max * progress.scrollRatio;
+    }
   });
 }
 

@@ -213,7 +213,7 @@
     ondblclick={onBarDoubleClick}
   >
     <div
-      class="strip"
+      class="tab-strip"
       class:overflowing
       role="tablist"
       aria-label="Open documents"
@@ -288,7 +288,9 @@
     padding: 0 4px;
   }
 
-  .strip {
+  /* Not ".strip": global edit/reader-mode rules hide the colour strip by
+     that class name. */
+  .tab-strip {
     position: relative;
     display: flex;
     align-items: center;
@@ -299,10 +301,10 @@
     overflow-y: hidden;
     scrollbar-width: none;
   }
-  .strip::-webkit-scrollbar {
+  .tab-strip::-webkit-scrollbar {
     display: none;
   }
-  .strip.overflowing {
+  .tab-strip.overflowing {
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
   }
