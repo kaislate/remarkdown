@@ -190,7 +190,28 @@ describe('sequence parser — round-trip', () => {
   });
 
   it('round-trips bare participants and short messages', () => {
-    const src = 'sequenceDiagram\nparticipant A\nparticipant B\nA->B\n';
+    const src = 'sequenceDiagram\nparticipant A\nparticipant B\nA->B:\n';
     expect(rt(src)).toBe(src);
+    // A colon-less message (which mermaid 11 rejects) is still READ, so
+    // such sources stay editable; writing it out adds the colon.
+    expect(rt('sequenceDiagram\nparticipant A\nparticipant B\nA->B\n')).toBe(src);
+  });
+});
+
+describe('sequence parser — statement separators', () => {
+  // mermaid lexes an unencoded `;` as a line break: `A->>B: hi; B->>A: yo`
+  // is TWO messages to mermaid. Reading it as one would misalign our
+  // event indexes with mermaid's i<N> ids (clicks edit the wrong line).
+  it('treats a line with an unencoded ; as outside the editable subset', () => {
+    const r = parseSequence('sequenceDiagram\n  A->>B: hi; B->>A: yo\n');
+    expect(r.ok).toBe(false);
+    expect(parseSequence('sequenceDiagram\n  participant A as x; y\n').ok).toBe(false);
+    expect(parseSequence('sequenceDiagram\n  participant A\n  Note over A: a; b\n').ok).toBe(false);
+  });
+
+  it('accepts ; inside entity codes and inside a # comment', () => {
+    const r = parseSequence('sequenceDiagram\n  A->>B: a#59;b #quot;q#quot;\n  B->>A: two # todo; later\n');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.graph.events.map((e) => e.text)).toEqual(['a;b "q"', 'two']);
   });
 });

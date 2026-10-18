@@ -34,9 +34,10 @@ describe('sequence serializer', () => {
     g = addMessage(g, { from: a.id, to: b.id, text: '', style: 'arrow' });
     g = addMessage(g, { from: a.id, to: b.id, text: '', style: 'dotted' });
     g = addMessage(g, { from: a.id, to: b.id, text: '', style: 'reply' });
+    // Empty text still gets its colon — mermaid 11 rejects `A->B` alone.
     expect(serializeSequence(g)).toBe(
       'sequenceDiagram\nparticipant A as A\nparticipant B as B\n' +
-      'A->B\nA->>B\nA-->B\nA-->>B\n',
+      'A->B:\nA->>B:\nA-->B:\nA-->>B:\n',
     );
   });
 
@@ -102,7 +103,7 @@ describe('sequence serializer', () => {
     g = addMessage(g, { from: b.id, to: a.id, text: '', style: 'reply' });
     const out = serializeSequence(g);
     expect(out).toContain('A->>B: line one line two\n');
-    expect(out).toContain('\nB-->>A\n');
+    expect(out).toContain('\nB-->>A:\n');
     // Confirm: every non-empty line is exactly one statement.
     const lines = out.split('\n').filter(Boolean);
     expect(lines).toEqual([
@@ -110,7 +111,7 @@ describe('sequence serializer', () => {
       'participant A as A',
       'participant B as B',
       'A->>B: line one line two',
-      'B-->>A',
+      'B-->>A:',
     ]);
   });
 
@@ -131,11 +132,11 @@ describe('sequence serializer', () => {
     );
   });
 
-  // Defense in depth: if a text field somehow accumulates a glued
-  // statement (we've seen "X->>Y" appear inside a message text in the
-  // wild without being able to reproduce the upstream mutation),
-  // truncate at the glue point so mermaid can still render the line.
-  it('truncates message text at an embedded arrow statement', () => {
+  // Text that merely LOOKS like a message statement ("Map x->y", even
+  // a glued '"latest"B->>A') is legitimate in mermaid 11.14 — it
+  // renders verbatim (see mermaid-sequence-edit.test.ts, which renders
+  // it). It used to be truncated at the arrow, corrupting real text.
+  it('keeps arrow-shaped text intact', () => {
     let g = emptySequenceGraph();
     const a = addParticipant(g, { display: 'A' }); g = a.graph;
     const b = addParticipant(g, { display: 'B' }); g = b.graph;
@@ -145,20 +146,29 @@ describe('sequence serializer', () => {
       text: '"latest update available"B->>A',
       style: 'arrow',
     });
-    g = addMessage(g, { from: b.id, to: a.id, text: '', style: 'reply' });
-    const out = serializeSequence(g);
-    // First message keeps the visible text up to the glue; the trailing
-    // arrow-shaped substring is dropped. Second message renders cleanly
-    // on its own line.
-    expect(out).toContain('A->>B: "latest update available"\n');
-    expect(out).toContain('\nB-->>A\n');
-    const lines = out.split('\n').filter(Boolean);
+    g = addMessage(g, { from: b.id, to: a.id, text: 'Map x->y and back', style: 'reply' });
+    const lines = serializeSequence(g).split('\n').filter(Boolean);
     expect(lines).toEqual([
       'sequenceDiagram',
       'participant A as A',
       'participant B as B',
-      'A->>B: "latest update available"',
-      'B-->>A',
+      'A->>B: "latest update available"B->>A',
+      'B-->>A: Map x->y and back',
+    ]);
+  });
+
+  // `;` ends a statement and `#` starts a comment in sequence diagrams;
+  // both are written as mermaid entity codes so the text shows as typed.
+  it('encodes ; and # as entity codes', () => {
+    let g = emptySequenceGraph();
+    const a = addParticipant(g, { display: 'R;D #1' }); g = a.graph;
+    g = addMessage(g, { from: a.id, to: a.id, text: 'a; b # c', style: 'arrow' });
+    g = addNote(g, { participants: [a.id], position: 'over', text: '#59; literal' });
+    expect(serializeSequence(g).split('\n').filter(Boolean)).toEqual([
+      'sequenceDiagram',
+      'participant A as R#59;D #35;1',
+      'A->>A: a#59; b #35; c',
+      'Note over A: #35;59#59; literal',
     ]);
   });
 

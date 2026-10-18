@@ -7,6 +7,7 @@ import supPlugin from 'markdown-it-sup';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
+import { isMermaidFence } from './mermaid-fence';
 
 export interface RenderResult {
   html: string;
@@ -27,8 +28,26 @@ const md = new MarkdownIt({
   .use(supPlugin)
   .use(calloutsPlugin);
 
-// Matches fenced mermaid blocks specifically (before Shiki touches them).
-const mermaidFenceRe = /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g;
+// Mermaid fences become diagram placeholders at markdown-it's fence
+// renderer, BEFORE Shiki sees the html. Deciding here (from the token's
+// info string) rather than by regex over the html means ```Mermaid,
+// ```mermaid title="…" and fences nested in lists/quotes all count —
+// the same rule the editor uses (isMermaidFence). The source is
+// entity-encoded into data-mermaid; MermaidRenderer reads it from there
+// and keeps it for re-renders (theme switches).
+const defaultFence = md.renderer.rules.fence!;
+md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  if (isMermaidFence(token.info)) {
+    const encoded = token.content
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return `<div class="mermaid-block" data-mermaid="${encoded}"></div>\n`;
+  }
+  return defaultFence(tokens, idx, options, env, self);
+};
 
 const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g;
 
@@ -41,24 +60,6 @@ function getHighlighter(): Promise<Highlighter> {
     });
   }
   return highlighterPromise;
-}
-
-/**
- * Replace mermaid fenced blocks with placeholder divs BEFORE Shiki runs.
- * The mermaid source is HTML-entity-encoded and stored in data-mermaid so it
- * survives the data attribute without breaking HTML parsing.
- */
-function extractMermaidBlocks(html: string): string {
-  if (!html.includes('language-mermaid')) return html;
-  return html.replace(mermaidFenceRe, (_m, body) => {
-    const source = decodeEntities(body);
-    const encoded = source
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    return `<div class="mermaid-block" data-mermaid="${encoded}"></div>`;
-  });
 }
 
 async function highlightFences(html: string): Promise<string> {
@@ -157,8 +158,7 @@ function rewriteImageSrcs(html: string, opts: RenderOptions): string {
 
 export async function render(markdown: string, options: RenderOptions = {}): Promise<RenderResult> {
   const rawHtml = md.render(markdown);
-  const withMermaid = extractMermaidBlocks(rawHtml);
-  const highlightedHtml = await highlightFences(withMermaid);
+  const highlightedHtml = await highlightFences(rawHtml);
   const withImages = rewriteImageSrcs(highlightedHtml, options);
   const { html, blocks } = tagTopLevelBlocks(withImages);
   const plaintext = extractPlaintext(html);

@@ -64,6 +64,28 @@ describe('Minimap', () => {
     expect(content.textContent).toContain('this is visible in minimap');
   });
 
+  it('mirrors diagrams without duplicating their ids in the document', () => {
+    render(Minimap);
+    flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));
+    const article = document.createElement('article');
+    article.innerHTML =
+      '<div class="mermaid-block" data-block-id="div:1"><svg id="rmd-mermaid-1x">' +
+      '<style>#rmd-mermaid-1x .node{}</style>' +
+      '<marker id="rmd-mermaid-1x_end"></marker><path marker-end="url(#rmd-mermaid-1x_end)"></path>' +
+      '</svg></div>';
+    document.body.appendChild(article);
+    flushSync(() => currentViewerRoot.set(article));
+
+    const ids = Array.from(document.querySelectorAll('[id]')).map((e) => e.id);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+    // The clone's marker reference points at the clone's own marker.
+    const clonePath = document.querySelector('.minimap-content path')!;
+    const ref = /url\(#([^)]+)\)/.exec(clonePath.getAttribute('marker-end') ?? '')![1];
+    expect(document.querySelector('.minimap-content')!.querySelector(`[id="${ref}"]`)).not.toBeNull();
+    // The article itself is untouched.
+    expect(article.querySelector('svg')!.id).toBe('rmd-mermaid-1x');
+  });
+
   it('renders the viewport indicator', () => {
     render(Minimap);
     flushSync(() => doc.set(docState('<p data-block-id="p:1">x</p>')));

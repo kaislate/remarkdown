@@ -6,6 +6,7 @@
   import { viewerScroll } from '../stores/viewport';
   import { minimapShown, toggleMinimap } from '../stores/ui';
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
+  import { prefixIds } from '../lib/prefix-ids';
 
   // Must match Viewer.svelte's .text-frame max-width + .viewer padding.
   // The clone is rendered at VIEWER_OUTER_WIDTH (content + horizontal padding)
@@ -105,7 +106,13 @@
 
     function snapshotArticle(): void {
       if (!currentArticleEl) return;
-      mirroredHtml = currentArticleEl.innerHTML;
+      // Mirror a clone whose ids are prefixed (references rewritten to
+      // match) — the clone shares the document with the article, and
+      // each diagram svg alone carries dozens of ids its own markers,
+      // gradients and inline styles point at. See prefix-ids.ts.
+      const clone = currentArticleEl.cloneNode(true) as HTMLElement;
+      prefixIds(clone, 'minimap-');
+      mirroredHtml = clone.innerHTML;
       // Recompute the indicator after the new HTML lays out in the clone.
       requestAnimationFrame(() => requestAnimationFrame(updateLayout));
     }

@@ -10,8 +10,9 @@ import type {
   MessageStyle,
   NotePosition,
 } from './mermaid-sequence-graph';
+import { encodeSequenceText } from './mermaid-sequence-parser';
 
-const MESSAGE_DELIM: Record<MessageStyle, string> = {
+export const MESSAGE_DELIM: Record<MessageStyle, string> = {
   solid: '->',
   arrow: '->>',
   dotted: '-->',
@@ -24,63 +25,51 @@ const NOTE_PREFIX: Record<NotePosition, string> = {
   over: 'Note over',
 };
 
-function emitParticipant(p: Participant): string {
-  if (!p.display) return `participant ${p.id}`;
-  return `participant ${p.id} as ${flat(p.display)}`;
+// User text → single-line statement text. History: this used to be
+// `flat()`, which (PRs #19/#20) stripped newlines AND truncated text at
+// the first arrow-shaped substring, after a user hit a message whose
+// text had another statement glued onto it ('"latest update
+// available"B->>A'). Two findings retired the truncation:
+//   - mermaid 11.14 renders such text verbatim (tested in
+//     mermaid-sequence-edit.test.ts), so it wasn't what broke the
+//     diagram — but truncating mangled legitimate text ("Map x->y and
+//     back" became "Map") on EVERY save, even when editing a different
+//     message, and emptied notes / names like "a->b".
+//   - the visual editor no longer re-emits lines it didn't edit
+//     (mermaid-sequence-edit.ts), so a glued line coming from
+//     elsewhere is left as found rather than "repaired" by data loss.
+// What does break mermaid is kept out by encodeSequenceText: newlines
+// (one statement per line), and `;` / `#` (written as entity codes).
+const encode = encodeSequenceText;
+
+export function emitParticipantTail(display: string): string {
+  return display ? ` as ${encode(display)}` : '';
 }
 
-// Strip anything that would terminate the current single-line mermaid
-// statement and start a new one. Two failure modes are guarded:
-//   1) a stray \n in text (e.g., paste, rune-state crossing) — without
-//      this every event after the offender is glued onto the line
-//      below in mermaid's eyes.
-//   2) an arrow-shaped substring inside text that mermaid's parser
-//      reads as a new message statement (e.g., text=`foo"B->>A`).
-//      We've seen this in the wild without being able to reproduce the
-//      upstream mutation; truncating at the first arrow keeps the
-//      visible text and discards the glued tail so mermaid can render.
-// The truncation is intentionally aggressive — losing the trailing
-// part of a text that legitimately contains `->>` is a worse-than-
-// usual edit experience but a far better failure mode than a broken
-// document.
-const ARROW_RE = /[\s\S]*?(?=\s*[A-Za-z][A-Za-z0-9_]*\s*(?:-->>|-->|->>|->)\s*[A-Za-z])/;
-function flat(text: string): string {
-  const original = text;
-  let out = text.replace(/\r?\n+/g, ' ');
-  // If any arrow-shaped statement appears, drop everything from there
-  // on. ARROW_RE captures the prefix (lazy) before the lookahead;
-  // matching means there IS a glued statement; replace the whole input
-  // with just the prefix.
-  const m = ARROW_RE.exec(out);
-  if (m && m[0].length < out.length) {
-    out = m[0].trimEnd();
-  }
-  // Visible diagnostic when the defense actually engages — helps the
-  // user confirm they're running the latest build AND helps us locate
-  // the upstream mutation that put this content into the text field.
-  if (out !== original) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[mermaid-sequence-serializer] flat() rewrote text:',
-      JSON.stringify(original),
-      '→',
-      JSON.stringify(out),
-    );
-  }
-  return out;
+function emitParticipant(p: Participant): string {
+  return `participant ${p.id}${emitParticipantTail(p.display)}`;
+}
+
+// mermaid 11 requires the colon even when there's no text: `A->>B`
+// alone is a parse error ("Expecting 'TXT'"), `A->>B:` is a message
+// with an empty label. (New messages from "+ Message" / "+ after"
+// start empty, so this matters on every add.)
+export function emitMessageTail(text: string): string {
+  const encoded = encode(text);
+  return encoded ? `: ${encoded}` : ':';
 }
 
 function emitMessage(m: MessageEvent): string {
-  const arrow = MESSAGE_DELIM[m.style];
-  const text = flat(m.text);
-  if (text) return `${m.from}${arrow}${m.to}: ${text}`;
-  return `${m.from}${arrow}${m.to}`;
+  return `${m.from}${MESSAGE_DELIM[m.style]}${m.to}${emitMessageTail(m.text)}`;
+}
+
+export function emitNoteHead(position: NotePosition, participants: string[]): string {
+  // 'Note left of' → 'left of'; the "Note " lead-in stays in the line.
+  return `${NOTE_PREFIX[position].slice('Note '.length)} ${participants.join(',')}`;
 }
 
 function emitNote(n: NoteEvent): string {
-  const prefix = NOTE_PREFIX[n.position];
-  const targets = n.participants.join(',');
-  return `${prefix} ${targets}: ${flat(n.text)}`;
+  return `Note ${emitNoteHead(n.position, n.participants)}: ${encode(n.text)}`;
 }
 
 export function serializeSequence(graph: SequenceGraph): string {

@@ -9,7 +9,7 @@
   import MermaidRenderer from './MermaidRenderer.svelte';
   import MarginaliaColumn from './MarginaliaColumn.svelte';
   import { reattachTarget, cancelReattach } from '../stores/reattach';
-  import { createAnchor } from '../lib/anchoring';
+  import { createAnchor, rangeTouchesDiagram, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
   import { addToast } from '../stores/toasts';
   import { get } from 'svelte/store';
   import type { Drawing } from '../lib/schema';
@@ -89,6 +89,13 @@
           kind: 'warning',
           message: 'Re-attach: select text inside the article. Press Esc to cancel.',
         });
+        return;
+      }
+
+      // Same rule as creating a highlight/note: diagram text can't hold
+      // a text anchor (see rangeTouchesDiagram).
+      if (rangeTouchesDiagram(range)) {
+        addToast({ kind: 'warning', message: `Re-attach: ${DIAGRAM_ANNOTATION_HINT}` });
         return;
       }
 

@@ -3,12 +3,21 @@
 // produced SVG then carries mermaid's actual element structure and
 // data-ids, which is exactly what these tests are about: resolving a
 // clicked edge back to the right index in graph.edges.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { EditorView } from 'prosemirror-view';
 import { EditorState } from 'prosemirror-state';
 import { editorSchema } from '../../../src/lib/editor/schema';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { MermaidNodeView } from '../../../src/lib/editor/mermaid-node-view';
+import { warmMermaidRuntime } from '../../../src/lib/mermaid-runtime';
+
+// The first mermaid use pays a large dynamic import (plus the
+// flowchart module it lazy-loads). Under a parallel test run that can
+// take seconds — longer than the short render flushes below — which
+// made the first test here flaky. Pay it once, up front, with room.
+beforeAll(async () => {
+  await warmMermaidRuntime();
+}, 60_000);
 
 (SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({
   x: 0,
@@ -113,6 +122,34 @@ describe('MermaidNodeView edge identity', () => {
     const text = view.state.doc.textContent;
     expect(text).toContain('first');
     expect(text).not.toContain('second');
+    view.destroy();
+    parent.remove();
+  });
+
+  it('a popover edit changes only its own token — comments, directives and chains survive', async () => {
+    const source = [
+      '%%{init: {"flowchart": {"curve": "basis"}}}%%',
+      'flowchart TB',
+      '    %% a comment that must survive',
+      '    A[Start] -->|first| B(Middle) --> C',
+      '',
+      '    %% trailing comment',
+      '',
+    ].join('\n');
+    const { view, parent } = makeView('```mermaid\n' + source + '```\n');
+    await flush();
+    const loaded = view.state.doc.textContent;
+    expect(loaded).toContain('%% a comment that must survive');
+    const edge = parent.querySelector('path.flowchart-link[data-id="L_A_B_0"]');
+    expect(edge).not.toBeNull();
+    edge!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush(1);
+    const input = parent.querySelector<HTMLInputElement>('.mermaid-edge-popover .mermaid-edge-popover-label')!;
+    input.value = 'renamed';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush(1);
+    expect(view.state.doc.textContent).toBe(loaded.replace('|first|', '|renamed|'));
     view.destroy();
     parent.remove();
   });

@@ -1,6 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import { emptyGraph, addNode, addEdge, setEdgeLabel } from '../../../src/lib/editor/mermaid-graph';
 import { serializeMermaid } from '../../../src/lib/editor/mermaid-serializer';
+import { parseMermaid } from '../../../src/lib/editor/mermaid-parser';
+
+describe('mermaid serializer: label quoting', () => {
+  // A markdown-string label (`**bold**` etc.) is only a markdown string
+  // while it sits inside "…" — unquoted, mermaid shows the backticks
+  // and asterisks literally.
+  it('keeps markdown-string labels quoted', () => {
+    let g = emptyGraph();
+    g = addNode(g, { shape: 'rect', label: '`**Bold** label`' }).graph;
+    expect(serializeMermaid(g)).toBe('flowchart TD\nA["`**Bold** label`"]\n');
+  });
+
+  it('round-trips a markdown-string label through parse + serialize', () => {
+    const parsed = parseMermaid('flowchart LR\nA["`**Bold** label`"] --> B[Plain]\n');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(serializeMermaid(parsed.graph)).toContain('A["`**Bold** label`"]');
+  });
+
+  // mermaid decodes #name; / #123; entity codes in labels. Text the
+  // user typed that happens to look like one must survive literally.
+  it('protects entity-looking text in labels', () => {
+    let g = emptyGraph();
+    g = addNode(g, { shape: 'rect', label: 'a #59; b' }).graph;
+    const out = serializeMermaid(g);
+    expect(out).toBe('flowchart TD\nA["a #35;59; b"]\n');
+    const back = parseMermaid(out);
+    expect(back.ok && back.graph.nodes.get('A')?.label).toBe('a #59; b');
+  });
+});
 
 describe('mermaid serializer', () => {
   it('emits the directive on an empty graph', () => {
