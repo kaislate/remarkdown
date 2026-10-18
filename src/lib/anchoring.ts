@@ -59,22 +59,15 @@ function plaintextOffsetToPos(block: HTMLElement, target: number): { node: Text;
 // creation checks this and declines (the pen tool still works there).
 export const DIAGRAM_ANNOTATION_HINT = 'Use the pen to mark up diagrams.';
 
+// Only the range's ENDS matter: a selection across several paragraphs
+// that happens to pass over a diagram anchors in the paragraph it
+// starts in (createAnchor clamps to the start block), as before.
 export function rangeTouchesDiagram(range: Range): boolean {
   const inDiagram = (n: Node): boolean => {
     const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
     return !!el?.closest('.mermaid-block');
   };
-  if (inDiagram(range.startContainer) || inDiagram(range.endContainer)) return true;
-  // A selection that starts before a diagram and ends after it.
-  const scope =
-    range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-      ? (range.commonAncestorContainer as Element)
-      : range.commonAncestorContainer.parentElement;
-  if (!scope) return false;
-  for (const block of scope.querySelectorAll('.mermaid-block')) {
-    if (range.intersectsNode(block)) return true;
-  }
-  return false;
+  return inDiagram(range.startContainer) || inDiagram(range.endContainer);
 }
 
 export function createAnchor(range: Range, _viewerRoot: HTMLElement): Anchor | null {

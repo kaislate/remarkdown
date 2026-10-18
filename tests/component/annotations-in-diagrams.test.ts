@@ -65,13 +65,23 @@ afterEach(() => {
 });
 
 describe('rangeTouchesDiagram', () => {
-  it('is true for a range inside a diagram and for one spanning across it', () => {
+  it('is true when a range starts or ends inside a diagram', () => {
     const root = mountViewer();
     expect(rangeTouchesDiagram(textRange(root, '.mermaid-block', 'Ship it'))).toBe(true);
+    const intoDiagram = document.createRange();
+    intoDiagram.setStart(root.querySelector('p')!.firstChild!, 0);
+    intoDiagram.setEnd(textRange(root, '.mermaid-block', 'Ship it').endContainer, 3);
+    expect(rangeTouchesDiagram(intoDiagram)).toBe(true);
+  });
+
+  // Review finding: selecting several paragraphs with a diagram between
+  // them was refused too, which main allowed.
+  it('is false for a range that merely spans across a diagram', () => {
+    const root = mountViewer();
     const span = document.createRange();
     span.setStart(root.querySelector('p')!.firstChild!, 0);
     span.setEnd(root.querySelectorAll('p')[1].firstChild!, 5);
-    expect(rangeTouchesDiagram(span)).toBe(true);
+    expect(rangeTouchesDiagram(span)).toBe(false);
   });
 
   it('is false for ordinary text', () => {
