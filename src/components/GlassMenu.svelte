@@ -3,10 +3,9 @@
   import { get } from 'svelte/store';
   import { getVersion } from '@tauri-apps/api/app';
   import { derivePreReleaseLabel } from '../lib/prerelease';
-  import { openFileDialog } from '../lib/tauri-api';
   import { availableUpdate } from '../stores/updates';
-  import { loadDocument } from '../stores/doc';
-  import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
+  import { openPaths, openViaDialog } from '../lib/open-files';
+  import { recent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
   import { readingProgress } from '../stores/reading-progress';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
@@ -30,12 +29,36 @@
 
   function toggle() { open = !open; }
 
+  // The popover grows out of the hamburger: its top-left corner is
+  // pinned (transform-origin) just off the button's bottom-right
+  // corner, so scaling up from there reads as the menu unfolding from
+  // the button. Exit is quicker and plain so closing feels immediate.
+  function reducedMotion(): boolean {
+    return typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
+  function unfold(_node: Element, { out = false } = {}) {
+    if (reducedMotion()) return { duration: 0 };
+    return {
+      duration: out ? 120 : 260,
+      css: (t: number) => {
+        // Overshoot easing on the way in (matches the hamburger hover
+        // spring); linear fade on the way out.
+        const s = out ? 0.92 + 0.08 * t : 0.6 + 0.4 * t;
+        const shift = (1 - t) * -10;
+        return `opacity: ${t}; transform: translate(${shift}px, ${shift}px) scale(${s});`;
+      },
+      easing: out ? undefined : (t: number) => {
+        const c1 = 1.56;
+        const c3 = c1 + 1;
+        return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+      },
+    };
+  }
+
   async function handleOpen() {
     open = false;
-    const path = await openFileDialog();
-    if (!path) return;
-    await loadDocument(path);
-    await recordRecent(path);
+    await openViaDialog();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -53,8 +76,7 @@
       return;
     }
     try {
-      await loadDocument(path);
-      await recordRecent(path);
+      await openPaths([path]);
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
@@ -118,7 +140,7 @@
   {/if}
 
   {#if open}
-    <div class="popover glass" role="menu">
+    <div class="popover glass" role="menu" in:unfold out:unfold={{ out: true }}>
       <button role="menuitem" class="item" onclick={handleOpen}>Open…</button>
       <button
         role="menuitem"
@@ -211,7 +233,10 @@
     position: fixed;
     top: 14px;
     left: 14px;
-    z-index: 100;
+    /* Above the left-hand round buttons (edit / contents / focus at
+       z:100–110) and MenuOverlay (z:125), below the window controls
+       (z:170–180) so minimise/close still work with the menu open. */
+    z-index: 130;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -419,8 +444,12 @@
   }
   .popover {
     position: absolute;
+    /* Offset diagonally from the hamburger so the popover clears the
+       column of round buttons beneath it (left:14 + 38px wide). Lands
+       at viewport (60, 60) — the same left edge as the TOC popover. */
     top: 46px;
-    left: 0;
+    left: 46px;
+    transform-origin: top left;
     min-width: 200px;
     padding: 6px;
     display: flex;

@@ -100,12 +100,15 @@ export function splitTaskOrListItem(
   return true;
 }
 
+// `restoredState`, when given, is a state captured from an earlier view of
+// the same tab (see Editor.svelte / tabs): the view resumes with its
+// document, selection and undo history instead of re-parsing markdown.
 export function createEditorView(
   parent: HTMLElement,
   initialMarkdown: string,
   onChange: (markdown: string) => void,
+  restoredState?: EditorState,
 ): EditorView {
-  const doc = parseMarkdown(initialMarkdown);
 
   const baseKeys = {
     'Mod-z': undo,
@@ -140,8 +143,8 @@ export function createEditorView(
     ),
   };
 
-  const state = EditorState.create({
-    doc,
+  const state = restoredState ?? EditorState.create({
+    doc: parseMarkdown(initialMarkdown),
     plugins: [
       history(),
       // Diagram sources are only changed by the visual editor; see

@@ -18,11 +18,18 @@
     deleteColumnCmd,
   } from '../lib/editor/table-commands';
 
+  import type { DocSession } from '../stores/sessions';
+  import { onBeforeSwitch } from '../stores/tabs';
+
   interface Props {
     initialMarkdown: string;
     onChange: (markdown: string) => void;
+    // The tab this editor belongs to. When the user switches away we stash
+    // the editor state on it, and a later mount resumes from that state
+    // (document, selection, undo history) instead of re-parsing markdown.
+    session?: DocSession;
   }
-  let { initialMarkdown, onChange }: Props = $props();
+  let { initialMarkdown, onChange, session }: Props = $props();
 
   let parentEl = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
@@ -249,7 +256,7 @@
       onChange(md);
       updateBubble();
       updateTableMenu();
-    });
+    }, session?.editorState ?? undefined);
     parentEl.addEventListener('mouseup', onSelectionMaybeChanged);
     parentEl.addEventListener('keyup', onSelectionMaybeChanged);
     document.addEventListener('mousedown', onAnyMouseDown);
@@ -262,7 +269,12 @@
     // onAnyMouseDown handles dismissal.
   });
 
+  const offBeforeSwitch = onBeforeSwitch((outgoing) => {
+    if (session && outgoing === session && view) session.editorState = view.state;
+  });
+
   onDestroy(() => {
+    offBeforeSwitch();
     if (parentEl) {
       parentEl.removeEventListener('mouseup', onSelectionMaybeChanged);
       parentEl.removeEventListener('keyup', onSelectionMaybeChanged);
