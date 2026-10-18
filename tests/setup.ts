@@ -48,3 +48,10 @@ if (typeof Element !== 'undefined' && !Element.prototype.animate) {
     return anim as Animation;
   };
 }
+
+// Document stores (doc, annots, editMode, readerMode) are proxies onto the
+// active tab's session. Give every test a fresh single empty session so
+// state can't leak between tests the way module-level stores couldn't before.
+import { beforeEach } from 'vitest';
+import { resetSessionsForTests } from '../src/stores/sessions';
+beforeEach(() => resetSessionsForTests());

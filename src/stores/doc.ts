@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { get } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
@@ -11,20 +11,13 @@ import { getProgressFor } from './reading-progress';
 import { viewerScroll } from './viewport';
 import { settings } from './settings';
 import { readerMode } from './reader-mode';
+import { activeProxy } from './sessions';
 
-export interface DocState {
-  path: string;
-  dir: string;
-  sha256: string;
-  bytes: number;
-  markdown: string;
-  html: string;
-  plaintext: string;
-  blocks: string[];
-  sidecarRaw: string | null;
-}
+export type { DocState } from './doc-types';
 
-export const doc = writable<DocState | null>(null);
+// The active tab's document. A proxy onto the active session's own store —
+// see sessions.ts.
+export const doc = activeProxy((s) => s.doc);
 
 let currentDispose: (() => Promise<void>) | null = null;
 
