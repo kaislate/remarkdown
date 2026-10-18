@@ -3,6 +3,7 @@
   import { settings, updateSettings, resetSettings } from '../stores/settings';
   import { ZOOM_LEVELS } from '../stores/ui';
   import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
+  import type { OpenMode } from '../lib/settings-schema';
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && $activeModal?.kind === 'settings') closeModal();
@@ -144,14 +145,42 @@
           <h3>Startup &amp; files</h3>
 
           <div class="row">
-            <label for="setting-open-last">Reopen last file on launch</label>
-            <input
-              id="setting-open-last"
-              type="checkbox"
-              checked={$settings.openLastOnStartup}
-              onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
-            />
+            <div>
+              <label for="setting-open-mode">When opening a file</label>
+              <div class="hint">applies to double-clicked files, Open…, recent files and drag-and-drop</div>
+            </div>
+            <select
+              id="setting-open-mode"
+              value={$settings.openMode}
+              onchange={(e) => updateSettings({ openMode: (e.currentTarget as HTMLSelectElement).value as OpenMode })}
+            >
+              <option value="tabs">Open in a new tab</option>
+              <option value="replace">Replace the current document</option>
+              <option value="windows">Open a new window</option>
+            </select>
           </div>
+
+          {#if $settings.openMode === 'tabs'}
+            <div class="row">
+              <label for="setting-reopen-tabs">Reopen tabs from last session</label>
+              <input
+                id="setting-reopen-tabs"
+                type="checkbox"
+                checked={$settings.reopenTabsOnLaunch}
+                onchange={(e) => updateSettings({ reopenTabsOnLaunch: (e.currentTarget as HTMLInputElement).checked })}
+              />
+            </div>
+          {:else}
+            <div class="row">
+              <label for="setting-open-last">Reopen last file on launch</label>
+              <input
+                id="setting-open-last"
+                type="checkbox"
+                checked={$settings.openLastOnStartup}
+                onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
+              />
+            </div>
+          {/if}
 
           <div class="row">
             <label for="setting-show-welcome">Show welcome.md on launch</label>

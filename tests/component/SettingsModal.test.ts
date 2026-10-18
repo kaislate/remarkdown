@@ -119,3 +119,34 @@ describe('SettingsModal', () => {
     expect(get(activeModal)).toBeNull();
   });
 });
+
+describe('SettingsModal — opening files', () => {
+  it('offers the three open modes and saves the choice', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const select = document.querySelector<HTMLSelectElement>('#setting-open-mode')!;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['tabs', 'replace', 'windows']);
+    expect(select.value).toBe('tabs');
+    await userEvent.setup().selectOptions(select, 'windows');
+    expect(get(settings).openMode).toBe('windows');
+  });
+
+  it('shows "Reopen tabs" only in tabs mode and "Reopen last file" only outside it', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    expect(document.querySelector('#setting-reopen-tabs')).not.toBeNull();
+    expect(document.querySelector('#setting-open-last')).toBeNull();
+    await userEvent.setup().selectOptions(document.querySelector<HTMLSelectElement>('#setting-open-mode')!, 'replace');
+    expect(document.querySelector('#setting-reopen-tabs')).toBeNull();
+    expect(document.querySelector('#setting-open-last')).not.toBeNull();
+  });
+
+  it('the reopen-tabs checkbox updates the setting', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const box = document.querySelector<HTMLInputElement>('#setting-reopen-tabs')!;
+    expect(box.checked).toBe(true);
+    await userEvent.setup().click(box);
+    expect(get(settings).reopenTabsOnLaunch).toBe(false);
+  });
+});
