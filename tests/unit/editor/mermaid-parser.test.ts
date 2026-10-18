@@ -234,4 +234,23 @@ describe('mermaid parser — new edge styles', () => {
     const src = 'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\n';
     expect(rt(src)).toBe(src);
   });
+
+  // mermaid's flowDb overwrites a vertex's text and shape on every
+  // definition, so the LAST definition is what the reader sees.
+  it('uses the last definition of a node, like mermaid', () => {
+    const r = parseMermaid('flowchart TD\nA[First] --> B\nA(Second)\nA --> C\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')).toEqual({ id: 'A', shape: 'rounded', label: 'Second' });
+  });
+
+  it('lets a later definition replace an implicit node', () => {
+    const r = parseMermaid('flowchart TD\nA --> B\nB[Bob]\n');
+    expect(r.ok && r.graph.nodes.get('B')?.label).toBe('Bob');
+  });
+
+  it('decodes mermaid entity codes in labels', () => {
+    const r = parseMermaid('flowchart TD\nA["semi #59; hash #35; quote #quot; amp #amp;"]\n');
+    expect(r.ok && r.graph.nodes.get('A')?.label).toBe('semi ; hash # quote " amp &');
+  });
 });
