@@ -4,15 +4,51 @@
   import { ZOOM_LEVELS } from '../stores/ui';
   import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
   import type { OpenMode } from '../lib/settings-schema';
+  import { defaultAppStatus, makeDefaultApp, type DefaultAppStatus } from '../lib/tauri-api';
+  import { addToast } from '../stores/toasts';
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && $activeModal?.kind === 'settings') closeModal();
   }
 
   function fmtZoom(z: number) { return `${Math.round(z * 100)}%`; }
+
+  // Default-app status. Re-checked when the panel opens and whenever the
+  // window regains focus — the user finishes the job in Windows' own UI and
+  // then comes back here.
+  let defaultApp = $state<DefaultAppStatus | null>(null);
+  const isDefault = $derived(!!defaultApp && defaultApp.md && defaultApp.markdown);
+
+  async function refreshDefaultApp() {
+    try {
+      defaultApp = await defaultAppStatus();
+    } catch {
+      defaultApp = null;
+    }
+  }
+
+  $effect(() => {
+    if ($activeModal?.kind === 'settings') void refreshDefaultApp();
+  });
+
+  function onWindowFocus() {
+    if ($activeModal?.kind === 'settings') void refreshDefaultApp();
+  }
+
+  async function onMakeDefault() {
+    try {
+      await makeDefaultApp();
+    } catch {
+      addToast({
+        kind: 'error',
+        message: "Couldn't set that up automatically. Right-click any .md file → Open with → Choose another app → remarkdown, and choose Always.",
+        persistent: true,
+      });
+    }
+  }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onfocus={onWindowFocus} />
 
 {#if $activeModal?.kind === 'settings'}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -179,6 +215,22 @@
                 checked={$settings.openLastOnStartup}
                 onchange={(e) => updateSettings({ openLastOnStartup: (e.currentTarget as HTMLInputElement).checked })}
               />
+            </div>
+          {/if}
+
+          {#if defaultApp?.supported}
+            <div class="row">
+              <div>
+                <span class="row-label">Default app</span>
+                <div class="hint">
+                  {isDefault
+                    ? 'remarkdown is your default app for .md files'
+                    : "remarkdown isn't your default app for .md files yet"}
+                </div>
+              </div>
+              {#if !isDefault}
+                <button class="action" onclick={onMakeDefault}>Make remarkdown the default…</button>
+              {/if}
             </div>
           {/if}
 
@@ -711,6 +763,20 @@
     border-color: var(--fg-0);
     transform: scale(1.1);
   }
+
+  .action {
+    flex: 0 0 auto;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--fg-0);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .action:hover { filter: brightness(1.12); }
 
   footer {
     display: flex;

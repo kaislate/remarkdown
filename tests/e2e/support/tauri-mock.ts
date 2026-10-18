@@ -98,6 +98,8 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       (window as any).__E2E_WINDOWS__ = opened;
       return;
     }
+    case 'default_app_status':
+      return { supported: false, md: false, markdown: false };
     case 'load_session':
       return localStorage.getItem('rmd-session');
     case 'save_session':

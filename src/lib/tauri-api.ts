@@ -144,3 +144,21 @@ export function windowLabel(): string {
     return 'main';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Default app (Windows). Windows only lets the user make the final choice;
+// makeDefaultApp registers remarkdown and opens the right Windows UI for it.
+
+export interface DefaultAppStatus {
+  supported: boolean;
+  md: boolean;
+  markdown: boolean;
+}
+
+export async function defaultAppStatus(): Promise<DefaultAppStatus> {
+  return await invoke<DefaultAppStatus>('default_app_status');
+}
+
+export async function makeDefaultApp(): Promise<void> {
+  await invoke('make_default_app');
+}

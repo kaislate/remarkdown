@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod default_app;
 mod launch;
 mod reading_progress;
 mod recent;
@@ -53,6 +54,8 @@ fn main() {
             commands::save_session,
             launch::take_pending_opens,
             launch::open_document_window,
+            default_app::default_app_status,
+            default_app::make_default_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
