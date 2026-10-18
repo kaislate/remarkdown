@@ -32,9 +32,29 @@ export interface MermaidRenderContext {
   fontFamily: string;
 }
 
+// `transient` marks failures that say nothing about the diagram itself
+// (mermaid didn't load, the render timed out): they aren't cached, and
+// callers should try again on their next pass.
 export type MermaidRenderOutcome =
   | { ok: true; svg: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; transient?: true };
+
+// A render that hasn't settled after this long is abandoned so it can't
+// stall every other diagram in the app (renders are serialized).
+const RENDER_TIMEOUT_MS = 20_000;
+let renderTimeoutMs = RENDER_TIMEOUT_MS;
+
+class RenderTimeout extends Error {}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new RenderTimeout(`Drawing the diagram took longer than ${ms / 1000}s.`)), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
 
 // Mirrors --font-serif in theme.css. Only used when no element is
 // available to read the computed font from (e.g. tests without CSS).
@@ -179,10 +199,17 @@ async function renderNow(
     m = await loadMermaid();
   } catch (err) {
     // Not cached: the diagram isn't broken, mermaid just didn't load.
-    return { ok: false, error: errorMessage(err) };
+    return { ok: false, error: errorMessage(err), transient: true };
   }
   const id = nextId();
   let entry: CacheEntry;
+  // mermaid.render() funnels every call through mermaid's own execution
+  // queue, and a call that never settles blocks that queue for good —
+  // every later render would hang too, timeout or not. Renders are
+  // already serialized here, so go to mermaidAPI.render directly (the
+  // same function mermaid.render queues).
+  const api = (m as unknown as { mermaidAPI?: { render?: Mermaid['render'] } }).mermaidAPI;
+  const render: Mermaid['render'] = api?.render ? api.render.bind(api) : m.render.bind(m);
   try {
     m.initialize({
       startOnLoad: false,
@@ -195,9 +222,12 @@ async function renderNow(
       // friendly message (buildDiagramError) in the diagram's place.
       suppressErrorRendering: true,
     });
-    const { svg } = await m.render(id, source);
+    const { svg } = await withTimeout(render(id, source), renderTimeoutMs);
     entry = { outcome: { ok: true, svg }, id };
   } catch (err) {
+    // Not cached (`finally` still cleans up): a timeout says nothing
+    // about the diagram.
+    if (err instanceof RenderTimeout) return { ok: false, error: err.message, transient: true };
     entry = { outcome: { ok: false, error: errorMessage(err) }, id };
   } finally {
     removeLeftovers(id);
@@ -240,6 +270,11 @@ export async function warmMermaidRuntime(): Promise<void> {
 export function resetMermaidRuntimeForTests(): void {
   cache.clear();
   queue = Promise.resolve();
+}
+
+// null restores the default.
+export function setMermaidRenderTimeoutForTests(ms: number | null): void {
+  renderTimeoutMs = ms ?? RENDER_TIMEOUT_MS;
 }
 
 // Natural (unscaled) width of a mermaid svg: the viewBox width, else

@@ -31,6 +31,13 @@
       if (svg) applyDiagramSizing(svg);
     } else {
       el.replaceChildren(buildDiagramError(outcome.error));
+      // mermaid didn't load / the render timed out: nothing is wrong
+      // with the diagram, so leave the block unmarked and the next
+      // render pass tries again.
+      if (outcome.transient) {
+        delete el.dataset.mermaidRendered;
+        return;
+      }
     }
     el.dataset.mermaidRendered = key;
   }

@@ -8,9 +8,9 @@ import { tick } from 'svelte';
 import MermaidRenderer from '../../src/components/MermaidRenderer.svelte';
 import { settings } from '../../src/stores/settings';
 import { DEFAULT_SETTINGS } from '../../src/lib/settings-schema';
-import { resetMermaidRuntimeForTests } from '../../src/lib/mermaid-runtime';
+import { resetMermaidRuntimeForTests, setMermaidRenderTimeoutForTests } from '../../src/lib/mermaid-runtime';
 
-const mocked = vi.hoisted(() => ({ theme: '', renders: [] as string[] }));
+const mocked = vi.hoisted(() => ({ theme: '', renders: [] as string[], hang: false }));
 
 vi.mock('mermaid', () => ({
   default: {
@@ -19,6 +19,7 @@ vi.mock('mermaid', () => ({
     },
     render: async (id: string, source: string) => {
       mocked.renders.push(source);
+      if (mocked.hang) return new Promise<never>(() => {});
       if (source.includes('BROKEN')) {
         // mermaid leaves its temp container behind on failure.
         const tmp = document.createElement('div');
@@ -114,6 +115,33 @@ describe('MermaidRenderer', () => {
     await settle();
     const svg = root.querySelector<SVGSVGElement>('svg')!;
     expect(svg.style.minWidth).toBe('750px');
+  });
+
+  // Review finding: a failure that says nothing about the diagram
+  // (mermaid didn't load, the render timed out) was marked "rendered",
+  // so the block stayed an error box until the theme or doc changed.
+  it('retries a transient failure on the next render pass', async () => {
+    setMermaidRenderTimeoutForTests(30);
+    try {
+      mocked.hang = true;
+      const root = article(block('flowchart TD\nA-->B'));
+      render(MermaidRenderer, { props: { articleEl: root } });
+      await new Promise((r) => setTimeout(r, 80));
+      await settle();
+      const el = root.querySelector<HTMLElement>('.mermaid-block')!;
+      expect(el.querySelector('.mermaid-error')).not.toBeNull();
+      expect(el.dataset.mermaidRendered).toBeUndefined();
+
+      mocked.hang = false;
+      // Any later pass (here: an unrelated settings change) retries.
+      settings.set({ ...DEFAULT_SETTINGS, theme: 'dark', saveDebounceMs: 600 });
+      await settle();
+      expect(el.querySelector('svg')).not.toBeNull();
+      expect(el.dataset.mermaidRendered).toBeTruthy();
+    } finally {
+      setMermaidRenderTimeoutForTests(null);
+      mocked.hang = false;
+    }
   });
 
   it('shows a friendly error (details collapsed) and leaves nothing on <body>', async () => {

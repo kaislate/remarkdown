@@ -6,6 +6,7 @@ import {
   renderMermaid,
   peekMermaidRender,
   resetMermaidRuntimeForTests,
+  setMermaidRenderTimeoutForTests,
   applyDiagramSizing,
   buildDiagramError,
   MIN_DIAGRAM_SCALE,
@@ -29,7 +30,13 @@ vi.mock('mermaid', () => ({
       mocked.configs.push(config);
       mocked.log.push(`init:${String(config.theme)}`);
     },
-    render: (id: string, source: string) => {
+    // mermaid.render() funnels through mermaid's own execution queue,
+    // which a render that never settles blocks for good. The runtime
+    // serializes renders itself and calls mermaidAPI.render directly.
+    render: () => {
+      throw new Error('runtime must use mermaidAPI.render, not the queued mermaid.render');
+    },
+    mermaidAPI: { render: (id: string, source: string) => {
       mocked.log.push(`render:${source}`);
       // Mimic mermaid's temp container on <body>, which it leaves behind
       // when a render fails.
@@ -47,7 +54,7 @@ vi.mock('mermaid', () => ({
           reject: (err: unknown) => rej(err),
         });
       });
-    },
+    } },
   },
 }));
 
@@ -63,6 +70,27 @@ beforeEach(() => {
   mocked.log.length = 0;
   mocked.renders.length = 0;
   mocked.configs.length = 0;
+});
+
+describe('mermaid runtime: a render that never settles', () => {
+  it('times out, is not cached, and does not stall the renders queued behind it', async () => {
+    setMermaidRenderTimeoutForTests(40);
+    try {
+      const hung = renderMermaid('flowchart TD\nHANG', DARK);
+      const next = renderMermaid('flowchart TD\nB', DARK);
+      const out = await hung;
+      expect(out.ok).toBe(false);
+      expect(out.ok === false && out.transient).toBe(true);
+      // A timeout says nothing about the diagram — don't remember it.
+      expect(peekMermaidRender('flowchart TD\nHANG', DARK)).toBeNull();
+      await flush();
+      expect(mocked.renders.map((r) => r.source)).toEqual(['flowchart TD\nHANG', 'flowchart TD\nB']);
+      mocked.renders[1].resolve();
+      expect((await next).ok).toBe(true);
+    } finally {
+      setMermaidRenderTimeoutForTests(null);
+    }
+  });
 });
 
 describe('mermaid runtime', () => {
