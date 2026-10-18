@@ -23,6 +23,7 @@
   import Minimap from './components/Minimap.svelte';
   import Splash from './components/Splash.svelte';
   import TitleBar from './components/TitleBar.svelte';
+  import TabBar from './components/TabBar.svelte';
   import MouseCursor from './components/MouseCursor.svelte';
   import Toasts from './components/Toasts.svelte';
   import ZoomControls from './components/ZoomControls.svelte';
@@ -373,6 +374,7 @@
 <WelcomeOverlay />
 <Minimap />
 <TitleBar />
+<TabBar />
 <MouseCursor />
 <ReattachBanner />
 <GlassMenu />

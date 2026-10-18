@@ -23,6 +23,12 @@
   import { activeSession } from '../stores/sessions';
   import { onBeforeSwitch } from '../stores/tabs';
   import { onDestroy } from 'svelte';
+  import { fade } from 'svelte/transition';
+
+  function reducedMotion(): boolean {
+    return typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
@@ -252,7 +258,11 @@
       <p>Open a markdown file to start reading.</p>
     </div>
   {:else}
-    <div class="content">
+    <!-- Keyed on the tab so switching tabs cross-fades the page in. The
+         incoming tab's content is already in memory, so this is a redraw,
+         not a reload. -->
+    {#key $activeSession.id}
+    <div class="content" in:fade={{ duration: reducedMotion() ? 0 : 150 }}>
       <div class="text-frame">
         <!-- The article stays mounted in edit mode (hidden via
              body.edit-mode .viewer { display:none } in edit-mode.css) so
@@ -291,6 +301,7 @@
            across the full window width, not just within the text column. -->
       <DrawLayer />
     </div>
+    {/key}
   {/if}
 </div>
 
