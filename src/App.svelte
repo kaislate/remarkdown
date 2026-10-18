@@ -290,9 +290,16 @@
 
     // Flush the active tab's pending saves before the window goes away.
     try {
+      // Registering this handler hands the close to JS: Tauri then calls
+      // destroy() once it resolves (needs core:window:allow-destroy). Never
+      // let a failed flush keep the window open.
       disposeCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
-        await runBeforeSwitch();
-        await flushSessionNow();
+        try {
+          await runBeforeSwitch();
+          await flushSessionNow();
+        } catch (err) {
+          console.error('[remarkdown] flush on close failed:', err);
+        }
       });
     } catch {
       // non-Tauri host
