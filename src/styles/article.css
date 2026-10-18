@@ -158,11 +158,10 @@
   display: none;
 }
 
-/* Pre-block inside a callout: slightly adjust to fit the box */
+/* Diagram error inside a callout: don't inherit the callout's accent
+   colour. */
 .callout .mermaid-error {
   color: var(--fg-1);
-  font-size: 0.82em;
-  white-space: pre-wrap;
 }
 
 /* Type colours — border + icon/header colour */
@@ -221,10 +220,18 @@
    Mermaid diagram blocks
    ────────────────────────────────────────────────────── */
 
+/* Diagrams are fluid up to their natural width, but applyDiagramSizing
+   (mermaid-runtime.ts) gives each svg an inline min-width of 75% of
+   its natural size so wide charts (gantt, timeline, C4, packet) keep
+   readable text. When that minimum is wider than the column, the svg
+   overflows and the block scrolls sideways with the app's standard
+   floating scrollbar (scrollbars.css). min-width beats max-width in
+   CSS, so the 100% cap below only applies to diagrams that fit. */
 .mermaid-block {
   margin: 1em 0;
   text-align: center;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .mermaid-block svg {
@@ -232,16 +239,46 @@
   height: auto;
 }
 
+/* Shown in place of a diagram mermaid couldn't draw (buildDiagramError
+   in mermaid-runtime.ts): a plain sentence, with mermaid's parser
+   output folded away in a <details>. */
 .mermaid-error {
-  background: var(--bg-2);
-  border: 1px solid #ff7a7a;
+  background: var(--bg-1);
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--danger);
   border-radius: 6px;
   padding: 10px 14px;
-  color: #ff7a7a;
-  font-family: var(--font-mono);
-  font-size: 0.82em;
-  white-space: pre-wrap;
+  color: var(--fg-1);
+  font-family: var(--font-sans);
+  font-size: 0.85em;
   text-align: left;
+}
+.mermaid-error-title {
+  margin: 0;
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.mermaid-error-hint {
+  margin: 4px 0 0;
+}
+.mermaid-error-details {
+  margin-top: 6px;
+  color: var(--fg-2);
+}
+.mermaid-error-details summary {
+  cursor: pointer;
+  font-size: 0.92em;
+}
+.md-rendered .mermaid-error-details pre,
+.mermaid-error-details pre {
+  margin: 6px 0 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  white-space: pre-wrap;
 }
 
 /* Re-attach mode — when the user clicked "Re-attach" on an orphaned
@@ -384,7 +421,12 @@ body.reattach-mode .reader-mode-toggle {
    doesn't kiss the wrapper edges on small diagrams. */
 .mermaid-block-editor .mermaid-rendered {
   display: flex;
-  justify-content: center;
+  /* `safe` keeps a diagram wider than the column start-aligned so the
+     horizontal scroll can reach its left edge (plain `center` would
+     push that part out of reach). Same 75%-minimum sizing as the
+     reader — see .mermaid-block. */
+  justify-content: safe center;
+  overflow-x: auto;
   align-items: center;
   min-height: 80px;
   padding: 12px;

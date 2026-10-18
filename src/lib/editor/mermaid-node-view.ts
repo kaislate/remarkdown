@@ -57,26 +57,19 @@ import {
   type MermaidDirection,
 } from './mermaid-graph';
 import { serializeMermaid } from './mermaid-serializer';
+import { settings } from '../../stores/settings';
+import {
+  applyDiagramSizing,
+  buildDiagramError,
+  currentRenderContext,
+  peekMermaidRender,
+  renderMermaid,
+} from '../mermaid-runtime';
 
-let mermaidSingleton: typeof import('mermaid').default | null = null;
-async function getMermaid() {
-  if (mermaidSingleton) return mermaidSingleton;
-  const m = await import('mermaid');
-  const mermaid = m.default;
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'dark',
-    // 'strict' matches the read-mode MermaidRenderer. The two share
-    // this mermaid singleton's global config, and editable diagrams
-    // don't need loose-mode features (HTML labels, click bindings) —
-    // which would be an XSS surface when opening untrusted .md files.
-    securityLevel: 'strict',
-  });
-  mermaidSingleton = mermaid;
-  return mermaid;
-}
-
-let renderId = 0;
+// Rendering goes through the shared mermaid runtime: theme (from
+// settings) + font (the editor surface's) + strict security applied on
+// every render, serialized with the reader's renders, cached by source.
+// See src/lib/mermaid-runtime.ts.
 
 // Edges are identified by their INDEX in graph.edges, not a (from,to)
 // pair — parallel edges share endpoints, and the index is what the
@@ -403,6 +396,10 @@ export class MermaidNodeView implements NodeView {
   private directionPickerHost: HTMLElement;
   private directionPickerStore: Writable<DirectionPickerState>;
   private directionPickerInstance: ReturnType<typeof mount> | null = null;
+  // Theme follows the app setting, like the reader. The subscription
+  // re-renders the diagram when the user switches theme mid-edit.
+  private unsubscribeSettings: (() => void) | null = null;
+  private renderedTheme: string | null = null;
 
   constructor(
     node: Node,
@@ -564,8 +561,15 @@ export class MermaidNodeView implements NodeView {
     // touch renderedEl itself, so the listener stays.
     this.wireClickHandlers();
 
-    // First render. Subsequent renders happen via update().
+    // First render. Subsequent renders happen via update() and theme
+    // changes. (A cache hit paints synchronously, before PM inserts the
+    // wrapper — no empty-box flash when PM rebuilds this NodeView.)
     void this.renderFromNode(node);
+    this.unsubscribeSettings = settings.subscribe((s) => {
+      if (this.renderedTheme !== null && s.theme !== this.renderedTheme) {
+        void this.renderFromNode(this.node);
+      }
+    });
   }
 
   private wireClickHandlers(): void {
@@ -992,6 +996,8 @@ export class MermaidNodeView implements NodeView {
   // Cleanup when PM tears down the NodeView (block removed, editor
   // destroyed, etc.). Without this the Svelte component would leak.
   destroy(): void {
+    this.unsubscribeSettings?.();
+    this.unsubscribeSettings = null;
     this.closePopover();
     this.closeEdgePopover();
     this.closeParticipantPopover();
@@ -1073,6 +1079,8 @@ export class MermaidNodeView implements NodeView {
   private async renderFromNode(node: Node): Promise<void> {
     const seq = ++this.renderSeq;
     const source = node.textContent;
+    const ctx = currentRenderContext(this.view.dom);
+    this.renderedTheme = ctx.theme;
     const type = detectDiagramType(source);
     this.diagramType = type;
 
@@ -1177,14 +1185,16 @@ export class MermaidNodeView implements NodeView {
       return;
     }
 
-    try {
-      const mermaid = await getMermaid();
-      const id = `remarkdown-mermaid-${++renderId}`;
-      const { svg } = await mermaid.render(id, source);
-      // A newer render started while this one was in flight — drop the
-      // stale result instead of clobbering the fresh SVG.
-      if (seq !== this.renderSeq) return;
-      this.renderedEl.innerHTML = svg;
+    // Cache hit → no await → the svg lands in this same call.
+    const outcome = peekMermaidRender(source, ctx) ?? (await renderMermaid(source, ctx));
+    // A newer render started while this one was in flight — drop the
+    // stale result instead of clobbering the fresh SVG (or painting a
+    // superseded error box).
+    if (seq !== this.renderSeq) return;
+    if (outcome.ok) {
+      this.renderedEl.innerHTML = outcome.svg;
+      const svgRoot = this.renderedEl.querySelector<SVGSVGElement>(':scope > svg');
+      if (svgRoot) applyDiagramSizing(svgRoot);
       // Mermaid draws edges as 1-2px paths whose hit-test area equals
       // the visible stroke — pixel-precise to click. Inject a wider
       // transparent sibling path for each edge so users have a forgiving
@@ -1260,20 +1270,12 @@ export class MermaidNodeView implements NodeView {
       // so visibility tracks the latest graph state.
       this.refreshActionsBar();
       this.refreshDirectionPicker();
-    } catch (err) {
-      // Same staleness rule as the success path: an error from a
-      // superseded render must not paint over the newer result.
-      if (seq !== this.renderSeq) return;
+    } else {
       this.pendingSelect = null;
-      const msg = err instanceof Error ? err.message : String(err);
-      this.renderedEl.innerHTML = '';
-      const errBox = document.createElement('pre');
-      errBox.className = 'mermaid-error';
-      errBox.textContent = `Mermaid error: ${msg}`;
-      this.renderedEl.appendChild(errBox);
+      this.renderedEl.replaceChildren(buildDiagramError(outcome.error));
       // Keep the action-bar + direction picker hidden when mermaid
-      // threw — bare error text means there's no diagram to act on.
-      this.refreshActionsBar();
+      // failed — there's no diagram to act on.
+      this.sequenceActionsStore.set({ ...HIDDEN_ACTIONS_STATE });
       this.directionPickerStore.set({ ...HIDDEN_DIRECTION_PICKER_STATE });
     }
   }

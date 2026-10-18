@@ -9,6 +9,9 @@ import { EditorState } from 'prosemirror-state';
 import { editorSchema } from '../../../src/lib/editor/schema';
 import { parseMarkdownToDoc } from '../../../src/lib/editor/parser';
 import { MermaidNodeView } from '../../../src/lib/editor/mermaid-node-view';
+import { resetMermaidRuntimeForTests } from '../../../src/lib/mermaid-runtime';
+import { settings } from '../../../src/stores/settings';
+import { DEFAULT_SETTINGS } from '../../../src/lib/settings-schema';
 
 const mocked = vi.hoisted(() => {
   const renders: Array<{
@@ -85,6 +88,9 @@ function setBlockText(view: EditorView, newText: string): void {
 
 beforeEach(() => {
   mocked.renders.length = 0;
+  // The shared runtime caches by source; a hit would skip the mocked
+  // render these tests are steering.
+  resetMermaidRuntimeForTests();
 });
 
 describe('MermaidNodeView mermaid config', () => {
@@ -96,6 +102,26 @@ describe('MermaidNodeView mermaid config', () => {
     view.destroy();
     parent.remove();
   });
+
+  it('follows the app theme setting and re-renders when it changes', async () => {
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'light' });
+    const { view, parent } = makeView('```mermaid\nflowchart TD\nA[a]\n```\n');
+    await flush();
+    expect(mocked.initializeCalls.at(-1)?.theme).toBe('default');
+    mocked.renders[0].resolve('<svg data-which="light"></svg>');
+    await flush();
+
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'dark' });
+    await flush();
+    expect(mocked.renders.length).toBe(2);
+    expect(mocked.initializeCalls.at(-1)?.theme).toBe('dark');
+    mocked.renders[1].resolve('<svg data-which="dark"></svg>');
+    await flush();
+    expect(parent.querySelector('.mermaid-rendered svg')?.getAttribute('data-which')).toBe('dark');
+    view.destroy();
+    parent.remove();
+    settings.set(DEFAULT_SETTINGS);
+  });
 });
 
 describe('MermaidNodeView async ordering', () => {
@@ -104,14 +130,19 @@ describe('MermaidNodeView async ordering', () => {
     await flush();
     expect(mocked.renders.length).toBe(1);
 
+    // The source changes while render #1 is still in flight. Renders
+    // are serialized through the shared runtime's queue, so #2 only
+    // starts once #1 settles — and #1's (now stale) result must not be
+    // painted in the meantime.
     setBlockText(view, 'flowchart TD\nA[two]\n');
     await flush();
-    expect(mocked.renders.length).toBe(2);
+    expect(mocked.renders.length).toBe(1);
 
-    // The NEWER render resolves first, then the stale one arrives late.
-    mocked.renders[1].resolve('<svg data-which="two"></svg>');
-    await flush();
     mocked.renders[0].resolve('<svg data-which="one"></svg>');
+    await flush();
+    expect(parent.querySelector('.mermaid-rendered svg[data-which="one"]')).toBeNull();
+    expect(mocked.renders.length).toBe(2);
+    mocked.renders[1].resolve('<svg data-which="two"></svg>');
     await flush();
 
     const svg = parent.querySelector('.mermaid-rendered svg');
@@ -125,11 +156,13 @@ describe('MermaidNodeView async ordering', () => {
     await flush();
     setBlockText(view, 'flowchart TD\nA[two]\n');
     await flush();
-    expect(mocked.renders.length).toBe(2);
+    expect(mocked.renders.length).toBe(1);
 
-    mocked.renders[1].resolve('<svg data-which="two"></svg>');
-    await flush();
     mocked.renders[0].reject(new Error('boom'));
+    await flush();
+    expect(parent.querySelector('.mermaid-error')).toBeNull();
+    expect(mocked.renders.length).toBe(2);
+    mocked.renders[1].resolve('<svg data-which="two"></svg>');
     await flush();
 
     expect(parent.querySelector('.mermaid-error')).toBeNull();
