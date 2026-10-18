@@ -6,7 +6,7 @@ import { annots } from '../stores/annots';
 import { getSettings } from '../stores/settings';
 import type { Sidecar } from './schema';
 import { addToast } from '../stores/toasts';
-import { activeSession } from '../stores/sessions';
+import { activeSession, type DocSession } from '../stores/sessions';
 import { onBeforeSwitch } from '../stores/tabs';
 
 const SIZE_WARN_BYTES = 2 * 1024 * 1024;
@@ -23,25 +23,30 @@ export const persistentSaveError: Writable<string | null> = writable(null);
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [100, 400, 1600];
 
+// A pending save belongs to the tab whose annotations changed — not to
+// whichever tab happens to be active when the debounce fires (the user may
+// have switched tabs by then).
 let timer: ReturnType<typeof setTimeout> | null = null;
-let lastSerializedSnapshot: string | null = null;
+let pendingSession: DocSession | null = null;
+// Last JSON written per tab, so unchanged annotations aren't rewritten.
+let lastSerialized = new WeakMap<DocSession, string>();
 
-function currentSidecar(): { path: string; json: string } | null {
-  const d = get(doc);
+function sidecarFor(session: DocSession): { path: string; json: string } | null {
+  const d = get(session.doc);
   if (!d) return null;
   const sidecar: Sidecar = {
     _comment: `remarkdown annotations for: ${d.path.split(/[\\/]/).pop() ?? d.path}`,
     $schema: 'remarkdown/v1',
     document: { path: d.path, sha256: d.sha256, lastSeenBytes: d.bytes },
-    annotations: get(annots),
+    annotations: get(session.annots),
   };
   return { path: d.path, json: serializeSidecar(sidecar) };
 }
 
-async function doSave(): Promise<void> {
-  const current = currentSidecar();
+async function doSave(session: DocSession): Promise<void> {
+  const current = sidecarFor(session);
   if (!current) return;
-  if (current.json === lastSerializedSnapshot) return;
+  if (current.json === lastSerialized.get(session)) return;
 
   const byteLen = new TextEncoder().encode(current.json).length;
   if (byteLen > SIZE_WARN_BYTES && warnedOnceForThisPath !== current.path) {
@@ -56,7 +61,7 @@ async function doSave(): Promise<void> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       await writeSidecar(current.path, current.json);
-      lastSerializedSnapshot = current.json;
+      lastSerialized.set(session, current.json);
       savedPulse.set(Date.now());
       persistentSaveError.set(null);
       return;
@@ -70,27 +75,39 @@ async function doSave(): Promise<void> {
   persistentSaveError.set(`Could not save annotations: ${String(lastErr)}`);
 }
 
+// Write the pending save now (or, with nothing pending, the active tab).
 export async function flushSave(): Promise<void> {
+  const session = pendingSession ?? get(activeSession);
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
-  await doSave();
+  pendingSession = null;
+  await doSave(session);
 }
 
-function scheduleSave(): void {
+function scheduleSave(session: DocSession): void {
+  // A different tab still has a save pending: write it now rather than
+  // dropping it.
+  if (pendingSession && pendingSession !== session) {
+    const other = pendingSession;
+    void doSave(other).catch((e) => console.error('[remarkdown] save failed:', e));
+  }
   if (timer) clearTimeout(timer);
+  pendingSession = session;
   const ms = getSettings().saveDebounceMs ?? SAVE_DEBOUNCE_MS;
   timer = setTimeout(() => {
     timer = null;
-    doSave().catch((e) => console.error('[remarkdown] save failed:', e));
+    const target = pendingSession;
+    pendingSession = null;
+    if (target) doSave(target).catch((e) => console.error('[remarkdown] save failed:', e));
   }, ms);
 }
 
 export function installSaveWatcher(): () => void {
   // Reset snapshot whenever doc changes so the first write for a new doc always fires.
   const unsubDoc = doc.subscribe(() => {
-    lastSerializedSnapshot = null;
+    lastSerialized.delete(get(activeSession));
     warnedOnceForThisPath = null;
   });
   // `annots` is a proxy onto the active tab, so it also emits when the user
@@ -108,15 +125,20 @@ export function installSaveWatcher(): () => void {
       return;
     }
     if (!get(doc)) return;
-    scheduleSave();
+    scheduleSave(get(activeSession));
   });
+  // Before the active tab changes, write what's pending. Loop: the outgoing
+  // tab is still active while a slow write is awaited, so the user can add
+  // another annotation to it meanwhile.
   const offBeforeSwitch = onBeforeSwitch(async () => {
-    if (timer) await flushSave(); // only a save that's actually pending
+    while (pendingSession) await flushSave();
   });
   return () => {
     unsubDoc();
     unsubAnnots();
     offBeforeSwitch();
     if (timer) { clearTimeout(timer); timer = null; }
+    pendingSession = null;
+    lastSerialized = new WeakMap();
   };
 }
