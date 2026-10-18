@@ -35,6 +35,7 @@
   import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
   import { runBeforeSwitch } from './stores/tabs';
+  import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
@@ -64,6 +65,7 @@
   let disposeArticleWidth: (() => void) | null = null;
   let disposeOpenRequested: (() => void) | null = null;
   let disposeCloseRequested: (() => void) | null = null;
+  let disposeSessionAutosave: (() => void) | null = null;
 
   // Sync the CSS variable on every zoom change so the root font-size scales
   // and all rem-based article styles (incl. the minimap clone) follow.
@@ -289,6 +291,7 @@
     try {
       disposeCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
         await runBeforeSwitch();
+        await flushSessionNow();
       });
     } catch {
       // non-Tauri host
@@ -296,7 +299,8 @@
 
     // Startup-document precedence:
     //   0. A window opened in "new window per file" mode shows its file only.
-    //   1. Files we were launched with (double-click / Open with). These win
+    //   1. Tabs mode: reopen the previous session's tabs (if enabled), then
+    //      add files we were launched with (double-click / Open with). These win
     //      over welcome — the user asked for that file (#24).
     //   2. Otherwise, if welcome is enabled (default), open it. The user gets
     //      a guided tour every launch until they tick the dismiss option.
@@ -307,6 +311,7 @@
     if (presetPath) {
       await openPaths([presetPath]);
     } else {
+      if (s.openMode === 'tabs' && s.reopenTabsOnLaunch) await restoreSavedTabs();
       const launched = await drainPendingOpens();
       if (launched === 0) {
         if (!s.dontShowWelcomeOnLaunch) {
@@ -327,6 +332,10 @@
       }
     }
 
+    // Remember open tabs for next launch (main window, tabs mode). Installed
+    // after the startup opens so restoring doesn't trigger a rewrite storm.
+    disposeSessionAutosave = installSessionAutosave();
+
     // Silent background check for app updates. We deliberately don't
     // await this — the rest of app start happens in parallel — and
     // failures are swallowed so a flaky network never blocks launch.
@@ -341,6 +350,7 @@
     disposeArticleWidth?.();
     disposeOpenRequested?.();
     disposeCloseRequested?.();
+    disposeSessionAutosave?.();
     unsubZoom();
     unsubTool();
     unsubTheme();
