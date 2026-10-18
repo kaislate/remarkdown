@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseMermaid } from '../../../src/lib/editor/mermaid-parser';
+import { parseSequence } from '../../../src/lib/editor/mermaid-sequence-parser';
 import { serializeMermaid } from '../../../src/lib/editor/mermaid-serializer';
 
 function rt(src: string): string {
@@ -247,6 +248,15 @@ describe('mermaid parser — new edge styles', () => {
   it('lets a later definition replace an implicit node', () => {
     const r = parseMermaid('flowchart TD\nA --> B\nB[Bob]\n');
     expect(r.ok && r.graph.nodes.get('B')?.label).toBe('Bob');
+  });
+
+  // Review finding: String.fromCodePoint threw a RangeError, which left
+  // the edit-mode block blank (unhandled rejection in renderFromNode).
+  it('keeps out-of-range numeric entities as written instead of throwing', () => {
+    const r = parseMermaid('flowchart TD\nA["x #99999999; y"]\n');
+    expect(r.ok && r.graph.nodes.get('A')?.label).toBe('x #99999999; y');
+    const s = parseSequence('sequenceDiagram\nA->>B: x #1114112; y\n');
+    expect(s.ok && s.graph.events[0].text).toBe('x #1114112; y');
   });
 
   it('decodes mermaid entity codes in labels', () => {

@@ -137,7 +137,11 @@ const NAMED_ENTITIES: Record<string, string> = {
 // names are left as written.
 export function decodeMermaidEntities(text: string): string {
   return text.replace(/#(\w+);/g, (m, name: string) => {
-    if (/^\d+$/.test(name)) return String.fromCodePoint(Number(name));
+    if (/^\d+$/.test(name)) {
+      // Out of Unicode range: fromCodePoint would throw. Keep as written.
+      const n = Number(name);
+      return n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    }
     return NAMED_ENTITIES[name] ?? m;
   });
 }
