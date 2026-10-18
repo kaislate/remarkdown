@@ -9,7 +9,8 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
-  import { createAnchor } from '../lib/anchoring';
+  import { createAnchor, rangeTouchesDiagram, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
+  import { addToast } from '../stores/toasts';
   import type { Highlight } from '../lib/schema';
 
   function colorIndex(color: string): number {
@@ -178,6 +179,12 @@
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
       if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+      // Diagram text can't hold a highlight (see rangeTouchesDiagram).
+      if (rangeTouchesDiagram(range)) {
+        sel.removeAllRanges();
+        addToast({ kind: 'info', message: DIAGRAM_ANNOTATION_HINT });
+        return;
+      }
 
       // Decide what to do with overlapping highlights:
       //   - SAME colour overlap → MERGE into one highlight whose range is

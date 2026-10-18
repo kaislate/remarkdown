@@ -11,7 +11,8 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
-  import { createAnchor } from '../lib/anchoring';
+  import { createAnchor, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
+  import { addToast } from '../stores/toasts';
   import { pinPosition } from '../lib/positioning';
   import NotePopover from './NotePopover.svelte';
   import type { Note } from '../lib/schema';
@@ -177,6 +178,11 @@
     if (!root) return;
     const block = target.closest<HTMLElement>('[data-block-id]');
     if (!block) return;
+    // Diagram text can't hold a note anchor (see rangeTouchesDiagram).
+    if (target.closest('.mermaid-block')) {
+      addToast({ kind: 'info', message: DIAGRAM_ANNOTATION_HINT });
+      return;
+    }
 
     let range: Range | null = null;
     const cp = (document as any).caretPositionFromPoint?.(clientX, clientY);
@@ -258,6 +264,12 @@
     if (n !== root) return false;
     const block = (cp.offsetNode as Node).parentElement?.closest<HTMLElement>('[data-block-id]');
     if (!block) return false;
+    // Dropping a pin onto a diagram: snap back rather than anchor to
+    // diagram text (see rangeTouchesDiagram).
+    if (block.closest('.mermaid-block')) {
+      addToast({ kind: 'info', message: DIAGRAM_ANNOTATION_HINT });
+      return false;
+    }
 
     const { startNode, startOffset, endNode, endOffset } = expandToWordBoundary(
       block,

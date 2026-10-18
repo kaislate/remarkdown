@@ -52,6 +52,31 @@ function plaintextOffsetToPos(block: HTMLElement, target: number): { node: Text;
   return null;
 }
 
+// Text inside a rendered diagram can't carry a text anchor: the svg is
+// regenerated on every render (theme switch, reload, re-open), so an
+// anchor made against it never resolves again, and its prefix/suffix
+// context picks up the svg's inline <style> text. Highlight / note
+// creation checks this and declines (the pen tool still works there).
+export const DIAGRAM_ANNOTATION_HINT = 'Use the pen to mark up diagrams.';
+
+export function rangeTouchesDiagram(range: Range): boolean {
+  const inDiagram = (n: Node): boolean => {
+    const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
+    return !!el?.closest('.mermaid-block');
+  };
+  if (inDiagram(range.startContainer) || inDiagram(range.endContainer)) return true;
+  // A selection that starts before a diagram and ends after it.
+  const scope =
+    range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.commonAncestorContainer as Element)
+      : range.commonAncestorContainer.parentElement;
+  if (!scope) return false;
+  for (const block of scope.querySelectorAll('.mermaid-block')) {
+    if (range.intersectsNode(block)) return true;
+  }
+  return false;
+}
+
 export function createAnchor(range: Range, _viewerRoot: HTMLElement): Anchor | null {
   const startBlock = findContainingBlock(range.startContainer);
   const endBlock = findContainingBlock(range.endContainer);
