@@ -153,6 +153,12 @@ export function encodeSequenceText(text: string): string {
     .replace(/[#;]/g, (c) => (c === '#' ? '#35;' : '#59;'));
 }
 
+function unencodedSemicolon(line: string): boolean {
+  const hash = line.search(/#(?!\w+;)/);
+  const code = hash === -1 ? line : line.slice(0, hash);
+  return code.replace(/#\w+;/g, '').includes(';');
+}
+
 function trimmedSpan(lineText: string, start: number): Span {
   return { start, end: start + lineText.slice(start).trimEnd().length };
 }
@@ -193,6 +199,15 @@ export function parseSequenceSource(source: string): SequenceSourceParseResult {
     const raw = lines[i];
     const t = raw.trim();
     if (t.length === 0 || t.startsWith('%%')) continue;
+
+    // mermaid lexes an unencoded `;` as a line break, so a line holding
+    // one is several statements to mermaid. Reading it as one would
+    // misalign our event indexes with mermaid's i<N> ids (a click would
+    // edit the wrong message). Leave such diagrams render-only.
+    // Entity codes (`#59;`) and `#` comments may contain `;` freely.
+    if (unencodedSemicolon(t)) {
+      return { ok: false, reason: `statement separator in: ${t}` };
+    }
 
     // Reject explicitly-known unsupported keywords first.
     const firstWord = t.split(/\s+/)[0]?.toLowerCase() ?? '';
