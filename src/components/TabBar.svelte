@@ -16,6 +16,7 @@
   import { activateSession, closeSession, cycleSession } from '../stores/tabs';
   import { openViaDialog } from '../lib/open-files';
   import { settings } from '../stores/settings';
+  import { activeModal } from '../stores/modals';
 
   interface TabItem {
     session: DocSession;
@@ -111,10 +112,13 @@
   // Tabs grow / shrink / get squeezed — keep the underline glued on.
   $effect(() => {
     if (!stripEl || typeof ResizeObserver === 'undefined') return;
+    const items = $tabItems;
+    // Forget elements of closed tabs (bind:this leaves them as null).
+    const live = new Set(items.map((t) => t.session.id));
+    for (const id of Object.keys(tabEls)) if (!live.has(id) || !tabEls[id]) delete tabEls[id];
     const ro = new ResizeObserver(() => measure());
     ro.observe(stripEl);
-    for (const el of Object.values(tabEls)) ro.observe(el);
-    void $tabItems;
+    for (const el of Object.values(tabEls)) if (el) ro.observe(el);
     return () => ro.disconnect();
   });
 
@@ -157,6 +161,9 @@
   // surface (contenteditable) doesn't bind these, so they work there too.
   function onWindowKeydown(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    // A dialog owns the keyboard (e.g. "Clear all annotations?" confirms on
+    // Enter — switching tabs underneath it would aim it at another doc).
+    if (e.defaultPrevented || get(activeModal)) return;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
     const key = e.key.toLowerCase();
@@ -164,9 +171,10 @@
       e.preventDefault();
       void cycleSession(e.shiftKey ? -1 : 1);
     } else if (key === 'w' && !e.shiftKey) {
+      e.preventDefault();
+      if (e.repeat) return; // holding Ctrl+W must not close tab after tab
       const active = get(activeSession);
       if (get(active.doc) === null) return;
-      e.preventDefault();
       void closeSession(active.id);
     } else if (key === 'o' && !e.shiftKey) {
       e.preventDefault();

@@ -28,6 +28,11 @@ if (typeof window !== 'undefined') {
 // it with an animation that finishes on the next microtask so
 // transitioned elements still mount, and outro'd elements still
 // unmount, in component tests.
+// animate:flip (keyed lists, e.g. the tab bar) also asks an element for its
+// running animations before measuring it.
+if (typeof Element !== 'undefined' && !Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = function () { return []; };
+}
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
   Element.prototype.animate = function () {
     const anim: any = {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 
 vi.mock('../../src/stores/tabs', async () => {
   const actual = await vi.importActual<typeof import('../../src/stores/tabs')>('../../src/stores/tabs');
@@ -18,6 +19,7 @@ import { activateSession, closeSession, cycleSession } from '../../src/stores/ta
 import { openViaDialog } from '../../src/lib/open-files';
 import { createSession, sessions, activeSession, type DocSession } from '../../src/stores/sessions';
 import { updateSettings, resetSettings } from '../../src/stores/settings';
+import { openModal, closeModal } from '../../src/stores/modals';
 
 function withDoc(path: string): DocSession {
   const s = createSession();
@@ -134,5 +136,65 @@ describe('TabBar', () => {
     expect(closeSession).not.toHaveBeenCalled();
     expect(cycleSession).not.toHaveBeenCalled();
     input.remove();
+  });
+
+  it('shortcuts do nothing while a dialog is open', async () => {
+    twoTabs();
+    render(TabBar);
+    openModal({ kind: 'confirm-clear-annots' });
+    await fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true });
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    await fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
+    closeModal();
+    expect(cycleSession).not.toHaveBeenCalled();
+    expect(closeSession).not.toHaveBeenCalled();
+    expect(openViaDialog).not.toHaveBeenCalled();
+  });
+
+  it('a held-down Ctrl+W closes one tab, not several', async () => {
+    twoTabs();
+    render(TabBar);
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true, repeat: true });
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true, repeat: true });
+    expect(closeSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps working after a tab closes (ResizeObserver never sees a closed tab)', async () => {
+    const observed: Element[] = [];
+    let nullObserves = 0; // the real ResizeObserver throws on these
+    class StrictRO {
+      constructor(_cb: ResizeObserverCallback) {}
+      observe(el: Element) {
+        if (!el) { nullObserves += 1; return; }
+        observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = StrictRO;
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => errors.push(e.error);
+    window.addEventListener('error', onError);
+    try {
+      const { a, b } = twoTabs();
+      render(TabBar);
+      await tick();
+      sessions.set([b]);           // a closed
+      activeSession.set(b);
+      await tick();
+      const c = withDoc('/x/gamma.md');
+      sessions.set([b, c]);        // another opened
+      await tick();
+      expect(errors).toEqual([]);
+      expect(nullObserves).toBe(0);
+      expect(screen.getAllByRole('tab')).toHaveLength(2);
+      expect(observed.length).toBeGreaterThan(0);
+      void a;
+    } finally {
+      window.removeEventListener('error', onError);
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
   });
 });

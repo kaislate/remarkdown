@@ -18,6 +18,7 @@ import {
   findSessionByPath,
 } from '../../src/stores/tabs';
 import { reattachTarget } from '../../src/stores/reattach';
+import { activeModal, openModal, closeModal } from '../../src/stores/modals';
 
 function withDoc(path: string): DocSession {
   const s = createSession();
@@ -146,5 +147,21 @@ describe('tabs', () => {
     await cycleSession(-1);
     expect(get(activeSession)).toBe(a);
   });
-});
 
+  it('switching tabs dismisses dialogs that act on the current document', async () => {
+    const b = withDoc('/b.md');
+    addSession(b);
+    openModal({ kind: 'confirm-clear-annots' });
+    await activateSession(b.id);
+    expect(get(activeModal)).toBeNull();
+  });
+
+  it('switching tabs leaves app-wide dialogs open', async () => {
+    const b = withDoc('/b.md');
+    addSession(b);
+    openModal({ kind: 'settings' });
+    await activateSession(b.id);
+    expect(get(activeModal)).toEqual({ kind: 'settings' });
+    closeModal();
+  });
+});

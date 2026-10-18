@@ -14,6 +14,7 @@ import { reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
+import { activeModal, closeModal } from './modals';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
 const beforeSwitchHooks = new Set<BeforeSwitchHook>();
@@ -65,7 +66,15 @@ export function addSession(session: DocSession, after: DocSession = get(activeSe
   });
 }
 
+// Dialogs that act on "the current document" must not survive a switch,
+// or confirming one would act on the newly shown tab instead.
+function dismissDocumentDialogs(): void {
+  const m = get(activeModal);
+  if (m && (m.kind === 'confirm-clear-annots' || m.kind === 'orphans')) closeModal();
+}
+
 function setActive(session: DocSession): void {
+  dismissDocumentDialogs();
   activeSession.set(session);
   docEpoch.update((e) => e + 1);
   restoreScroll(session);
