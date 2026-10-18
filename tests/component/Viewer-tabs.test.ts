@@ -13,14 +13,14 @@ vi.mock('../../src/stores/doc', async () => {
   const actual = await vi.importActual<typeof import('../../src/stores/doc')>('../../src/stores/doc');
   return {
     ...actual,
-    loadDocument: vi.fn(async () => true),
+    loadIntoSession: vi.fn(async () => true),
     pauseFileWatcher: vi.fn(async () => {}),
     resumeFileWatcher: vi.fn(async () => {}),
   };
 });
 
 import Viewer from '../../src/components/Viewer.svelte';
-import { loadDocument } from '../../src/stores/doc';
+import { loadIntoSession } from '../../src/stores/doc';
 import { createSession, sessions, activeSession, type DocSession } from '../../src/stores/sessions';
 import { activateSession } from '../../src/stores/tabs';
 import { get } from 'svelte/store';
@@ -39,7 +39,7 @@ async function settle() {
 }
 
 describe('Viewer across tabs', () => {
-  beforeEach(() => vi.mocked(loadDocument).mockClear());
+  beforeEach(() => vi.mocked(loadIntoSession).mockClear());
 
   it('switching from an editing tab to a reading tab does not reload from disk', async () => {
     const a = withDoc('/a.md', 'alpha');
@@ -51,7 +51,7 @@ describe('Viewer across tabs', () => {
     await settle();
     await activateSession(b.id);
     await settle();
-    expect(loadDocument).not.toHaveBeenCalled();
+    expect(loadIntoSession).not.toHaveBeenCalled();
     expect(screen.getByText('beta')).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe('Viewer across tabs', () => {
     await settle();
     a.editMode.set(false);
     await settle();
-    expect(loadDocument).toHaveBeenCalledWith('/a.md');
+    expect(loadIntoSession).toHaveBeenCalledWith(a, '/a.md');
   });
 
   it('switching between two editing tabs remounts the editor with the right document', async () => {
@@ -80,7 +80,7 @@ describe('Viewer across tabs', () => {
     await activateSession(b.id);
     await settle();
     expect(screen.getByTestId('editor-stub').textContent).toBe('beta');
-    expect(loadDocument).not.toHaveBeenCalled();
+    expect(loadIntoSession).not.toHaveBeenCalled();
   });
 
   it('captures the outgoing tab scroll offset on switch', async () => {

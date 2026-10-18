@@ -18,10 +18,10 @@ export type { DocState } from './doc-types';
 // see sessions.ts.
 export const doc = activeProxy((s) => s.doc);
 
-// Pause/resume operate on the active tab: edit mode pauses its watcher so
-// autosave writes don't bounce back as "file changed on disk" reloads.
-export async function pauseFileWatcher(): Promise<void> {
-  const session = get(activeSession);
+// Edit mode pauses a tab's watcher so autosave writes don't bounce back as
+// "file changed on disk" reloads. Pass the tab explicitly from async code:
+// by the time a reload resolves, the active tab may be a different one.
+export async function pauseFileWatcher(session: DocSession = get(activeSession)): Promise<void> {
   session.watcherPaused = true;
   if (session.disposeWatcher) {
     await session.disposeWatcher();
@@ -29,8 +29,7 @@ export async function pauseFileWatcher(): Promise<void> {
   }
 }
 
-export async function resumeFileWatcher(): Promise<void> {
-  const session = get(activeSession);
+export async function resumeFileWatcher(session: DocSession = get(activeSession)): Promise<void> {
   session.watcherPaused = false;
   const path = get(session.doc)?.path;
   if (!path || session.disposeWatcher) return;
@@ -91,9 +90,14 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
   }
   session.annots.set(parsedAnnotations);
 
-  // New content invalidates anything captured from the previous render.
+  // New content invalidates anything captured from the previous render —
+  // unless the tab is (back) in edit mode: then this is the late reload
+  // after a previous edit session and the live editor is the truth.
   session.scrollTop = null;
-  session.editorState = null;
+  if (!get(session.editMode)) {
+    session.editorState = null;
+    session.editedMarkdown = null;
+  }
   session.pendingDiskReload = false;
 
   session.doc.set({

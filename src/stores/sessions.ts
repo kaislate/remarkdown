@@ -29,6 +29,10 @@ export interface DocSession {
   // Editor state captured on switch-away while in edit mode. Only valid while
   // the session stays in edit mode; cleared on leaving edit mode or reload.
   editorState: EditorState | null;
+  // The editor's latest markdown while (or just after) editing. The doc
+  // store is frozen during edit mode, so this is what a re-mounted editor
+  // must start from if the post-edit reload from disk hasn't landed yet.
+  editedMarkdown: string | null;
   // The file changed on disk while this tab was in the background; reload
   // when it's activated.
   pendingDiskReload: boolean;
@@ -48,6 +52,7 @@ export function createSession(): DocSession {
     readerMode: writable(false),
     scrollTop: null,
     editorState: null,
+    editedMarkdown: null,
     pendingDiskReload: false,
     watcherPaused: false,
     disposeWatcher: null,

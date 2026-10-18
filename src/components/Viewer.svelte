@@ -14,7 +14,7 @@
   import { get } from 'svelte/store';
   import type { Drawing } from '../lib/schema';
   import { editMode } from '../stores/edit-mode';
-  import { pauseFileWatcher, resumeFileWatcher, loadDocument } from '../stores/doc';
+  import { pauseFileWatcher, resumeFileWatcher, loadIntoSession } from '../stores/doc';
   import Editor from './Editor.svelte';
   import { writeDocument } from '../lib/tauri-api';
   import { debounce } from '../lib/editor/debounce';
@@ -207,7 +207,7 @@
     lastEditMode = on;
     if (on) {
       clearPaintedHighlights();
-      void pauseFileWatcher();
+      void pauseFileWatcher(session);
     } else {
       // Flush any pending autosave so the file on disk reflects the
       // user's final edits, then reload the doc — re-renders article
@@ -217,12 +217,14 @@
       // to the edit session that just ended.
       pendingSave?.flush();
       session.editorState = null;
+      // Everything below names `session` explicitly: the reload is async and
+      // the user may have switched tabs — or re-entered edit mode — by the
+      // time it lands. Only resume watching if this tab isn't editing again.
       const currentDoc = get(session.doc);
-      if (currentDoc) {
-        void loadDocument(currentDoc.path).then(() => resumeFileWatcher());
-      } else {
-        void resumeFileWatcher();
-      }
+      const reload = currentDoc ? loadIntoSession(session, currentDoc.path) : Promise.resolve(true);
+      void reload.then(() => {
+        if (!get(session.editMode)) void resumeFileWatcher(session);
+      });
     }
   });
 
@@ -248,6 +250,8 @@
   });
 
   function onEditorChange(markdown: string) {
+    // Only the visible tab's editor receives input.
+    get(activeSession).editedMarkdown = markdown;
     pendingSave?.(markdown);
   }
 </script>
@@ -290,7 +294,7 @@
                each needs its own editor (restored from its saved state). -->
           {#key $activeSession.id + ($doc?.path ?? '')}
             <Editor
-              initialMarkdown={$doc.markdown}
+              initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
               onChange={onEditorChange}
               session={$activeSession}
             />
