@@ -16,11 +16,19 @@
 //      (a NodeSelection, like a picture in a word processor); a second
 //      press removes the diagram as a whole.
 //   2. createMermaidSourceGuard — a filterTransaction backstop: any
-//      transaction that changes the text of an existing diagram is
-//      dropped unless it's a visual edit (tagged MERMAID_EDIT_META by
-//      MermaidNodeView) or undo/redo. Removing a diagram entirely, or
-//      changing only its fence attrs, is allowed.
-import { Plugin, NodeSelection, type Command, type EditorState } from 'prosemirror-state';
+//      transaction with a step that reaches inside a diagram (its text
+//      would change, or a join/split would cut through it) is dropped
+//      unless it's a visual edit (tagged MERMAID_EDIT_META by
+//      MermaidNodeView) or undo/redo. Removing, replacing or moving a
+//      diagram whole, or changing only its fence attrs, is allowed.
+import {
+  Plugin,
+  NodeSelection,
+  type Command,
+  type EditorState,
+  type Transaction,
+} from 'prosemirror-state';
+import { ReplaceStep, ReplaceAroundStep } from 'prosemirror-transform';
 import { isHistoryTransaction } from 'prosemirror-history';
 import type { Node, ResolvedPos } from 'prosemirror-model';
 import { isMermaidFence } from '../mermaid-fence';
@@ -31,32 +39,35 @@ function isDiagram(node: Node | null | undefined): boolean {
   return !!node && node.type.name === 'code_block' && isMermaidFence(String(node.attrs.language || ''));
 }
 
+// Does any step of `tr` reach INTO a diagram — a replace boundary
+// strictly inside a diagram's node (pos < x < pos + nodeSize)? That's
+// what editing, joining or splitting its text takes. Steps that replace
+// a diagram node exactly, or don't touch it, have every boundary at or
+// outside its edges: removing / replacing / moving a diagram whole, and
+// typing over a selected one, all pass.
+export function stepsReachIntoDiagram(tr: Transaction): boolean {
+  return tr.steps.some((step, i) => {
+    if (!(step instanceof ReplaceStep) && !(step instanceof ReplaceAroundStep)) return false;
+    const s = step as ReplaceStep & Partial<Pick<ReplaceAroundStep, 'gapFrom' | 'gapTo'>>;
+    const cuts = [s.from, s.to];
+    if (step instanceof ReplaceAroundStep) cuts.push(step.gapFrom, step.gapTo);
+    const doc = tr.docs[i];
+    let inside = false;
+    doc.nodesBetween(Math.max(0, Math.min(...cuts) - 1), Math.min(doc.content.size, Math.max(...cuts) + 1), (node, pos) => {
+      if (inside) return false;
+      if (!isDiagram(node)) return !node.isTextblock;
+      if (cuts.some((x) => x > pos && x < pos + node.nodeSize)) inside = true;
+      return false;
+    });
+    return inside;
+  });
+}
+
 export function createMermaidSourceGuard(): Plugin {
   return new Plugin({
-    filterTransaction(tr, state) {
+    filterTransaction(tr) {
       if (!tr.docChanged || tr.getMeta(MERMAID_EDIT_META) || isHistoryTransaction(tr)) return true;
-      let ok = true;
-      state.doc.descendants((node, pos) => {
-        if (!ok) return false;
-        // Diagrams are textblocks; no need to walk into other textblocks'
-        // inline content on every keystroke.
-        if (!isDiagram(node)) return !node.isTextblock;
-        const start = tr.mapping.mapResult(pos, 1).pos;
-        const end = tr.mapping.mapResult(pos + node.nodeSize, -1).pos;
-        // Removed as a whole: fine.
-        if (end <= start) return false;
-        const after = tr.doc.nodeAt(start);
-        if (
-          !after ||
-          after.type !== node.type ||
-          start + after.nodeSize !== end ||
-          after.textContent !== node.textContent
-        ) {
-          ok = false;
-        }
-        return false;
-      });
-      return ok;
+      return !stepsReachIntoDiagram(tr);
     },
   });
 }
