@@ -34,5 +34,8 @@
   DeleteRegKey HKCU "Software\Classes\remarkdown.Markdown"
   DeleteRegKey HKCU "Software\remarkdown\Capabilities"
   DeleteRegValue HKCU "Software\RegisteredApplications" "remarkdown"
+  ; Drop the now-empty parent keys (no-op if anything else lives there).
+  DeleteRegKey /ifempty SHCTX "Software\remarkdown"
+  DeleteRegKey /ifempty HKCU "Software\remarkdown"
   System::Call "shell32::SHChangeNotify(i,i,i,i) (0x08000000, 0x1000, 0, 0)"
 !macroend

@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -34,7 +35,7 @@ pub fn extract_open_paths(argv: &[String], cwd: &Path) -> Vec<String> {
             continue;
         }
         let p = Path::new(arg);
-        let abs = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
+        let abs = normalize(&if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) });
         if !abs.is_file() {
             continue;
         }
@@ -44,6 +45,30 @@ pub fn extract_open_paths(argv: &[String], cwd: &Path) -> Vec<String> {
         }
     }
     out
+}
+
+/// Lexically resolve `.` and `..` so `.\a.md`, `sub\..\a.md` and `a.md`
+/// name the same file (the frontend de-dupes open tabs by path).
+fn normalize(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+static NEXT_WINDOW: AtomicU32 = AtomicU32::new(1);
+
+/// Labels for "new window per file" windows. Atomic, so concurrent opens
+/// can't both pick the same free label.
+pub fn next_window_label() -> String {
+    format!("doc-{}", NEXT_WINDOW.fetch_add(1, Ordering::Relaxed))
 }
 
 /// Queue `paths` and bring a window forward. Called from the single-
@@ -77,14 +102,7 @@ pub fn take_pending_opens(app: AppHandle) -> Vec<String> {
 /// creating a window from a synchronous command deadlocks on Windows.
 #[tauri::command]
 pub async fn open_document_window(app: AppHandle, path: String) -> Result<(), CommandError> {
-    let mut n = 1u32;
-    let label = loop {
-        let candidate = format!("doc-{n}");
-        if app.get_webview_window(&candidate).is_none() {
-            break candidate;
-        }
-        n += 1;
-    };
+    let label = next_window_label();
     let path_js = serde_json::to_string(&path).map_err(|e| CommandError::Io(e.to_string()))?;
     WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
         .title("remarkdown")
@@ -143,6 +161,27 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let argv = vec!["exe".to_string(), dir.path().to_string_lossy().into_owned()];
         assert!(extract_open_paths(&argv, dir.path()).is_empty());
+    }
+
+    #[test]
+    fn dot_segments_resolve_to_the_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let plain = extract_open_paths(&["exe".into(), "a.md".into()], dir.path());
+        let dotted = extract_open_paths(&["exe".into(), r".\a.md".into()], dir.path());
+        let parent = extract_open_paths(&["exe".into(), "sub/../a.md".into()], dir.path());
+        assert_eq!(plain.len(), 1);
+        assert_eq!(dotted, plain);
+        assert_eq!(parent, plain);
+    }
+
+    #[test]
+    fn window_labels_are_unique() {
+        let a = next_window_label();
+        let b = next_window_label();
+        assert_ne!(a, b);
+        assert!(a.starts_with("doc-"));
     }
 
     #[test]

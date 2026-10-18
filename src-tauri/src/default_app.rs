@@ -138,6 +138,9 @@ mod imp {
     /// opening the file. Modal, so it runs on its own thread.
     pub fn open_with_dialog(path: String) {
         std::thread::spawn(move || {
+            use windows_sys::Win32::System::Com::{
+                CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+            };
             use windows_sys::Win32::UI::Shell::{
                 SHOpenWithDialog, OAIF_ALLOW_REGISTRATION, OAIF_FORCE_REGISTRATION, OAIF_REGISTER_EXT, OPENASINFO,
             };
@@ -148,7 +151,15 @@ mod imp {
                 oaifInFlags: OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT | OAIF_FORCE_REGISTRATION,
             };
             unsafe {
-                SHOpenWithDialog(std::ptr::null_mut(), &info);
+                // Shell dialogs need COM on the calling thread (STA).
+                let com = CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32);
+                let hr = SHOpenWithDialog(std::ptr::null_mut(), &info);
+                if hr < 0 {
+                    eprintln!("[remarkdown] SHOpenWithDialog failed: 0x{:08x}", hr as u32);
+                }
+                if com >= 0 {
+                    CoUninitialize();
+                }
             }
         });
     }

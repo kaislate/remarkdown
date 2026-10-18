@@ -28,7 +28,11 @@ fn main() {
         .setup(|app| {
             // Files passed on our own command line (double-click on a cold
             // start). The frontend drains these once it's mounted.
-            let argv: Vec<String> = std::env::args().collect();
+            // args_os: std::env::args() panics on arguments that aren't
+            // valid Unicode.
+            let argv: Vec<String> = std::env::args_os()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
             let cwd = std::env::current_dir().unwrap_or_default();
             app.state::<launch::PendingOpens>()
                 .push(launch::extract_open_paths(&argv, &cwd));
