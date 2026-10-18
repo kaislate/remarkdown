@@ -1,4 +1,5 @@
-// NodeView for code_block nodes whose attrs.language === 'mermaid'.
+// NodeView for code_block nodes whose fence is mermaid (isMermaidFence:
+// ```mermaid, ```Mermaid, ```mermaid title="…", …).
 // Renders the diagram using the mermaid singleton, layered over PM's
 // hidden source surface. Click selects a node/edge; Task 5 wires a
 // floating popover (label input, shape picker, delete, +connect stub)
@@ -58,6 +59,7 @@ import {
 } from './mermaid-graph';
 import { serializeMermaid } from './mermaid-serializer';
 import { settings } from '../../stores/settings';
+import { isMermaidFence } from '../mermaid-fence';
 import {
   applyDiagramSizing,
   buildDiagramError,
@@ -937,7 +939,7 @@ export class MermaidNodeView implements NodeView {
 
   update(node: Node): boolean {
     if (node.type !== this.node.type) return false;
-    if (String(node.attrs.language || '') !== 'mermaid') return false;
+    if (!isMermaidFence(String(node.attrs.language || ''))) return false;
     const oldText = this.node.textContent;
     const newText = node.textContent;
     this.node = node;

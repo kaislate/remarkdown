@@ -21,6 +21,7 @@ import { parseMarkdown, serializeToMarkdown } from './markdown';
 import { CalloutNodeView } from './callout-node-view';
 import { CodeBlockNodeView } from './code-block-node-view';
 import { MermaidNodeView } from './mermaid-node-view';
+import { isMermaidFence } from '../mermaid-fence';
 import { TaskItemNodeView } from './task-item-node-view';
 import { FootnoteNodeView } from './footnote-node-view';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
@@ -171,7 +172,9 @@ export function createEditorView(
       callout: (node, editorView, getPos) =>
         new CalloutNodeView(node, editorView, getPos),
       code_block: (node, editorView, getPos) => {
-        if (String(node.attrs.language || '') === 'mermaid') {
+        // Same "is this a diagram" rule as the reader: ```Mermaid and
+        // ```mermaid title="…" are diagrams too, never raw code.
+        if (isMermaidFence(String(node.attrs.language || ''))) {
           return new MermaidNodeView(node, editorView, getPos);
         }
         return new CodeBlockNodeView(node, editorView, getPos);
