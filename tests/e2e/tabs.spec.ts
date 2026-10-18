@@ -183,3 +183,20 @@ test('scrolling right after switching to a tab is not undone by the scroll resto
   const top = await page.locator('.scroll').evaluate((el) => el.scrollTop);
   expect(top).toBeGreaterThan(1230);
 });
+
+test('a diagram is shown again, without an error, after switching tabs', async ({ page }) => {
+  const D = '/e2e/tabs/Diagram.md';
+  await page.evaluate((p) => {
+    (window as any).__E2E_SEED_DOC__(p, '# Diagram\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Finish]\n```\n');
+  }, D);
+  await openViaLaunch(page, [D, B]);
+  await tabs(page).nth(0).click();
+  const svg = page.locator('.viewer .mermaid-block svg');
+  await expect(svg).toBeVisible({ timeout: 10_000 });
+  await tabs(page).nth(1).click();
+  await expect(h1(page)).toHaveText('Beta');
+  await tabs(page).nth(0).click();
+  await expect(svg).toBeVisible({ timeout: 2_000 });
+  await expect(svg).toContainText('Finish');
+  await expect(page.locator('.viewer .mermaid-error')).toHaveCount(0);
+});
