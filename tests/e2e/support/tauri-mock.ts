@@ -87,6 +87,16 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const paths = args?.paths as string[];
       return paths.map((p) => getDoc(p) !== null);
     }
+    // Reading-progress persistence (stores/reading-progress.ts). Without
+    // these the app's debounced save throws an unhandled rejection on
+    // every scroll, which shows up as a page error in every spec.
+    case 'load_reading_progress': {
+      return localStorage.getItem('rmd-reading-progress');
+    }
+    case 'save_reading_progress': {
+      localStorage.setItem('rmd-reading-progress', args?.json as string);
+      return;
+    }
     case 'backup_corrupt_sidecar': {
       const path = args?.mdPath as string;
       const raw = localStorage.getItem(sidecarKey(path));
