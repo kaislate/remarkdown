@@ -23,6 +23,10 @@ import {
   type MermaidGraph,
 } from '../../../src/lib/editor/mermaid-graph';
 
+// jsdom has no SVG layout; mermaid.render needs these two.
+(SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({ x: 0, y: 0, width: 10, height: 10 });
+(SVGElement.prototype as unknown as Record<string, unknown>).getComputedTextLength = () => 10;
+
 function edit(src: string, e: FlowchartEdit): string {
   const r = applyFlowchartEdit(src, e);
   if (!r) throw new Error('edit refused');
@@ -132,6 +136,30 @@ describe('flowchart edits: targeted examples', () => {
     const r = applyFlowchartEdit('flowchart TD\n', { kind: 'addNode', shape: 'rect', label: '' })!;
     expect(r.id).toBe('A');
     expect(r.source).toBe('flowchart TD\n    A[" "]\n');
+  });
+
+  // Review finding: a shape change re-emitted the label through the
+  // encoder, rewriting bytes the user never touched.
+  it('a shape change keeps the label exactly as written', () => {
+    expect(edit('flowchart TD\nA["#copy; 2024"]\n', { kind: 'setNodeShape', id: 'A', shape: 'rounded' })).toBe(
+      'flowchart TD\nA("#copy; 2024")\n',
+    );
+    expect(edit('flowchart TD\nA[x #lt;y#gt;] --> B\n', { kind: 'setNodeShape', id: 'A', shape: 'diamond' })).toBe(
+      'flowchart TD\nA{x #lt;y#gt;} --> B\n',
+    );
+  });
+
+  it('typed < and & are written as entity codes; everything renders as typed', async () => {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+    const label = 'a < b > c & d <b>bold?</b>';
+    const out = edit('flowchart TD\nA[x] --> B\n', { kind: 'setNodeLabel', id: 'A', label });
+    const written = out.split('\n')[1].split(' --> ')[0];
+    expect(written).toBe('A["a #lt; b > c #amp; d #lt;b>bold?#lt;/b>"]');
+    const back = parseMermaid(out);
+    expect(back.ok && back.graph.nodes.get('A')?.label).toBe(label);
+    const { svg } = await mermaid.render('fcamp1', out);
+    const d = new DOMParser().parseFromString(svg, 'text/html');
+    expect(d.querySelector('g.node')?.textContent).toBe(label);
   });
 
   it('refuses edits on sources outside the editable subset', () => {

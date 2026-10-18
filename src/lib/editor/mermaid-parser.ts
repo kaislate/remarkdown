@@ -45,7 +45,10 @@ export interface Span {
 }
 
 export type FlowToken =
-  | { kind: 'node'; id: string; shape: MermaidShape; label: string; span: Span }
+  // labelSpan: the label exactly as written between the shape's opener
+  // and closer (quotes included), so a shape change can keep it byte
+  // for byte.
+  | { kind: 'node'; id: string; shape: MermaidShape; label: string; span: Span; labelSpan: Span }
   | { kind: 'noderef'; id: string; span: Span }
   | { kind: 'arrow'; label?: string; style: EdgeStyle; span: Span };
 
@@ -198,6 +201,7 @@ function tokenizeLine(line: string): FlowToken[] | null {
     const close = SHAPE_CLOSE[shape];
     pos += open.length;
     let label: string;
+    const labelStart = pos;
     if (line[pos] === '"') {
       // Quoted label: read to the closing quote. Embedded quotes use
       // mermaid's #quot; entity — the doubled-"" escape is NOT valid
@@ -228,8 +232,9 @@ function tokenizeLine(line: string): FlowToken[] | null {
       pos = closeIdx;
     }
     if (!line.startsWith(close, pos)) return null;
+    const labelSpan = { start: labelStart, end: pos };
     pos += close.length;
-    tokens.push({ kind: 'node', id, shape, label, span: { start, end: pos } });
+    tokens.push({ kind: 'node', id, shape, label, span: { start, end: pos }, labelSpan });
   }
   return tokens;
 }

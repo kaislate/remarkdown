@@ -40,7 +40,13 @@ export const EDGE_DELIM: Record<EdgeStyle, string> = {
 //   - backtick: a "`…`" label is a markdown string ONLY while quoted;
 //     unquoted, mermaid shows the backticks and asterisks literally
 //   - # and ;: entity codes and the statement separator
-const RESERVED = /[[\](){}|"<>`#;]/;
+//   - &, <: written as entity codes (below) — raw, mermaid's HTML
+//     labels could read `<b>` as markup and `&amp;` as an entity. (`>`
+//     alone can't start either; it stays raw so "x -> y" stays
+//     readable.)
+const RESERVED = /[[\](){}|"<>`#;&]/;
+
+const ENTITY: Record<string, string> = { '"': '#quot;', '&': '#amp;', '<': '#lt;' };
 
 export function emitLabel(label: string): string {
   // Mermaid rejects empty labels (`A[]` is a parse error) — emit a
@@ -54,8 +60,9 @@ export function emitLabel(label: string): string {
       // text survives (`a #59; b` stays `a #59; b`, not `a ; b`).
       .replace(/#(?=\w+;)/g, '#35;')
       // Embedded quotes use mermaid's #quot; entity — the doubled-""
-      // escape is NOT accepted by mermaid 11's grammar.
-      .replace(/"/g, '#quot;');
+      // escape is NOT accepted by mermaid 11's grammar. & and < use
+      // theirs so they show as typed rather than as HTML.
+      .replace(/["&<]/g, (c) => ENTITY[c]);
     return `"${escaped}"`;
   }
   return label;

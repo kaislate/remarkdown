@@ -26,7 +26,7 @@ import {
   type FlowchartSourceMap,
   type TokenRef,
 } from './mermaid-parser';
-import { emitArrow, emitNode } from './mermaid-serializer';
+import { emitArrow, emitNode, OPEN, CLOSE } from './mermaid-serializer';
 import {
   addNode,
   type EdgeStyle,
@@ -158,7 +158,17 @@ export function applyFlowchartEdit(source: string, edit: FlowchartEdit): Flowcha
       // The last definition is the one mermaid shows. An implicit node
       // (never defined) gets its definition where it first appears.
       const defs = refs.filter((r) => map.statements[r.stmt].tokens[r.token].kind === 'node');
-      spliceToken(lines, map, defs[defs.length - 1] ?? refs[0], emitNode(next));
+      const target = defs[defs.length - 1] ?? refs[0];
+      const tok = map.statements[target.stmt].tokens[target.token];
+      if (edit.kind === 'setNodeShape' && tok.kind === 'node') {
+        // Only the brackets change; the label keeps its exact bytes
+        // (quoting, entity codes) — nobody edited it.
+        const line = lines[map.statements[target.stmt].line];
+        const rawLabel = line.slice(tok.labelSpan.start, tok.labelSpan.end);
+        spliceToken(lines, map, target, `${edit.id}${OPEN[edit.shape]}${rawLabel}${CLOSE[edit.shape]}`);
+      } else {
+        spliceToken(lines, map, target, emitNode(next));
+      }
       break;
     }
     case 'setEdgeLabel':

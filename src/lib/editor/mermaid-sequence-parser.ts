@@ -147,13 +147,24 @@ export function decodeSequenceText(raw: string): string {
 //   - newlines become spaces (mermaid ends a statement at each newline)
 //   - `;` (statement separator) and `#` (comment start) become entity
 //     codes, which mermaid decodes back for display — so the diagram
-//     shows exactly what was typed.
+//     shows exactly what was typed. `&` and `<` too — the two
+//     characters that can start an entity or markup — so such text
+//     never reaches mermaid's HTML handling as markup (same rule as
+//     flowchart labels). `>` alone can't, and stays raw so arrows in
+//     text ("x -> y") stay readable in the file.
 // Nothing is truncated: arrow-shaped text ("a->b", even a glued
 // '"x"B->>A') renders fine in mermaid 11 and is kept verbatim.
+const SEQUENCE_ENTITY: Record<string, string> = {
+  '#': '#35;',
+  ';': '#59;',
+  '&': '#amp;',
+  '<': '#lt;',
+};
+
 export function encodeSequenceText(text: string): string {
   return text
     .replace(/\r\n|\r|\n/g, ' ')
-    .replace(/[#;]/g, (c) => (c === '#' ? '#35;' : '#59;'));
+    .replace(/[#;&<]/g, (c) => SEQUENCE_ENTITY[c]);
 }
 
 function unencodedSemicolon(line: string): boolean {

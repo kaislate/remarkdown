@@ -47,7 +47,7 @@ function edit(src: string, e: SequenceEdit): string {
 
 // ── What users can type ──────────────────────────────────────────────
 
-const TYPED = ['semi; colon', 'hash # sign', '#59; entity', 'a->b', 'x-->>y', '"latest"B->>A', 'R&D <web> "q"', 'percent %% c', 'end', 'Ünï 🚀'];
+const TYPED = ['semi; colon', 'hash # sign', '#59; entity', 'a->b', 'x-->>y', '"latest"B->>A', 'R&D <web> "q"', 'x <b>y</b> &amp; z', 'a #lt; b', 'percent %% c', 'end', 'Ünï 🚀'];
 
 describe('popover text survives serialization and renders as typed', () => {
   for (const text of TYPED) {
