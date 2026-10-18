@@ -3,10 +3,9 @@
   import { get } from 'svelte/store';
   import { getVersion } from '@tauri-apps/api/app';
   import { derivePreReleaseLabel } from '../lib/prerelease';
-  import { openFileDialog } from '../lib/tauri-api';
   import { availableUpdate } from '../stores/updates';
-  import { loadDocument } from '../stores/doc';
-  import { recent, recordRecent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
+  import { openPaths, openViaDialog } from '../lib/open-files';
+  import { recent, recentExistence, markMissing, removeFromRecent, clearAllRecent } from '../stores/recent';
   import { readingProgress } from '../stores/reading-progress';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
@@ -59,10 +58,7 @@
 
   async function handleOpen() {
     open = false;
-    const path = await openFileDialog();
-    if (!path) return;
-    await loadDocument(path);
-    await recordRecent(path);
+    await openViaDialog();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -80,8 +76,7 @@
       return;
     }
     try {
-      await loadDocument(path);
-      await recordRecent(path);
+      await openPaths([path]);
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });

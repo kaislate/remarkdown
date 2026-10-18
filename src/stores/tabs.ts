@@ -53,10 +53,11 @@ export function findSessionByPath(path: string): DocSession | null {
   }) ?? null;
 }
 
-// New tabs open right after the active one, like a browser.
-export function addSession(session: DocSession): void {
+// New tabs open right after the active one, like a browser. Pass `after`
+// to keep a batch (several files opened at once) in its original order.
+export function addSession(session: DocSession, after: DocSession = get(activeSession)): void {
   sessions.update((list) => {
-    const i = list.indexOf(get(activeSession));
+    const i = list.indexOf(after);
     const next = [...list];
     next.splice(i + 1, 0, session);
     return next;

@@ -32,10 +32,12 @@
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
-  import { refreshRecent, recent, recentExistence, recordRecent, markMissing } from './stores/recent';
-  import { loadDocument } from './stores/doc';
+  import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
+  import { openPaths, drainPendingOpens } from './lib/open-files';
+  import { runBeforeSwitch } from './stores/tabs';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
-  import { ensureWelcomeDoc } from './lib/tauri-api';
+  import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
   import { availableUpdate } from './stores/updates';
@@ -60,6 +62,8 @@
   let disposeDrop: (() => void) | null = null;
   let disposeSettings: (() => void) | null = null;
   let disposeArticleWidth: (() => void) | null = null;
+  let disposeOpenRequested: (() => void) | null = null;
+  let disposeCloseRequested: (() => void) | null = null;
 
   // Sync the CSS variable on every zoom change so the root font-size scales
   // and all rem-based article styles (incl. the minimap clone) follow.
@@ -276,31 +280,49 @@
     window.addEventListener('keydown', onTutorialKey);
     window.addEventListener('keydown', onEditModeKey);
 
+    // Files the OS hands us later (double-click while we're running) arrive
+    // as 'open-requested'. Listen before the first drain below so nothing
+    // queued in between can be missed.
+    disposeOpenRequested = await onOpenRequested(() => { void drainPendingOpens(); });
+
+    // Flush the active tab's pending saves before the window goes away.
+    try {
+      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
+        await runBeforeSwitch();
+      });
+    } catch {
+      // non-Tauri host
+    }
+
     // Startup-document precedence:
-    //   1. If welcome is enabled (default), materialise it under app_data_dir
-    //      and open it. The user gets a guided tour every launch until they
-    //      tick the dismiss option.
-    //   2. Otherwise, if openLastOnStartup is on, reopen the most recent file.
-    //   3. Otherwise, leave the empty state visible.
-    if (!s.dontShowWelcomeOnLaunch) {
-      try {
-        const welcomePath = await ensureWelcomeDoc();
-        welcomeDocPath.set(welcomePath);
-        await loadDocument(welcomePath);
-        await recordRecent(welcomePath);
-      } catch {
-        // ensure_welcome_doc unavailable (non-Tauri host) — fall through to
-        // the openLast branch silently.
-      }
-    } else if (s.openLastOnStartup) {
-      const last = get(recent)[0];
-      const exists = last ? get(recentExistence)[last] !== false : false;
-      if (last && exists) {
-        try {
-          await loadDocument(last);
-          await recordRecent(last);
-        } catch {
-          markMissing(last);
+    //   0. A window opened in "new window per file" mode shows its file only.
+    //   1. Files we were launched with (double-click / Open with). These win
+    //      over welcome — the user asked for that file (#24).
+    //   2. Otherwise, if welcome is enabled (default), open it. The user gets
+    //      a guided tour every launch until they tick the dismiss option.
+    //   3. Otherwise, outside tabs mode, openLastOnStartup reopens the most
+    //      recent file.
+    //   4. Otherwise, leave the empty state visible.
+    const presetPath = (window as unknown as { __RMD_OPEN__?: string }).__RMD_OPEN__;
+    if (presetPath) {
+      await openPaths([presetPath]);
+    } else {
+      const launched = await drainPendingOpens();
+      if (launched === 0) {
+        if (!s.dontShowWelcomeOnLaunch) {
+          try {
+            const welcomePath = await ensureWelcomeDoc();
+            welcomeDocPath.set(welcomePath);
+            await openPaths([welcomePath]);
+          } catch {
+            // ensure_welcome_doc unavailable (non-Tauri host) — stay empty.
+          }
+        } else if (s.openLastOnStartup && s.openMode !== 'tabs') {
+          const last = get(recent)[0];
+          const exists = last ? get(recentExistence)[last] !== false : false;
+          if (last && exists) {
+            if ((await openPaths([last])) === 0) markMissing(last);
+          }
         }
       }
     }
@@ -317,6 +339,8 @@
     disposeDrop?.();
     disposeSettings?.();
     disposeArticleWidth?.();
+    disposeOpenRequested?.();
+    disposeCloseRequested?.();
     unsubZoom();
     unsubTool();
     unsubTheme();

@@ -12,6 +12,13 @@ vi.mock('../../src/stores/doc', () => ({
   clearDocument: vi.fn(),
 }));
 
+// Opening goes through open-files (which applies the open-mode setting and
+// records recents); the menu just hands it the path.
+vi.mock('../../src/lib/open-files', () => ({
+  openPaths: vi.fn(),
+  openViaDialog: vi.fn(),
+}));
+
 vi.mock('../../src/stores/recent', async () => {
   const { writable } = await import('svelte/store');
   return {
@@ -29,7 +36,7 @@ vi.mock('../../src/stores/toasts', () => ({
 }));
 
 import { openFileDialog } from '../../src/lib/tauri-api';
-import { loadDocument } from '../../src/stores/doc';
+import { openPaths, openViaDialog } from '../../src/lib/open-files';
 import { recordRecent, recentExistence } from '../../src/stores/recent';
 import { annots, currentViewerRoot } from '../../src/stores/annots';
 import { closeModal } from '../../src/stores/modals';
@@ -56,14 +63,12 @@ describe('GlassMenu', () => {
     expect(screen.getByRole('menuitem', { name: /open/i })).toBeInTheDocument();
   });
 
-  it('Open… triggers dialog, loadDocument, and recordRecent', async () => {
+  it('Open… hands off to openViaDialog', async () => {
     const user = userEvent.setup();
     render(GlassMenu);
     await user.click(screen.getByRole('button', { name: /menu/i }));
-    await user.click(screen.getByRole('menuitem', { name: /open/i }));
-    expect(openFileDialog).toHaveBeenCalled();
-    expect(loadDocument).toHaveBeenCalledWith('/tmp/x.md');
-    expect(recordRecent).toHaveBeenCalledWith('/tmp/x.md');
+    await user.click(screen.getByRole('menuitem', { name: /open…/i }));
+    expect(openViaDialog).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -106,15 +111,14 @@ describe('GlassMenu — Open Recent', () => {
     expect(screen.getByRole('menuitem', { name: /b\.md/i })).toBeInTheDocument();
   });
 
-  it('clicking a recent path calls loadDocument with the full path', async () => {
+  it('clicking a recent path opens it by its full path', async () => {
     const { recent } = await import('../../src/stores/recent');
-    const { loadDocument } = await import('../../src/stores/doc');
     recent.set(['/home/kai/a.md']);
     const user = userEvent.setup();
     render(GlassMenu);
     await user.click(screen.getByRole('button', { name: /menu/i }));
     await user.click(screen.getByRole('menuitem', { name: /a\.md/i }));
-    expect(loadDocument).toHaveBeenCalledWith('/home/kai/a.md');
+    expect(openPaths).toHaveBeenCalledWith(['/home/kai/a.md']);
   });
 
   it('omits the Open Recent section when recent list is empty', async () => {
@@ -148,14 +152,13 @@ describe('GlassMenu — Open Recent', () => {
 
   it('clicking the remove (×) button calls removeFromRecent and does NOT open the file', async () => {
     const { recent, removeFromRecent } = await import('../../src/stores/recent');
-    const { loadDocument } = await import('../../src/stores/doc');
     recent.set(['/home/kai/a.md']);
     const user = userEvent.setup();
     render(GlassMenu);
     await user.click(screen.getByRole('button', { name: /menu/i }));
     await user.click(screen.getByRole('button', { name: /remove a\.md from recents/i }));
     expect(removeFromRecent).toHaveBeenCalledWith('/home/kai/a.md');
-    expect(loadDocument).not.toHaveBeenCalled();
+    expect(openPaths).not.toHaveBeenCalled();
   });
 
   it('renders a "Clear recents" footer when there are recent entries', async () => {
