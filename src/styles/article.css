@@ -440,18 +440,19 @@ body.reattach-mode .reader-mode-toggle {
   height: auto;
 }
 
-/* Wider invisible hit target injected next to each visible edge path
-   so users have a forgiving click zone (mermaid's edges are 1-2px wide
-   and otherwise pixel-precise). Dark gray + low opacity so the band
-   reads as a subtle "click track" without overpowering the actual
-   line. cursor:pointer signals interactivity. */
+/* Wider hit target injected next to each visible edge path so users
+   have a forgiving click zone (mermaid's edges are 1-2px wide and
+   otherwise pixel-precise). Invisible until hovered — a permanent
+   grey band read as a thick extra line, especially in light theme —
+   then a soft accent track shows which edge a click will pick.
+   cursor:pointer signals interactivity. */
 .mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit {
-  stroke: rgba(180, 180, 200, 0.18);
+  stroke: transparent;
   cursor: pointer;
   transition: stroke 0.15s ease;
 }
 .mermaid-block-editor .mermaid-rendered path.mermaid-edge-hit:hover {
-  stroke: rgba(180, 180, 200, 0.32);
+  stroke: var(--accent-soft);
 }
 
 /* Selection styling on rendered SVG nodes. Mermaid sets a `.node`
@@ -516,14 +517,17 @@ body.reattach-mode .reader-mode-toggle {
   color: var(--bg-0);
 }
 
-/* Fallback hint — shown when our subset parser can't handle the
-   diagram (sequenceDiagram, subgraphs, classDef, etc.). The mermaid
-   render still runs (the SVG appears) but visual editing isn't
-   available, so we surface that to the user. */
-.mermaid-block-editor.mermaid-fallback::after {
-  content: 'Visual editing supports flowcharts only — edit the markdown source to change other diagram types.';
+/* Note under diagrams the visual editor can't change yet (other
+   diagram types, flowcharts with subgraphs / styling, …). The diagram
+   still renders; the note (a real element, toggled via `hidden` by
+   MermaidNodeView) says editing is coming and the diagram is kept as
+   it is. Never mentions markdown or source. */
+.mermaid-block-editor .mermaid-fallback-note[hidden] {
+  display: none;
+}
+.mermaid-block-editor .mermaid-fallback-note {
   display: block;
-  margin-top: 6px;
+  margin: 6px 0 0;
   padding: 6px 10px;
   background: var(--bg-2);
   border: 1px solid var(--glass-border);

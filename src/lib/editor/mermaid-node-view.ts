@@ -61,6 +61,34 @@ import {
 // every render, serialized with the reader's renders, cached by source.
 // See src/lib/mermaid-runtime.ts.
 
+// Shown under diagrams the visual editor can't change yet (other
+// diagram types, flowcharts using subgraphs / styling, …). Product
+// rule: never point people at markdown or "the source".
+const FALLBACK_NOTE =
+  'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+
+// Mermaid sources each editor started with. A diagram that fails to
+// render with one of these was already broken in the file; any other
+// failing source came from an edit in this session, so the error box
+// also says how to undo it.
+const initialSources = new WeakMap<EditorView, Set<string>>();
+
+function recordInitialSources(view: EditorView): Set<string> {
+  let set = initialSources.get(view);
+  if (!set) {
+    set = new Set();
+    const found = set;
+    view.state.doc.descendants((n) => {
+      if (n.type.name === 'code_block' && isMermaidFence(String(n.attrs.language || ''))) {
+        found.add(n.textContent);
+      }
+      return true;
+    });
+    initialSources.set(view, set);
+  }
+  return set;
+}
+
 // Edges are identified by their INDEX in graph.edges, not a (from,to)
 // pair — parallel edges share endpoints, and the index is what the
 // graph mutation helpers (setEdgeLabel etc.) key on anyway.
@@ -390,6 +418,10 @@ export class MermaidNodeView implements NodeView {
   // re-renders the diagram when the user switches theme mid-edit.
   private unsubscribeSettings: (() => void) | null = null;
   private renderedTheme: string | null = null;
+  // "Editing coming soon" note under render-only diagrams (see
+  // FALLBACK_NOTE); hidden for editable and for broken diagrams.
+  private fallbackNote: HTMLElement;
+  private initialSources: Set<string>;
 
   constructor(
     node: Node,
@@ -470,7 +502,14 @@ export class MermaidNodeView implements NodeView {
     directionPickerHost.className =
       'mermaid-popover-host mermaid-direction-picker-host';
 
+    const fallbackNote = document.createElement('p');
+    fallbackNote.className = 'mermaid-fallback-note';
+    fallbackNote.contentEditable = 'false';
+    fallbackNote.textContent = FALLBACK_NOTE;
+    fallbackNote.hidden = true;
+
     wrap.appendChild(rendered);
+    wrap.appendChild(fallbackNote);
     wrap.appendChild(pre);
     wrap.appendChild(popoverHost);
     wrap.appendChild(edgePopoverHost);
@@ -484,6 +523,8 @@ export class MermaidNodeView implements NodeView {
     this.dom = wrap;
     this.contentDOM = code;
     this.renderedEl = rendered;
+    this.fallbackNote = fallbackNote;
+    this.initialSources = recordInitialSources(view);
     this.popoverHost = popoverHost;
     this.edgePopoverHost = edgePopoverHost;
     this.participantPopoverHost = participantPopoverHost;
@@ -959,7 +1000,8 @@ export class MermaidNodeView implements NodeView {
         : target.parentElement;
     if (
       targetEl?.closest('.mermaid-rendered') !== null ||
-      targetEl?.closest('.mermaid-popover-host') !== null
+      targetEl?.closest('.mermaid-popover-host') !== null ||
+      targetEl?.closest('.mermaid-fallback-note') !== null
     ) {
       return true;
     }
@@ -1133,6 +1175,7 @@ export class MermaidNodeView implements NodeView {
         this.createFirstNode();
       });
       this.renderedEl.appendChild(placeholder);
+      this.fallbackNote.hidden = true;
       // Keep the action-bar + direction picker hidden in flowchart
       // empty-state.
       this.refreshActionsBar();
@@ -1165,6 +1208,7 @@ export class MermaidNodeView implements NodeView {
         this.handleAddParticipant();
       });
       this.renderedEl.appendChild(placeholder);
+      this.fallbackNote.hidden = true;
       this.refreshActionsBar();
       this.refreshDirectionPicker();
       return;
@@ -1180,6 +1224,7 @@ export class MermaidNodeView implements NodeView {
       this.renderedEl.innerHTML = outcome.svg;
       const svgRoot = this.renderedEl.querySelector<SVGSVGElement>(':scope > svg');
       if (svgRoot) applyDiagramSizing(svgRoot);
+      this.fallbackNote.hidden = !this.dom.classList.contains('mermaid-fallback');
       // Mermaid draws edges as 1-2px paths whose hit-test area equals
       // the visible stroke — pixel-precise to click. Inject a wider
       // transparent sibling path for each edge so users have a forgiving
@@ -1257,7 +1302,13 @@ export class MermaidNodeView implements NodeView {
       this.refreshDirectionPicker();
     } else {
       this.pendingSelect = null;
-      this.renderedEl.replaceChildren(buildDiagramError(outcome.error));
+      // Broken, not unsupported: the "coming soon" note would mislead.
+      // When this source didn't exist when the editor opened, an edit in
+      // this session broke it — say how to get back.
+      this.fallbackNote.hidden = true;
+      this.renderedEl.replaceChildren(
+        buildDiagramError(outcome.error, { undoHint: !this.initialSources.has(source) }),
+      );
       // Keep the action-bar + direction picker hidden when mermaid
       // failed — there's no diagram to act on.
       this.sequenceActionsStore.set({ ...HIDDEN_ACTIONS_STATE });
@@ -1290,7 +1341,7 @@ export class MermaidNodeView implements NodeView {
       // `flowchart-link` class — that class picks up our hover/selection
       // CSS rules (drop-shadow + accent stroke) which on a 14px-wide
       // band paint a chunky colored ribbon. Keep `mermaid-edge-hit`
-      // alone so it stays a quiet dark-gray track regardless of state.
+      // alone: it's invisible until hovered (article.css).
       hit.setAttribute('class', 'mermaid-edge-hit');
       hit.setAttribute('data-id', dataId);
       hit.setAttribute('stroke-width', '14');
