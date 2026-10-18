@@ -63,3 +63,28 @@ describe('settings-schema', () => {
     expect(SettingsSchema.safeParse(DEFAULT_SETTINGS).success).toBe(true);
   });
 });
+
+describe('open-mode settings', () => {
+  it('defaults openMode to tabs and reopenTabsOnLaunch to true', () => {
+    const s = parseSettings(null);
+    expect(s.openMode).toBe('tabs');
+    expect(s.reopenTabsOnLaunch).toBe(true);
+  });
+
+  it('older settings files without the new keys pick up the defaults', () => {
+    const s = parseSettings(JSON.stringify({ schemaVersion: 1, theme: 'light' }));
+    expect(s.theme).toBe('light');
+    expect(s.openMode).toBe('tabs');
+    expect(s.reopenTabsOnLaunch).toBe(true);
+  });
+
+  it('accepts each valid openMode', () => {
+    for (const m of ['tabs', 'replace', 'windows'] as const) {
+      expect(parseSettings(JSON.stringify({ openMode: m })).openMode).toBe(m);
+    }
+  });
+
+  it('an unknown openMode falls back to defaults', () => {
+    expect(parseSettings(JSON.stringify({ openMode: 'bogus' })).openMode).toBe('tabs');
+  });
+});

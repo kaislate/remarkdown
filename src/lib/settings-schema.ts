@@ -24,6 +24,11 @@ export const SettingsSchema = z.object({
   articleWidth: z.number().int().min(480).max(1200),
   maxRecent: z.number().int().min(1).max(50),
   openLastOnStartup: z.boolean(),
+  // How files open (double-click, Open…, recents, drag-and-drop): as tabs
+  // in this window, replacing the current document, or in a new window.
+  openMode: z.enum(['tabs', 'replace', 'windows']),
+  // Tabs mode only: restore the previous session's tabs on launch.
+  reopenTabsOnLaunch: z.boolean(),
   openInFocusMode: z.boolean(),
   minimapPopoutInFocusMode: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
@@ -61,6 +66,7 @@ export const SettingsSchema = z.object({
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
+export type OpenMode = Settings['openMode'];
 
 export const DEFAULT_SETTINGS: Settings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -72,6 +78,8 @@ export const DEFAULT_SETTINGS: Settings = {
   articleWidth: 720,
   maxRecent: 10,
   openLastOnStartup: false,
+  openMode: 'tabs',
+  reopenTabsOnLaunch: true,
   openInFocusMode: false,
   minimapPopoutInFocusMode: false,
   dontShowWelcomeOnLaunch: false,
