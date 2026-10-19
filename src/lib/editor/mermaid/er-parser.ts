@@ -175,7 +175,8 @@ export function parseErSource(source: string): ErSourceParseResult {
   const prepared = prepareSource(src.lines);
   if (prepared.preamble.headerLine < 0) return { ok: false, reason: 'empty source' };
   const header = src.lines[prepared.preamble.headerLine].trim();
-  if (!/^erDiagram\b/i.test(header)) return { ok: false, reason: `not an erDiagram: ${header}` };
+  // mermaid's type detection is case-sensitive (its lexer isn't).
+  if (!/^erDiagram\b/.test(header)) return { ok: false, reason: `not an erDiagram: ${header}` };
   const lexed = lexEr(prepared.lexText + '\n', prepared.lexStart);
   if (!lexed.ok) return { ok: false, reason: `lexical error at offset ${prepared.origin[lexed.at] ?? lexed.at}` };
   try {

@@ -74,6 +74,68 @@ describe('ER parser: oracle (mermaid ErDB) over the corpus', () => {
   }
 });
 
+const SNIPPETS = [
+  'erDiagram\n',
+  'erDiagram\n  A\n  B C\n',
+  'erDiagram\n  A||--o{B : x\n',
+  'erDiagram\n  A ||--o{ B : x C ||--|| D : y\n',
+  'erDiagram\n  A ||--o{ B : ""\n',
+  'erDiagram\n  A ||--o{ B : "a % b"\n',
+  'erDiagram\n  A ||--o{ B : one\n',
+  'erDiagram\n  "A b" ||--o{ "C d" : x\n',
+  'erDiagram\n  A.b ||--o{ c-d : x\n',
+  'erDiagram\n  1 ||--o{ 2.5 : x\n',
+  'erDiagram\n  A 1--1 B : x\n',
+  'erDiagram\n  A 1 to 1 B : x\n',
+  'erDiagram\n  A u--o{ B : x\n',
+  'erDiagram\n  A |o..o| B : x\n  A o|--|o B : y\n',
+  'erDiagram\n  A }o--}| B : x\n  A |{--o{ B : y\n',
+  'erDiagram\n  A zero or more to one or many B : x\n',
+  'erDiagram\n  A one or zero optionally to only one B : x\n',
+  'erDiagram\n  A many(0) -. many(1) B : x\n',
+  'erDiagram\n  A many .. many B : x\n',
+  'erDiagram\n  A:::c ||--o{ B:::d : x\n',
+  'erDiagram\n  A:::c,d\n  B:::e {\n    int x\n  }\n',
+  'erDiagram\n  A["al"]:::c\n  B[b]:::d {\n    int x\n  }\n',
+  'erDiagram\n  A["a"]\n  A["b"]\n  A[c]\n',
+  'erDiagram\n  A {\n    int a PK, FK, UK "c"\n    int b pk\n  }\n',
+  'erDiagram\n  A {\n    int a PK FK\n  }\n',
+  'erDiagram\n  A {\n    int a "c" "d"\n  }\n',
+  'erDiagram\n  A {\n    int\n  }\n',
+  'erDiagram\n  A { int a string b }\n',
+  'erDiagram\n  A {\n    Map~K, V~ m\n    List~int~ l "x"\n  }\n',
+  'erDiagram\n  A {\n    int(10) a-b\n    *x y*\n  }\n',
+  'erDiagram\n  A {\n    Ünï cödé\n  }\n',
+  'erDiagram\n  A {\n    int pk_id\n    int PKG\n  }\n',
+  'erDiagram\n  A {\n    int PK\n  }\n',
+  'erDiagram\n  A {\n    int a\n',
+  'erDiagram\n  direction LR\n  A\n',
+  'erDiagram\n  DIRECTION lr\n  A\n',
+  'erDiagram\n  classDef foo fill:#f00\n  class A,B foo\n  A\n',
+  'erDiagram\n  A\n  style A fill:#f00;\n',
+  'erDiagram\n  accTitle: t\n  accDescr: d\n  A\n',
+  'erDiagram\n  A ||--o{ B\n',
+  'erDiagram\n  A[A1] ||--o{ B : x\n',
+  'erDiagram\n  A ||--o{ B : x y\n',
+  '---\ntitle: T\n---\nerDiagram\n  A\n',
+  '%%{init: {}}%%\nerDiagram\n  %% c\n  A\n',
+  'ERDIAGRAM\n  A\n',
+];
+
+describe('ER parser: accepts exactly what mermaid accepts', () => {
+  for (const src of SNIPPETS) {
+    it(JSON.stringify(src), async () => {
+      const accepted = (await mermaidAccepts(src)) === true;
+      const r = parseErSource(src);
+      expect(r.ok, r.ok ? 'parser accepted' : r.reason).toBe(accepted);
+      if (r.ok && accepted) {
+        const { db } = await mermaidDb(src);
+        expect(fromModel(r.model)).toEqual(fromDb(db));
+      }
+    });
+  }
+});
+
 describe('ER parser: syntax', () => {
   const model = (src: string) => {
     const r = parseEr(src);

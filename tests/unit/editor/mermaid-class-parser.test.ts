@@ -5,6 +5,7 @@ import {
   parseClass,
   parseClassSource,
   parseMemberText,
+  parseGenericTypes,
   CLASS_STARTER,
   type ClassEndMarker,
   type ClassModel,
@@ -37,7 +38,9 @@ function fromDb(db: any) {
     visibility: VIS[m.visibility],
     classifier: CLS[m.classifier],
     display: shown(m.text.replace(/^\\/, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')),
-    ...(m.memberType === 'method' ? { name: shown(m.id).trim() === '' ? '' : shown(m.id.trim()), parameters: shown(m.parameters) } : {}),
+    ...(m.memberType === 'method'
+      ? { name: shown(m.id).trim() === '' ? '' : shown(m.id.trim()), parameters: shown(parseGenericTypes(m.parameters)), type: shown(parseGenericTypes(m.returnType)) }
+      : {}),
   });
   return {
     direction: db.getDirection(),
@@ -74,7 +77,7 @@ function fromModel(m: ClassModel) {
     visibility: x.visibility,
     classifier: x.classifier,
     display: x.display,
-    ...(x.kind === 'method' ? { name: x.name, parameters: x.parameters } : {}),
+    ...(x.kind === 'method' ? { name: x.name, parameters: x.parameters, type: x.type } : {}),
   });
   return {
     direction: m.direction,
@@ -105,6 +108,85 @@ describe('class parser: oracle (mermaid ClassDB) over the corpus', () => {
       if (!r.ok) throw new Error(r.reason);
       const { db } = await mermaidDb(b.source);
       expect(fromModel(r.model)).toEqual(fromDb(db));
+    });
+  }
+});
+
+// Odd corners of the syntax: the parser must accept exactly what
+// mermaid accepts, and read it the way mermaid's db does.
+const SNIPPETS = [
+  'classDiagram\nclass A\n',
+  'classDiagram-v2\n  class A\n',
+  'classDiagram\n  class A {\n  }\n  class B{\n  +x\n  }\n',
+  'classDiagram\n  class Foo Bar\n',
+  'classDiagram\n  A-->B\n  C<|--D:label\n',
+  'classDiagram\n  A "1"-->"2" B\n',
+  'classDiagram\n  A --> B : a : b\n',
+  'classDiagram\n  A --> B :\n',
+  'classDiagram\n  A : \n',
+  'classDiagram\n  A : +x\n  A : -y()\n  A : #z$\n  A : ~w*\n',
+  'classDiagram\n  class A {\n    +method(a, (b)) int\n    field)\n  }\n',
+  'classDiagram\n  class A~T~\n  class A~U~\n',
+  'classDiagram\n  class A\n  class A~T~\n',
+  'classDiagram\n  A~T~ --> B~U~\n',
+  'classDiagram\n  class `A B`["c"]\n  `A B` --> C\n',
+  'classDiagram\n  class a.b.c\n  a.b.c --> d.e\n',
+  'classDiagram\n  class A-B-C\n  A-B-C --> D\n',
+  'classDiagram\n  class 123\n  class 1abc\n',
+  'classDiagram\n  class Ünïcode\n  Ünïcode --> B\n',
+  'classDiagram\n  note "a"\n  note "b"\n  note for A "c"\n  class A\n',
+  'classDiagram\n  note for Missing "x"\n',
+  'classDiagram\n  namespace A.B {\n    class X\n  }\n',
+  'classDiagram\n  namespace N { class X }\n',
+  'classDiagram\n  namespace N {\n    note "only a note"\n  }\n',
+  'classDiagram\n  namespace N {\n    class X\n    note for X "n"\n  }\n',
+  'classDiagram\n  namespace N {\n    X --> Y\n  }\n',
+  'classDiagram\n  class X:::a\n  class Y:::b {\n    +z\n  }\n',
+  'classDiagram\n  class X <<interface>>\n  <<abstract>> X\n',
+  'classDiagram\n  class X <<interface>> {\n    +a\n  }\n',
+  'classDiagram\n  class X {\n    <<a>>\n    <<b c>>\n  }\n',
+  'classDiagram\n  direction RL\n  direction BT\n',
+  'classDiagram\n  direction TB\n  class X\n',
+  'classDiagram\n  accTitle: Hello\n  accDescr: world\n  class X\n',
+  'classDiagram\n  accDescr {\n    multi\n    line\n  }\n  class X\n',
+  'classDiagram\n  class X\n  style X fill:#f00,stroke:#333\n',
+  'classDiagram\n  class X\n  classDef a,b fill:#f00\n',
+  'classDiagram\n  class X\n  cssClass "X" foo\n',
+  'classDiagram\n  class X\n  click X call cb()\n  click X call cb(1, "2") "tip"\n',
+  'classDiagram\n  class X\n  click X href "http://a" "tip" _blank\n',
+  'classDiagram\n  class X\n  link X "http://a" _self\n',
+  'classDiagram\n  A ()-- B\n  C --() D\n  E ()--() F\n',
+  'classDiagram\n  A <|..|> B\n  C *..* D\n  E o..o F\n  G <.. H\n',
+  'classDiagram\n  A --o B\n  A o-- B\n',
+  'classDiagram\n  A -- B\n  A .. B\n',
+  'classDiagram\n  A ---> B\n',
+  'classDiagram\n  A <-- B : "q"\n',
+  'classDiagram\n  %% comment\n  class X %% trailing?\n',
+  'classDiagram\n  class X["a"]\n  class X["b"]\n',
+  'classDiagram\n  class X[""]\n',
+  'classDiagram\n  class X {\n    +a\n  }\n  class X {\n    +b\n  }\n',
+  'classDiagram\n  class X {\n',
+  'classDiagram\n  class X }\n',
+  'classDiagram\n  A --> B\n  A -->\n',
+  'classDiagram\n  class X\n  X : +#59;a\n  X : #35;b\n  X : +#126;t#126;\n',
+  'classDiagram\n  class X\n  X : +f(#40;x#41;) #123;y#125;\n',
+  'classDiagram\n  A "none" --> "x" B\n',
+  'classDiagram\n  class `note`\n  class o1\n',
+  '---\ntitle: T\n---\nclassDiagram\n  class X\n',
+  '%%{init: {"theme":"dark"}}%%\nclassDiagram\n  class X\n',
+  'classDiagram\n\n\n  class X\n\n',
+];
+
+describe('class parser: accepts exactly what mermaid accepts', () => {
+  for (const src of SNIPPETS) {
+    it(JSON.stringify(src), async () => {
+      const accepted = (await mermaidAccepts(src)) === true;
+      const r = parseClassSource(src);
+      expect(r.ok, r.ok ? 'parser accepted' : r.reason).toBe(accepted);
+      if (r.ok && accepted) {
+        const { db } = await mermaidDb(src);
+        expect(fromModel(r.model)).toEqual(fromDb(db));
+      }
     });
   }
 });

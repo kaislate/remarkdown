@@ -308,6 +308,9 @@ export const CLASSIFIER_CHAR: Record<ClassClassifier, string> = { static: '$', a
 // Placeholder / entity-code text → what mermaid displays.
 const show = (raw: string) => decodeMermaidEntities(decodePlaceholders(raw));
 
+// ClassMember.parseMember's method pattern.
+const METHOD_RE = /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/;
+
 // A member string the way mermaid's ClassMember parses it. `raw` is
 // source text (entity codes still encoded); returns null for what
 // addMember ignores (empty) — annotations are handled by the caller.
@@ -316,7 +319,7 @@ export function parseMemberText(raw: string): ClassMember | null {
   const input = encodePlaceholders(raw.trim());
   if (!input) return null;
   if (input.indexOf(')') > 0) {
-    const m = /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/.exec(input);
+    const m = METHOD_RE.exec(input);
     let visibility = '';
     let id = '';
     let params = '';
@@ -599,6 +602,8 @@ class ClassParser {
       this.map.annotations.get(c.id)!.push({ form: 'body', span: tspan, inner: { start: tspan.start + 2, end: tspan.end - 2 }, stmt });
       return;
     }
+    // A "method" (has a `)`) its regex can't read makes mermaid throw.
+    if (trimmed.indexOf(')') > 0 && !METHOD_RE.test(encodePlaceholders(trimmed))) throw new ParseError(`unreadable member: ${trimmed}`);
     const m = parseMemberText(trimmed);
     if (!m) return;
     c.members.push(m);
