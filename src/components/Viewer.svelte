@@ -16,7 +16,7 @@
   import { editMode } from '../stores/edit-mode';
   import { pauseFileWatcher, resumeFileWatcher, loadIntoSession } from '../stores/doc';
   import Editor from './Editor.svelte';
-  import { writeDocument } from '../lib/tauri-api';
+  import { saveEditedMarkdown } from '../lib/edit-save';
   import { debounce } from '../lib/editor/debounce';
   import type { Debounced } from '../lib/editor/debounce';
   import { settings } from '../stores/settings';
@@ -250,8 +250,10 @@
       return;
     }
     const ms = $settings.saveDebounceMs;
+    // Bound to this tab and file: a late flush can never write into another.
+    const session = get(activeSession);
     pendingSave = debounce((markdown: string) => {
-      void writeDocument(currentDoc.path, markdown);
+      void saveEditedMarkdown(session, currentDoc.path, markdown);
     }, ms);
     return () => pendingSave?.flush();
   });
@@ -299,7 +301,9 @@
         {:else}
           <!-- Keyed on the tab too: two tabs can both be in edit mode, and
                each needs its own editor (restored from its saved state). -->
-          {#key $activeSession.id + ($doc?.path ?? '')}
+          <!-- …and on the disk version, so "use the other version" after an
+               edit conflict remounts the editor on the reloaded file. -->
+          {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '')}
             <Editor
               initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
               onChange={onEditorChange}

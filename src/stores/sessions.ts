@@ -41,6 +41,15 @@ export interface DocSession {
   // Set when the tab is closed, so an in-flight load doesn't install a
   // watcher (or anything else) on a tab that no longer exists.
   closed: boolean;
+  // sha256 of the file as this tab last read or wrote it. Edit-mode saves
+  // only write if the disk still matches (see lib/edit-save.ts).
+  diskSha: string | null;
+  // Another program changed the file while editing; saving is paused until
+  // the user chooses what to keep.
+  editConflict: boolean;
+  // Set while "use the other version" reloads the tab: late saves of the
+  // discarded edits are dropped.
+  discardPendingEdits: boolean;
 }
 
 let counter = 0;
@@ -60,6 +69,9 @@ export function createSession(): DocSession {
     watcherPaused: false,
     disposeWatcher: null,
     closed: false,
+    diskSha: null,
+    editConflict: false,
+    discardPendingEdits: false,
   };
 }
 

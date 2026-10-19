@@ -16,6 +16,10 @@ pub enum CommandError {
     #[allow(dead_code)]
     #[error("sidecar malformed: {0}")]
     SidecarMalformed(String),
+    /// The file on disk is no longer the version the editor started from
+    /// (another program changed it). Carries the sha of what's on disk.
+    #[error("file changed on disk")]
+    Conflict(String),
 }
 
 impl From<std::io::Error> for CommandError {
@@ -180,11 +184,34 @@ pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
     Ok(backup.to_string_lossy().into_owned())
 }
 
+/// Writes edit-mode markdown and returns the sha256 of what was written.
+/// With `expected_sha256`, refuses (Conflict) when the file on disk has
+/// changed since the editor last read or wrote it, so another program's
+/// edits are never silently overwritten. A file that has disappeared is
+/// simply recreated — the user's text is the only copy left.
 #[tauri::command]
-pub fn write_document(path: String, markdown: String) -> Result<(), CommandError> {
+pub fn write_document(
+    path: String,
+    markdown: String,
+    expected_sha256: Option<String>,
+) -> Result<String, CommandError> {
     let p = PathBuf::from(path);
+    if let Some(expected) = expected_sha256 {
+        if let Ok(current) = fs::read(&p) {
+            let disk = sha256_hex(&current);
+            if disk != expected {
+                return Err(CommandError::Conflict(disk));
+            }
+        }
+    }
     crate::sidecar::atomic_write(&p, markdown.as_bytes())?;
-    Ok(())
+    Ok(sha256_hex(markdown.as_bytes()))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
@@ -259,7 +286,51 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("note.md");
         let body = "# Hello\n\nWorld.\n";
-        write_document(path.to_string_lossy().into_owned(), body.to_string()).unwrap();
+        write_document(path.to_string_lossy().into_owned(), body.to_string(), None).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
+    }
+
+    fn sha_of(bytes: &[u8]) -> String {
+        let mut h = Sha256::new();
+        h.update(bytes);
+        format!("{:x}", h.finalize())
+    }
+
+    #[test]
+    fn write_document_returns_the_new_sha() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("n.md");
+        let sha = write_document(path.to_string_lossy().into_owned(), "abc".into(), None).unwrap();
+        assert_eq!(sha, sha_of(b"abc"));
+    }
+
+    #[test]
+    fn write_document_refuses_when_the_file_changed_on_disk() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("n.md");
+        fs::write(&path, b"theirs").unwrap();
+        let p = path.to_string_lossy().into_owned();
+        let err = write_document(p, "mine".into(), Some(sha_of(b"what I loaded"))).unwrap_err();
+        assert!(matches!(err, CommandError::Conflict(ref disk) if *disk == sha_of(b"theirs")));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "theirs");
+    }
+
+    #[test]
+    fn write_document_writes_when_the_disk_matches() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("n.md");
+        fs::write(&path, b"v1").unwrap();
+        let p = path.to_string_lossy().into_owned();
+        write_document(p, "v2".into(), Some(sha_of(b"v1"))).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "v2");
+    }
+
+    #[test]
+    fn write_document_with_an_expected_sha_creates_a_missing_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("gone.md");
+        let p = path.to_string_lossy().into_owned();
+        write_document(p, "mine".into(), Some(sha_of(b"old"))).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "mine");
     }
 }

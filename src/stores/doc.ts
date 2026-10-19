@@ -62,6 +62,7 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
 
   // Skip reload if content is unchanged — prevents loops when the watcher
   // fires on our own writes or no-op touches.
+  session.diskSha = r.sha256;
   const current = get(session.doc);
   if (current && current.path === r.path && current.sha256 === r.sha256) {
     return true;
