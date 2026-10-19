@@ -57,6 +57,8 @@ describe('mindmap edits: targeted examples', () => {
     // A default-shape node can't hold parens bare: mermaid's (-"…"-)
     // form is the default shape with a quoted text.
     expect(edit('mindmap\n  root\n    a\n', { kind: 'rename', index: 1, text: 'f(x)' })).toBe('mindmap\n  root\n    (-"f(x)"-)\n');
+    // A blank new idea gets its text unquoted when it can be…
+    expect(edit('mindmap\n  root\n    [" "]\n', { kind: 'rename', index: 1, text: 'Box' })).toBe('mindmap\n  root\n    [Box]\n');
     // …and back to bare text once it can be.
     expect(edit('mindmap\n  root\n    (-"f(x)"-)\n', { kind: 'rename', index: 1, text: 'Notes' })).toBe('mindmap\n  root\n    Notes\n');
     expect(edit('mindmap\n  root\n    a\n', { kind: 'rename', index: 1, text: '2*3 #59; <b>' })).toBe(

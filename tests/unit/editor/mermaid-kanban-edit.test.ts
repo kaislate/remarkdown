@@ -64,6 +64,12 @@ describe('kanban edits: targeted examples', () => {
     expect(await mermaidAccepts(out)).toBe(true);
   });
 
+  it('naming a blank new column / card writes it plainly', () => {
+    const blank = 'kanban\n  [" "]\n    [" "]\n';
+    expect(edit(blank, { kind: 'renameColumn', column: 0, text: 'Todo' })).toBe('kanban\n  Todo\n    [" "]\n');
+    expect(edit(blank, { kind: 'renameCard', column: 0, card: 0, text: 'Card' })).toBe('kanban\n  [" "]\n    [Card]\n');
+  });
+
   it('never gives two columns one id (they would share their cards)', () => {
     const out = edit(SRC, { kind: 'renameColumn', column: 1, text: 'todo' });
     expect(out).toBe(SRC.replace('  Done', '  col1[todo]'));

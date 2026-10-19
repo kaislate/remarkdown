@@ -295,8 +295,11 @@ export function applyMindmapEdit(source: string, edit: MindmapEdit): MindmapEdit
       } else {
         const id = s.id ? map.lines[s.line].slice(s.id.start, s.id.end) : '';
         // `(-…-)` needs a quoted text: mermaid's unquoted text would
-        // swallow the `-` of `-)`.
-        const form = s.form === 'plain' && s.openText !== '(-' && s.openText !== '-)' ? 'plain' : s.form === 'markdown' ? 'markdown' : 'quoted';
+        // swallow the `-` of `-)`. A blank new idea (`[" "]`) was only
+        // quoted because it was blank.
+        const dashed = s.openText === '(-' || s.openText === '-)';
+        const blank = s.form === 'quoted' && bodyText(map, s).slice(1, -1).trim() === '';
+        const form = (s.form === 'plain' || blank) && !dashed ? 'plain' : s.form === 'markdown' ? 'markdown' : 'quoted';
         token = id + s.openText + emitBody(text, form, formatted) + s.closeText;
       }
       replaceNodeToken(lines, s, token);

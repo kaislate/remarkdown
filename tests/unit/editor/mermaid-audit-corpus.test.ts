@@ -51,7 +51,7 @@ const NOT_EDITABLE = new Set([
   'seq-participants-actors', 'seq-arrow-types', 'seq-activations', 'seq-blocks', 'seq-box',
   'class-diagram', 'state-diagram', 'er-diagram', 'gantt', 'pie', 'journey', 'gitgraph',
   'timeline', 'quadrant', 'sankey', 'xychart', 'block', 'c4-context', 'requirement', 'architecture',
-  'kanban', 'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
+  'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
 ]);
 
 describe('mermaid corpus (edit-mode pipeline)', () => {

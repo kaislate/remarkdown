@@ -168,7 +168,11 @@ function rename(lines: string[], b: Board, s: KanbanItemSource, text: string, co
   let open = s.openText;
   let close = s.closeText;
   let inner: string;
-  if (s.form === 'bare') {
+  // A blank new column / card (`[" "]`) was only quoted because it was
+  // blank: a column goes bare, a card unquoted, when the text allows.
+  const blank = s.form === 'quoted' && slice(lines, s.body.start, s.body.end).slice(1, -1).trim() === '';
+  if (blank && !id && column >= 0) open = close = '';
+  if (s.form === 'bare' || (blank && !id && column >= 0)) {
     inner = escapeText(t, false, formatted);
     if (!bareSafe(inner, 'kanban')) {
       // Shapes don't show on a board: brackets are as good as bare.
@@ -180,7 +184,7 @@ function rename(lines: string[], b: Board, s: KanbanItemSource, text: string, co
     // `(-…-)` needs a quoted text: unquoted, mermaid would swallow the
     // `-` of `-)`.
     const dashed = open === '(-' || open === '-)';
-    inner = emitBody(t, s.form === 'markdown' ? 'markdown' : s.form === 'plain' && !dashed ? 'plain' : 'quoted', formatted);
+    inner = emitBody(t, s.form === 'markdown' ? 'markdown' : (s.form === 'plain' || blank) && !dashed ? 'plain' : 'quoted', formatted);
   }
   let token = id + open + inner + close;
   if (column >= 0 && !id && columnIdTaken(b, rawIdOf(inner), column)) {
