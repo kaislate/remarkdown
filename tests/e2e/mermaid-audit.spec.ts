@@ -522,6 +522,11 @@ test.describe('mermaid — edit mode', () => {
     }
     expect(m.blocks.find((b) => b.heading === 'class-diagram')?.note).toBe(FALLBACK_NOTE);
     expect(m.blocks.find((b) => b.heading === 'fc-td-basic')?.note).toBeNull();
+    // Every flowchart (legacy `graph`, subgraphs, styling, every shape
+    // and link) is editable: none says "coming soon".
+    const flowcharts = m.blocks.filter((b) => /^(fc-|graph-)/.test(b.heading));
+    expect(flowcharts.length).toBeGreaterThanOrEqual(19);
+    expect(flowcharts.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);
     // The only code block left is the real one.
     expect(m.codeBlocks.map((c) => c.heading)).toEqual(['mixed-plain-code']);
     // Never tell people to edit markdown / source.
@@ -546,6 +551,11 @@ test.describe('mermaid — edit mode', () => {
     { heading: 'fc-tb-direction', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Renamed', touches: /\bB\b/, keeps: /flowchart TB/ },
     { heading: 'fc-special-chars', selector: 'g.node[id*="flowchart-E-"]', input: '.mermaid-popover-label', value: 'End & <done>', touches: /\bE\b/ },
     { heading: 'fc-quoted-unicode-emoji', selector: 'g.node[id*="flowchart-A-"]', input: '.mermaid-popover-label', value: 'Ärger 🚀 "quoted"', touches: /\bA\b/ },
+    { heading: 'graph-td-legacy', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Common still', touches: /\bB\b/, keeps: /^graph TD$/m },
+    { heading: 'fc-subgraphs-nested', selector: 'g.cluster[id$="-Inner1"]', input: '.mermaid-group-title', value: 'Renamed group', touches: /subgraph Inner1/, keeps: /subgraph Inner2\[Inner two\]/ },
+    { heading: 'fc-styling', selector: 'g.node[id*="flowchart-C-"]', input: '.mermaid-popover-label', value: 'Plainer', touches: /\bC\b/, keeps: /classDef hot fill:#f96,stroke:#333,stroke-width:2px/ },
+    { heading: 'fc-comments-ampersand-chain', selector: 'g.node[id*="flowchart-E-"]', input: '.mermaid-popover-label', value: 'Echo', touches: /\bE\b/, keeps: /A & B --> C/ },
+    { heading: 'fc-frontmatter-title', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Below', touches: /\bB\b/, keeps: /title: Flowchart with frontmatter title/ },
     { heading: 'seq-comment-subset', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'Done!', touches: /B-->>A/, keeps: /Map x->y and back/ },
     { heading: 'seq-special-chars', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'OK & <done>', touches: /B-->>A/ },
     { heading: 'seq-basic', selector: '[data-et="message"][data-id="i0"]', input: '.mermaid-message-popover-text', value: 'Hello again; Bob # 1', touches: /A->>B/, shows: 'Hello again; Bob # 1' },
