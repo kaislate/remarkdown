@@ -15,7 +15,7 @@
 // shows exactly that (whitespace normalised the way the svg would).
 import { parsePieSource, type PieModel, type PieSourceMap } from './pie-parser';
 import { indentFor, joinLines, lastStatementLine, replaceSpan, type SourceLines } from './source-text';
-import { ALWAYS_ENCODED, encodeChars, normalizeUserText } from './display-text';
+import { ALWAYS_ENCODED, emitDecimal, encodeChars, normalizeUserText } from './display-text';
 import { applyTitle } from './title-edit';
 
 export type PieEdit =
@@ -62,10 +62,7 @@ export function emitPieLabel(label: string): string {
 // The grammar's number: digits with an optional fraction, never an
 // exponent (`1e-7` would not parse).
 export function emitPieValue(value: number): string {
-  const s = String(value);
-  if (!/e/i.test(s)) return s;
-  if (Number.isInteger(value)) return BigInt(value).toString();
-  return value.toFixed(20).replace(/0+$/, '').replace(/\.$/, '');
+  return emitDecimal(value);
 }
 
 // Title text: TITLE ends at `%%`, so `%` is encoded too.

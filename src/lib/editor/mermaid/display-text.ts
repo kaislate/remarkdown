@@ -95,3 +95,14 @@ export function encodeFirstChar(text: string): string {
   const first = String.fromCodePoint(text.codePointAt(0)!);
   return entityFor(first) + text.slice(first.length);
 }
+
+
+// A non-negative number as plain decimal digits — never the exponent
+// form String() gives very large / small numbers (1e-7), which neither
+// the pie nor the gantt grammar reads.
+export function emitDecimal(value: number): string {
+  const s = String(value);
+  if (!/e/i.test(s)) return s;
+  if (Number.isInteger(value)) return BigInt(value).toString();
+  return value.toFixed(20).replace(/0+$/, '').replace(/\.$/, '');
+}
