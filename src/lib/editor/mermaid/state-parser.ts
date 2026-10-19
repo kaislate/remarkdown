@@ -343,6 +343,9 @@ interface Tok {
   end: number;
   raw: string;
   rule: number;
+  // Start of a keyword the lexer skipped right before this token (the
+  // `state ` of `state X {` / `state "…" as X`): where the statement starts.
+  lead?: number;
 }
 
 const DIRS: StateDirection[] = ['TB', 'BT', 'RL', 'LR'];
@@ -356,6 +359,7 @@ function lex(text: string): Tok[] | string {
   };
   let pos = 0;
   let done = false;
+  let lead: number | null = null;
   for (;;) {
     if (done) break;
     if (pos >= text.length) done = true;
@@ -407,7 +411,7 @@ function lex(text: string): Tok[] | string {
       case 32: push('STYLE'); type = 'style'; break;
       case 33: pop(); push('STYLEDEF_STYLES'); type = 'STYLE_IDS'; break;
       case 34: pop(); type = 'STYLEDEF_STYLEOPTS'; break;
-      case 38: push('STATE'); break;
+      case 38: push('STATE'); lead = start; break;
       case 39: case 42: pop(); yt = raw.slice(0, -8).trim(); type = 'FORK'; break;
       case 40: case 43: pop(); yt = raw.slice(0, -8).trim(); type = 'JOIN'; break;
       case 41: case 44: pop(); yt = raw.slice(0, -10).trim(); type = 'CHOICE'; break;
@@ -443,7 +447,10 @@ function lex(text: string): Tok[] | string {
       case 81: type = 'INVALID'; break;
       default: break; // whitespace, comments
     }
-    if (type) toks.push({ type, text: yt, start, end: pos, raw, rule: idx });
+    if (type) {
+      toks.push({ type, text: yt, start, end: pos, raw, rule: idx, ...(lead !== null ? { lead } : {}) });
+      lead = null;
+    }
   }
   toks.push({ type: 'EOF', text: '', start: text.length, end: text.length, raw: '', rule: -1 });
   return toks;
@@ -516,7 +523,7 @@ function parse(source: string, m: Mapped, toks: Tok[]) {
 
   // Placeholder fields filled once the statement's extent is known.
   const base = (startTok: Tok): StmtBase => ({
-    start: orig(startTok.start, startTok.end).start,
+    start: m.map[startTok.lead ?? startTok.start],
     end: 0,
     container: null,
     scope: { parent: null, region: 0 },
