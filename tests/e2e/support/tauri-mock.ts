@@ -119,6 +119,14 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     }
     case 'default_app_status':
       return { supported: false, md: false, markdown: false };
+    case 'load_settings':
+      // Specs behave like an existing install (no first-run dialog) unless
+      // they set __E2E_FRESH_INSTALL__ before the app loads.
+      return localStorage.getItem('rmd-settings')
+        ?? ((window as any).__E2E_FRESH_INSTALL__ ? null : JSON.stringify({ schemaVersion: 1, onboardingCompleted: true }));
+    case 'save_settings':
+      localStorage.setItem('rmd-settings', args?.json as string);
+      return;
     case 'load_session':
       return localStorage.getItem('rmd-session');
     case 'save_session':

@@ -1,3 +1,4 @@
+import { chooseSetting } from './support/settings';
 import { test, expect, type Page } from '@playwright/test';
 
 // Tabs v2 layout, measured in a real browser: the solid title band, the
@@ -74,10 +75,7 @@ test('the band goes see-through again when tabs are not shown', async ({ page })
 
 test('tabs on the left: a sidebar switches documents and the page moves over', async ({ page }) => {
   await openViaLaunch(page, [A, B, C]);
-  await page.getByRole('button', { name: /menu/i }).click();
-  await page.getByRole('menuitem', { name: /settings/i }).click();
-  await page.locator('#setting-tab-position').selectOption('left');
-  await page.keyboard.press('Escape');
+  await chooseSetting(page, 'Tabs & files', 'setting-tab-position', 'Left');
 
   await expect(page.locator('.tabbar')).toHaveCount(0);
   const sidebar = page.locator('.tab-sidebar');

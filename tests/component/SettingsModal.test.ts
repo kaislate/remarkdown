@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { get } from 'svelte/store';
+import { tick } from 'svelte';
 
 vi.mock('../../src/lib/tauri-api', () => ({
   loadSettingsJson: vi.fn(),
@@ -12,247 +13,167 @@ vi.mock('../../src/lib/tauri-api', () => ({
 }));
 
 import { activeModal, openModal, closeModal } from '../../src/stores/modals';
+import { settings, resetSettings, updateSettings } from '../../src/stores/settings';
+import { DEFAULT_SETTINGS } from '../../src/lib/settings-schema';
 import { defaultAppStatus, makeDefaultApp } from '../../src/lib/tauri-api';
 import { toasts, clearToasts } from '../../src/stores/toasts';
-import { screen, waitFor } from '@testing-library/svelte';
-import { settings, resetSettings } from '../../src/stores/settings';
 import SettingsModal from '../../src/components/SettingsModal.svelte';
+
+function open(section?: string) {
+  openModal({ kind: 'settings' });
+  render(SettingsModal);
+  if (section) return fireEvent.click(screen.getByRole('button', { name: section }));
+}
 
 beforeEach(() => {
   closeModal();
   resetSettings();
+  clearToasts();
   document.body.innerHTML = '';
 });
 
-describe('SettingsModal', () => {
-  it('renders nothing when the active modal is not "settings"', () => {
+describe('Settings window', () => {
+  it('renders nothing unless Settings is open', () => {
     render(SettingsModal);
-    expect(document.querySelector('.settings-panel')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
   });
 
-  it('renders the panel with all six top-level sections when opened', () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    expect(document.querySelector('.settings-panel')).not.toBeNull();
-    const headings = Array.from(document.querySelectorAll('section h3')).map((h) => h.textContent);
-    expect(headings).toEqual([
-      'Appearance',
-      'Reading',
-      'Startup & files',
-      'Highlights & re.marks',
-      'Drawing',
-      'Updates',
-    ]);
+  it('lists the sections on the left and starts on Appearance', () => {
+    open();
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+    expect(Array.from(nav.querySelectorAll('button')).map((b) => b.textContent?.trim()))
+      .toEqual(['Appearance', 'Reading', 'Tabs & files', 'Annotations', 'Drawing', 'Updates', 'About']);
+    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByText('Theme')).toBeInTheDocument();
   });
 
-  it('clicking the scrim closes the modal', async () => {
+  it('every option shows a depiction', async () => {
+    await open('Drawing');
+    const cards = document.querySelectorAll('.option-card');
+    expect(cards.length).toBeGreaterThan(3);
+    for (const c of cards) expect(c.querySelector('[data-depiction]')).not.toBeNull();
+  });
+
+  it('switching sections shows that section\'s options', async () => {
+    await open('Drawing');
+    expect(screen.getByText('Pen colour')).toBeInTheDocument();
+    expect(screen.queryByText('Theme')).toBeNull();
+  });
+
+  it('search finds options across sections and says when nothing matches', async () => {
+    open();
+    const search = screen.getByRole('searchbox', { name: 'Search settings' });
+    await fireEvent.input(search, { target: { value: 'pen colour' } });
+    expect(screen.getByText('Pen colour')).toBeInTheDocument();
+    expect(screen.queryByText('Theme')).toBeNull();
+    await fireEvent.input(search, { target: { value: 'zzzz' } });
+    expect(screen.getByText(/No settings match/)).toBeInTheDocument();
+  });
+
+  it('closes with Esc, the scrim and Done, but not clicks inside', async () => {
+    open();
+    await fireEvent.click(screen.getByRole('dialog', { name: 'Settings' }));
+    expect(get(activeModal)).toEqual({ kind: 'settings' });
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(get(activeModal)).toBeNull();
     openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const user = userEvent.setup();
-    await user.click(document.querySelector('.scrim') as HTMLElement);
+    await tick();
+    await fireEvent.click(document.querySelector('.scrim')!);
+    expect(get(activeModal)).toBeNull();
+    openModal({ kind: 'settings' });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(get(activeModal)).toBeNull();
   });
 
-  it('Esc closes the modal', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const user = userEvent.setup();
-    await user.keyboard('{Escape}');
-    expect(get(activeModal)).toBeNull();
+  it('Esc while searching clears the search first', async () => {
+    open();
+    const search = screen.getByRole('searchbox', { name: 'Search settings' });
+    await fireEvent.input(search, { target: { value: 'pen' } });
+    await fireEvent.keyDown(search, { key: 'Escape' });
+    expect((search as HTMLInputElement).value).toBe('');
+    expect(get(activeModal)).toEqual({ kind: 'settings' });
   });
 
-  it('clicking inside the panel does NOT close it', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const user = userEvent.setup();
-    await user.click(document.querySelector('.settings-panel') as HTMLElement);
-    expect(get(activeModal)?.kind).toBe('settings');
-  });
-
-  it('toggling the splash checkbox writes through to the settings store', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const splash = document.getElementById('setting-splash') as HTMLInputElement;
-    expect(splash.checked).toBe(true);
-    const user = userEvent.setup();
-    await user.click(splash);
+  it('controls write through to the settings store', async () => {
+    open();
+    await fireEvent.click(screen.getByRole('switch', { name: 'Splash screen' }));
     expect(get(settings).splashEnabled).toBe(false);
+    await fireEvent.input(screen.getByRole('slider', { name: 'Watermark strength' }), { target: { value: '0.3' } });
+    expect(get(settings).watermarkOpacity).toBe(0.3);
+    await fireEvent.click(screen.getByRole('button', { name: 'Annotations' }));
+    const swatch = screen.getByRole('radiogroup', { name: 'Highlighter colour' }).querySelectorAll('[role="radio"]')[1];
+    await fireEvent.click(swatch);
+    expect(get(settings).defaultHighlightColor).toBe(swatch.getAttribute('aria-label'));
   });
 
-  it('changing the watermark opacity slider updates the settings store', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const slider = document.getElementById('setting-watermark-opacity') as HTMLInputElement;
-    slider.value = '0.18';
-    slider.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(get(settings).watermarkOpacity).toBeCloseTo(0.18);
+  it('Reset to defaults restores everything', async () => {
+    updateSettings({ theme: 'light', splashEnabled: false, articleWidth: 1000 });
+    await open('About');
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset all settings' }));
+    expect(get(settings)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('selecting a default highlight swatch updates the settings store', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const swatches = document.querySelectorAll('.swatches')[0].querySelectorAll('.swatch');
-    const user = userEvent.setup();
-    // Click the second swatch.
-    await user.click(swatches[1] as HTMLElement);
-    // The chosen colour must be one of the current HIGHLIGHT_COLORS preset.
-    const { HIGHLIGHT_COLORS } = await import('../../src/stores/tool');
-    expect(HIGHLIGHT_COLORS as readonly string[]).toContain(get(settings).defaultHighlightColor);
+  it('open mode: three choices, and the restore option that fits the mode', async () => {
+    await open('Tabs & files');
+    expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(expect.arrayContaining(['New tab', 'Replace', 'New window']));
+    expect(screen.getByRole('switch', { name: 'Reopen tabs from last time' })).toBeChecked();
+    expect(screen.queryByRole('switch', { name: 'Reopen the last file on launch' })).toBeNull();
+    await fireEvent.click(screen.getByRole('radio', { name: 'Replace' }));
+    expect(get(settings).openMode).toBe('replace');
+    expect(screen.queryByRole('switch', { name: 'Reopen tabs from last time' })).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Reopen the last file on launch' })).toBeInTheDocument();
   });
 
-  it('Reset to defaults restores all settings to defaults', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    settings.update((s) => ({ ...s, theme: 'light', maxRecent: 3 }));
-    const user = userEvent.setup();
-    const reset = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.textContent?.trim() === 'Reset to defaults',
-    )!;
-    await user.click(reset);
-    const s = get(settings);
-    expect(s.theme).toBe('dark');
-    expect(s.maxRecent).toBe(10);
-  });
-
-  it('Done button closes the modal', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const user = userEvent.setup();
-    const done = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.textContent?.trim() === 'Done',
-    )!;
-    await user.click(done);
-    expect(get(activeModal)).toBeNull();
+  it('About shows Check for updates now', async () => {
+    await open('About');
+    await fireEvent.click(screen.getByRole('button', { name: 'Check for updates now' }));
+    expect(get(activeModal)).toEqual({ kind: 'check-update' });
   });
 });
 
-describe('SettingsModal — opening files', () => {
-  it('offers the three open modes and saves the choice', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const select = document.querySelector<HTMLSelectElement>('#setting-open-mode')!;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(['tabs', 'replace', 'windows']);
-    expect(select.value).toBe('tabs');
-    await userEvent.setup().selectOptions(select, 'windows');
-    expect(get(settings).openMode).toBe('windows');
-  });
-
-  it('shows "Reopen tabs" only in tabs mode and "Reopen last file" only outside it', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    expect(document.querySelector('#setting-reopen-tabs')).not.toBeNull();
-    expect(document.querySelector('#setting-open-last')).toBeNull();
-    await userEvent.setup().selectOptions(document.querySelector<HTMLSelectElement>('#setting-open-mode')!, 'replace');
-    expect(document.querySelector('#setting-reopen-tabs')).toBeNull();
-    expect(document.querySelector('#setting-open-last')).not.toBeNull();
-  });
-
-  it('the reopen-tabs checkbox updates the setting', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const box = document.querySelector<HTMLInputElement>('#setting-reopen-tabs')!;
-    expect(box.checked).toBe(true);
-    await userEvent.setup().click(box);
-    expect(get(settings).reopenTabsOnLaunch).toBe(false);
-  });
-
-  it('"Tab position" moves the tabs between the top and the left, in tabs mode only', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const select = document.querySelector<HTMLSelectElement>('#setting-tab-position')!;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(['top', 'left']);
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Along the top', 'On the left']);
-    expect(select.value).toBe('top');
-    await userEvent.setup().selectOptions(select, 'left');
-    expect(get(settings).tabPosition).toBe('left');
-    await userEvent.setup().selectOptions(document.querySelector<HTMLSelectElement>('#setting-open-mode')!, 'replace');
-    expect(document.querySelector('#setting-tab-position')).toBeNull();
-  });
-});
-
-describe('SettingsModal — reader mode', () => {
-  it('offers the five reader themes and saves the choice', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const select = screen.getByLabelText('Reader theme') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
-      ['default', 'Default'],
-      ['paper', 'Paper'],
-      ['sepia', 'Sepia'],
-      ['night', 'Night'],
-      ['eink', 'E-ink'],
-    ]);
-    expect(select.value).toBe('default');
-    await userEvent.setup().selectOptions(select, 'sepia');
-    expect(get(settings).readerTheme).toBe('sepia');
-  });
-
-  it('"Always open documents in reader mode" drives openInFocusMode', async () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const box = screen.getByLabelText('Always open documents in reader mode') as HTMLInputElement;
-    expect(box.checked).toBe(false);
-    await userEvent.setup().click(box);
-    expect(get(settings).openInFocusMode).toBe(true);
-  });
-
-  it('says "reader mode", never "focus mode", and has no minimap-popout row', () => {
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    const text = document.querySelector('.settings-panel')!.textContent!.toLowerCase();
-    expect(text).not.toContain('focus mode');
-    expect(text).not.toContain('popout');
-    expect(document.querySelector('#setting-minimap-popout')).toBeNull();
-  });
-});
-
-describe('SettingsModal — default app', () => {
-  beforeEach(() => {
-    vi.mocked(makeDefaultApp).mockReset().mockResolvedValue(undefined);
-    clearToasts();
-  });
+describe('Settings window — default app', () => {
+  beforeEach(() => vi.mocked(makeDefaultApp).mockReset().mockResolvedValue(undefined));
 
   it('is hidden where it is not supported', async () => {
     vi.mocked(defaultAppStatus).mockResolvedValue({ supported: false, md: false, markdown: false });
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
+    await open('Tabs & files');
     await Promise.resolve();
-    expect(screen.queryByText(/default app/i)).toBeNull();
+    expect(screen.queryByText('Default app for .md files')).toBeNull();
   });
 
   it('says so when remarkdown is already the default, with no button', async () => {
     vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: true, markdown: true });
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    expect(await screen.findByText('remarkdown is your default app for .md files')).toBeInTheDocument();
+    await open('Tabs & files');
+    expect(await screen.findByText('remarkdown is your default')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /make remarkdown the default/i })).toBeNull();
   });
 
-  it("offers the button when it isn't the default, and calls makeDefaultApp", async () => {
+  it("offers the button when it isn't the default", async () => {
     vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    expect(await screen.findByText(/isn't your default app for .md files yet/i)).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: /make remarkdown the default/i }));
+    await open('Tabs & files');
+    await userEvent.setup().click(await screen.findByRole('button', { name: /make remarkdown the default/i }));
     expect(makeDefaultApp).toHaveBeenCalledTimes(1);
   });
 
-  it('explains the manual route if it fails', async () => {
+  it('re-checks when the window regains focus', async () => {
     vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
-    vi.mocked(makeDefaultApp).mockImplementation(async () => { throw new Error('access denied'); });
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    await userEvent.setup().click(await screen.findByRole('button', { name: /make remarkdown the default/i }));
-    await waitFor(() => expect(get(toasts).some((t) => t.kind === 'error' && /Open with/.test(t.message))).toBe(true));
-  });
-
-  it('re-checks the status when the window regains focus', async () => {
-    vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
-    openModal({ kind: 'settings' });
-    render(SettingsModal);
-    await screen.findByText(/isn't your default app/i);
+    await open('Tabs & files');
+    await screen.findByRole('button', { name: /make remarkdown the default/i });
     vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: true, markdown: true });
     window.dispatchEvent(new Event('focus'));
-    expect(await screen.findByText('remarkdown is your default app for .md files')).toBeInTheDocument();
+    expect(await screen.findByText('remarkdown is your default')).toBeInTheDocument();
   });
+});
+
+// Outside the describe above: vitest 2.1 reports a rejection that the app
+// catches as a failure when the mock was reset in that scope's beforeEach.
+it('default app: explains the manual route if it fails', async () => {
+  closeModal();
+  document.body.innerHTML = '';
+  vi.mocked(defaultAppStatus).mockResolvedValue({ supported: true, md: false, markdown: false });
+  vi.mocked(makeDefaultApp).mockImplementation(async () => { throw new Error('denied'); });
+  await open('Tabs & files');
+  await userEvent.setup().click(await screen.findByRole('button', { name: /make remarkdown the default/i }));
+  await waitFor(() => expect(get(toasts).some((t) => t.kind === 'error' && /Open with/.test(t.message))).toBe(true));
 });

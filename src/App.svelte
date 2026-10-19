@@ -21,6 +21,7 @@
   import UpdateModal from './components/UpdateModal.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
   import EditConflictModal from './components/EditConflictModal.svelte';
+  import Onboarding from './components/Onboarding.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
   import Splash from './components/Splash.svelte';
@@ -49,7 +50,7 @@
   import { addToast } from './stores/toasts';
   import { availableUpdate } from './stores/updates';
   import { openModal } from './stores/modals';
-  import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
+  import { settings, refreshSettings, installSettingsAutosave, isFreshInstall } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
@@ -323,6 +324,13 @@
       }
     }
 
+    // First launch: "How do you want to use remarkdown?" Only for new
+    // installs — people upgrading keep their setup (it's in Settings →
+    // About if they want it).
+    if (isFreshInstall() && !get(settings).onboardingCompleted) {
+      openModal({ kind: 'onboarding' });
+    }
+
     // Remember open tabs for next launch (main window, tabs mode). Installed
     // after the startup opens so restoring doesn't trigger a rewrite storm.
     disposeSessionAutosave = installSessionAutosave();
@@ -386,6 +394,7 @@
 <UpdateModal />
 <CorruptSidecarModal />
 <EditConflictModal />
+<Onboarding />
 <ErrorBanner />
 <Toasts />
 {#if import.meta.env.MODE !== 'e2e' && $settings.splashEnabled}

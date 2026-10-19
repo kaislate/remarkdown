@@ -80,10 +80,24 @@ async function settingsDo(page: Page, fn: () => Promise<void>) {
   await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const item = page.getByRole('menuitem', { name: /settings/i });
   await item.evaluate((el) => (el as HTMLElement).click());
-  await page.locator('.settings-panel').waitFor();
+  await page.locator('.settings-window').waitFor();
   await fn();
-  await page.locator('.settings-panel button.close').click();
-  await expect(page.locator('.settings-panel')).toHaveCount(0);
+  await page.locator('.settings-window button.close').click();
+  await expect(page.locator('.settings-window')).toHaveCount(0);
+}
+
+const READER_THEME_LABEL: Record<string, string> = { default: 'Default', paper: 'Paper', sepia: 'Sepia', night: 'Night', eink: 'E-ink' };
+
+// Inside settingsDo: pick the app theme / reader theme in the Settings window.
+async function pickAppTheme(page: Page, app: 'dark' | 'light') {
+  const win = page.getByRole('dialog', { name: 'Settings' });
+  await win.getByRole('button', { name: 'Appearance', exact: true }).click();
+  await win.locator('#setting-theme').getByRole('radio', { name: app === 'dark' ? 'Dark' : 'Light', exact: true }).click();
+}
+async function pickReaderTheme(page: Page, theme: string) {
+  const win = page.getByRole('dialog', { name: 'Settings' });
+  await win.getByRole('button', { name: 'Reading', exact: true }).click();
+  await win.locator('#setting-reader-theme').getByRole('radio', { name: READER_THEME_LABEL[theme], exact: true }).click();
 }
 
 async function enterReader(page: Page) {
@@ -287,7 +301,7 @@ test('reader theme recolours the page and diagrams follow it', async ({ page }) 
   await open(page, [A]);
   await diagramsSettled(page, 'dark');
   await settingsDo(page, async () => {
-    await page.getByLabel('Reader theme').selectOption('sepia');
+    await pickReaderTheme(page, 'sepia');
   });
   // Outside reader mode nothing changes.
   await expect(page.locator('body')).not.toHaveCSS('background-color', 'rgb(243, 231, 207)');
@@ -303,7 +317,7 @@ test('reader theme recolours the page and diagrams follow it', async ({ page }) 
 test('e-ink has no animation or transition at all', async ({ page }) => {
   await open(page, [A]);
   await settingsDo(page, async () => {
-    await page.getByLabel('Reader theme').selectOption('eink');
+    await pickReaderTheme(page, 'eink');
   });
   await enterReader(page);
   await expect(page.locator('.reader-hint')).toHaveCSS('animation-name', 'none');
@@ -377,8 +391,8 @@ test.describe('the top of the page is the page', () => {
     test(`${c.theme} over the ${c.app} app theme: nothing but the page colour behind the meta line`, async ({ page }) => {
       await open(page, [A]);
       await settingsDo(page, async () => {
-        await page.locator('#setting-theme').selectOption(c.app);
-        await page.getByLabel('Reader theme').selectOption(c.theme);
+        await pickAppTheme(page, c.app);
+        await pickReaderTheme(page, c.theme);
       });
       await enterReader(page);
       // Text scrolled up under the meta line.
@@ -430,8 +444,8 @@ test.describe('screenshots', () => {
       await highlight(page, 'truly understand a passage must read slowly');
       await addNote(page, 'timetable', 'Trains, not essays.');
       await settingsDo(page, async () => {
-        await page.locator('#setting-theme').selectOption(c.app);
-        await page.getByLabel('Reader theme').selectOption(c.theme);
+        await pickAppTheme(page, c.app);
+        await pickReaderTheme(page, c.theme);
       });
       await enterReader(page);
       await diagramsSettled(page, c.tone);

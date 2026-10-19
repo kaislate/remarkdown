@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { chooseSetting } from './support/settings';
 
 // Tabs keep every open document fully alive: switching back must restore
 // the exact scroll position, the editor (with its undo history), and never
@@ -154,10 +155,7 @@ test('keyboard: Ctrl+Tab cycles and Ctrl+W closes', async ({ page }) => {
 });
 
 test('replace mode never shows a second tab', async ({ page }) => {
-  await page.getByRole('button', { name: /menu/i }).click();
-  await page.getByRole('menuitem', { name: /settings/i }).click();
-  await page.locator('#setting-open-mode').selectOption('replace');
-  await page.keyboard.press('Escape');
+  await chooseSetting(page, 'Tabs & files', 'setting-open-mode', 'Replace');
   await openViaLaunch(page, [A]);
   await expect(h1(page)).toHaveText('Alpha');
   await openViaLaunch(page, [B]);

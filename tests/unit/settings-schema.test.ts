@@ -130,3 +130,11 @@ describe('reader-mode settings', () => {
     expect(s.openInFocusMode).toBe(true);
   });
 });
+
+describe('onboarding settings', () => {
+  it('defaults: onboarding not completed, documents open in read mode', () => {
+    const s = parseSettings(null);
+    expect(s.onboardingCompleted).toBe(false);
+    expect(s.openInEditMode).toBe(false);
+  });
+});

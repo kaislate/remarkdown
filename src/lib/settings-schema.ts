@@ -36,6 +36,8 @@ export const SettingsSchema = z.object({
   tabSidebarPinned: z.boolean(),
   // "Always open documents in reader mode" (the key predates the rename).
   openInFocusMode: z.boolean(),
+  // Open documents straight into edit mode (the "Writer" starting layout).
+  openInEditMode: z.boolean(),
   // Retired: reader mode has no minimap at all now. Kept so settings files
   // that carry it still load; nothing reads it.
   minimapPopoutInFocusMode: z.boolean(),
@@ -74,6 +76,9 @@ export const SettingsSchema = z.object({
 
   // Right-margin marginalia column for re.marks (prototype).
   marginaliaEnabled: z.boolean(),
+
+  // First-run "How do you want to use remarkdown?" has been answered.
+  onboardingCompleted: z.boolean(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -95,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tabPosition: 'top',
   tabSidebarPinned: true,
   openInFocusMode: false,
+  openInEditMode: false,
   minimapPopoutInFocusMode: false,
   readerTheme: 'default',
   dontShowWelcomeOnLaunch: false,
@@ -113,6 +119,7 @@ export const DEFAULT_SETTINGS: Settings = {
   remarkContextStopAtParagraph: true,
   remarkContextStopAtListItem: true,
   marginaliaEnabled: false,
+  onboardingCompleted: false,
 };
 
 // Parse a JSON string from disk, falling back to defaults for any field that's

@@ -6,6 +6,7 @@
 // Known upstream mermaid quirks deliberately NOT asserted here:
 // block-beta label overflow, sequence `critical` label spill, radar
 // title clipping, C4 relation label colour.
+import { chooseSetting } from './support/settings';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -63,11 +64,7 @@ async function seedAndOpen(page: Page, path: string, md: string, opts: { clear?:
 }
 
 async function setTheme(page: Page, theme: 'dark' | 'light'): Promise<void> {
-  await clickMenuItem(page, /settings/i);
-  await page.locator('#setting-theme').selectOption(theme);
-  await page.keyboard.press('Escape');
-  const close = page.locator('button.close[aria-label="Close"]');
-  if (await close.count()) await close.first().click({ force: true }).catch(() => {});
+  await chooseSetting(page, 'Appearance', 'setting-theme', theme === 'dark' ? 'Dark' : 'Light');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 }
 
