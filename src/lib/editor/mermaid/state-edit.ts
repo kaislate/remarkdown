@@ -552,8 +552,20 @@ class Editor {
     const merged: Splice[] = [];
     for (const s of asc) {
       const prev = merged[merged.length - 1];
-      if (prev && prev.text === '' && s.text === '' && s.start < prev.end) prev.end = Math.max(prev.end, s.end);
+      if (prev && prev.text === '' && s.text === '' && s.start <= prev.end && s.end > prev.start) prev.end = Math.max(prev.end, s.end);
       else merged.push({ ...s });
+    }
+    // Whole lines removed up to the end of a source without a final
+    // newline: the break before them goes too (else a stray empty last
+    // line is left behind) — unless a blank line was removed with them,
+    // which that break then stands for.
+    const last = merged[merged.length - 1];
+    const src = this.src;
+    if (
+      last && last.text === '' && last.end === src.length && src[src.length - 1] !== '\n' &&
+      last.start > 0 && src[last.start - 1] === '\n' && !/\n\s*\n/.test(src.slice(last.start - 1, last.end))
+    ) {
+      last.start -= last.start >= 2 && this.src[last.start - 2] === '\r' ? 2 : 1;
     }
     const sorted = merged.sort((a, b) => b.start - a.start || b.end - a.end);
     let out = this.src;

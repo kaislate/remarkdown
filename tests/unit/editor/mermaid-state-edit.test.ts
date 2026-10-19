@@ -143,6 +143,12 @@ describe('state edits: deleting', () => {
     expect(edit('stateDiagram-v2\n  A\n  B\n  A --> B\n', { kind: 'deleteTransition', index: 0 })).toBe('stateDiagram-v2\n  A\n  B\n');
   });
 
+  it('deleting the last lines leaves no stray line break (with or without a final newline)', () => {
+    expect(edit('stateDiagram-v2\n  A --> B\n  B --> X\n  X --> [*]', { kind: 'deleteState', id: 'X' })).toBe('stateDiagram-v2\n  A --> B');
+    expect(edit('stateDiagram-v2\n  A --> B\n  B --> X\n  X --> [*]\n', { kind: 'deleteState', id: 'X' })).toBe('stateDiagram-v2\n  A --> B\n');
+    expect(edit('stateDiagram-v2\r\n  A --> B\r\n  B --> X\r\n  X --> [*]', { kind: 'deleteState', id: 'X' })).toBe('stateDiagram-v2\r\n  A --> B');
+  });
+
   it('deleting a start circle removes its transitions', () => {
     const src = 'stateDiagram-v2\n  [*] --> A\n  A --> B\n  [*] --> B\n';
     expect(edit(src, { kind: 'deleteTerminal', terminal: { kind: 'start', scope: { parent: null, region: 0 } } })).toBe('stateDiagram-v2\n  A\n  A --> B\n');
