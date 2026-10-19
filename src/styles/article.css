@@ -716,3 +716,21 @@ body.reattach-mode .reader-mode-toggle {
 .md-rendered a.footnote-backref:hover {
   opacity: 1;
 }
+
+/* ── Mindmap editing (mindmap-controller.ts) ──────────────────────────
+   Every idea is a `g.mindmap-node` (it also gets the generic `g.node`
+   hover / selection glow above); its shape is a <path>, <rect>,
+   <circle> or <polygon>. Plain ideas are drawn with only an underline,
+   so the selected one also gets an accent outline on its shape. */
+.mermaid-block-editor .mermaid-rendered g.mindmap-node {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node:hover > :is(path, rect, circle, polygon) {
+  stroke: var(--accent-soft);
+  stroke-width: 2px;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node.mermaid-selected > :is(path, rect, circle, polygon) {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+/* ── end mindmap editing ── */

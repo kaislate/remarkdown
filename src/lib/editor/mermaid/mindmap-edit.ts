@@ -288,7 +288,9 @@ export function applyMindmapEdit(source: string, edit: MindmapEdit): MindmapEdit
       const text = nonEmpty(edit.text);
       let token: string;
       const formatted = edit.markdown === true;
-      if (s.form === 'bare') {
+      // A bare idea, or one written `(-"…"-)` only because its text
+      // couldn't be bare: bare again whenever the new text allows it.
+      if (s.form === 'bare' || (!s.id && s.form === 'quoted' && s.openText === '(-' && s.closeText === '-)')) {
         token = emitNode(text, 'default', formatted);
       } else {
         const id = s.id ? map.lines[s.line].slice(s.id.start, s.id.end) : '';
