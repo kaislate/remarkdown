@@ -6,7 +6,7 @@
 // (and draws) it.
 import { describe, it, expect, beforeAll } from 'vitest';
 import mermaid from 'mermaid';
-import { applyStateEdit, encodeStateText, type StateEdit } from '../../../src/lib/editor/mermaid/state-edit';
+import { applyStateEdit, encodeStateText, stateTextMarkdown, type StateEdit } from '../../../src/lib/editor/mermaid/state-edit';
 import { parseState, type StateModel } from '../../../src/lib/editor/mermaid/state-parser';
 import { FUZZ_INPUTS, mermaidAccepts } from './mermaid-test-utils';
 
@@ -360,6 +360,27 @@ describe('state edits: typed text reaches the diagram exactly', () => {
     expect(model(out).notes[0].text).toBe('line one: a;b\nend note\n%% not a comment');
     const d = await rendered(out, `fz${n++}`);
     expect(d.querySelector('g.statediagram-note')!.textContent).toContain('end note');
+  });
+
+  it('markdown text keeps bold / italic and writes escaped markers literally', async () => {
+    const md = '**Bold** and *it* with a literal \\* star \\_ too';
+    const out = edit(base, { kind: 'setStateLabel', id: 'A', label: md, markdown: true });
+    expect(out).toContain('state "**Bold** and *it* with a literal #42; star #95; too" as A');
+    const d = await rendered(out, `fz${n++}`);
+    const node = d.querySelector('g.node[id*="-state-A-"]')!;
+    expect(node.querySelector('strong')?.textContent).toBe('Bold');
+    expect(node.querySelector('em')?.textContent).toBe('it');
+    expect(text(node)).toBe('Bold and it with a literal * star _ too');
+    // …and reads back as the same markdown.
+    expect(stateTextMarkdown(out, { kind: 'state', id: 'A' })).toBe(md);
+    const t = edit(base, { kind: 'setTransitionLabel', index: 0, label: '*go*', markdown: true });
+    expect(t).toContain('A --> B : *go*');
+    expect(stateTextMarkdown(t, { kind: 'transition', index: 0 })).toBe('*go*');
+    const nt = edit(base, { kind: 'setNoteText', index: 0, text: '**one**\ntwo', markdown: true });
+    expect(stateTextMarkdown(nt, { kind: 'note', index: 0 })).toBe('**one**\ntwo');
+    // Plain text read as markdown: markers that are literal come escaped.
+    expect(stateTextMarkdown(base, { kind: 'state', id: 'B' })).toBe('B');
+    expect(stateTextMarkdown('stateDiagram-v2\n  A : x #42; y\n', { kind: 'state', id: 'A' })).toBe('x \\* y');
   });
 
   it('encodes only what it must', () => {

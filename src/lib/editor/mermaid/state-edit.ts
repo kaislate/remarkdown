@@ -45,6 +45,7 @@ import {
   type StateTerminal,
 } from './state-parser';
 import { DEFAULT_INDENT, nextFreeId, setFrontmatterTitle } from './source-text';
+import { decodeMermaidEntities } from '../mermaid-parser';
 
 export type StateEdit =
   // The title shown for a state or a group. Writes into the description
@@ -52,7 +53,10 @@ export type StateEdit =
   // `state "…" as Id` next to the state's first mention (a group's
   // `state Id {` becomes `state "…" as Id {`). Refused for fork / join /
   // choice, which show no text. An empty label shows a blank title.
-  | { kind: 'setStateLabel'; id: string; label: string }
+  //
+  // `markdown`: the text is markdown from the bold / italic field (see
+  // encodeStateText) — also on the transition / note text edits.
+  | { kind: 'setStateLabel'; id: string; label: string; markdown?: boolean }
   // A new state at the end of `parent` (top level when omitted / null;
   // a group's last concurrency region), optionally with a transition
   // from `connectFrom` (a state, or the start of the new state's scope).
@@ -94,15 +98,15 @@ export type StateEdit =
   | { kind: 'addStart'; id: string }
   | { kind: 'addEnd'; id: string }
   // An empty label removes the label.
-  | { kind: 'setTransitionLabel'; index: number; label: string }
+  | { kind: 'setTransitionLabel'; index: number; label: string; markdown?: boolean }
   | { kind: 'deleteTransition'; index: number }
   // A start or end circle with all of its transitions.
   | { kind: 'deleteTerminal'; terminal: StateTerminal }
   // Note text: single line → `note right of X : text`; with line
   // breaks → `note right of X` … `end note`. Empty text is refused
   // (delete the note instead). Returns the new note's index.
-  | { kind: 'addNote'; state: string; position: NotePosition; text: string }
-  | { kind: 'setNoteText'; index: number; text: string }
+  | { kind: 'addNote'; state: string; position: NotePosition; text: string; markdown?: boolean }
+  | { kind: 'setNoteText'; index: number; text: string; markdown?: boolean }
   | { kind: 'setNotePosition'; index: number; position: NotePosition }
   | { kind: 'deleteNote'; index: number }
   // Top-level layout direction / a group's own direction (refused for
@@ -147,12 +151,31 @@ const ENTITY: Record<string, string> = {
   '\\': '#92;',
 };
 
+// A backslash-escaped marker of markdown text → what shows it literally.
+const ESCAPED: Record<string, string> = { '*': '#42;', '_': '#95;', '\\': '#92;', '`': '`' };
+
 // User text → mermaid source text for `ctx`. Newlines become spaces
 // (except in note bodies, which the caller splits into lines) and the
 // text is trimmed — mermaid trims it anyway.
-export function encodeStateText(text: string, ctx: StateTextContext): string {
-  let t = text.replace(/\r\n|\r|\n/g, ' ').trim();
-  t = t.replace(/[#;&<*_\\]/g, (c) => ENTITY[c]);
+//
+// mermaid draws state diagram text as markdown. Plain text (the
+// default) has every `*` / `_` / `\` written as an entity code, so it
+// shows as typed. `markdown` text (from the bold / italic field, see
+// rich-text.ts) keeps its `**` / `*` markers as formatting and writes
+// its escaped markers (`\*`) as entity codes.
+export function encodeStateText(text: string, ctx: StateTextContext, markdown = false): string {
+  const src = text.replace(/\r\n|\r|\n/g, ' ').trim();
+  let t = '';
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (markdown && c === '\\' && i + 1 < src.length && src[i + 1] in ESCAPED) {
+      t += ESCAPED[src[++i]];
+    } else if ('#;&<'.includes(c) || (!markdown && '*_\\'.includes(c))) {
+      t += ENTITY[c];
+    } else {
+      t += c;
+    }
+  }
   if (ctx === 'quoted') t = t.replace(/"/g, ENTITY['"']);
   // mermaid's entity pre-pass mangles a line holding `style…:…#…;` /
   // `classDef…:…#…;`; with no raw `:` after the word it can't match.
@@ -169,6 +192,39 @@ export function encodeStateText(text: string, ctx: StateTextContext): string {
   if (ctx === 'quoted') t = t.replace(/\[(?=\[(?:fork|join|choice)\]\])/gi, '#91;');
   if (ctx === 'body') t = t.replace(/(end)\s+(?=note)/gi, '$1#32;');
   return t;
+}
+
+// An item's text as markdown (the inverse of encodeStateText with
+// `markdown`), for the bold / italic field: entity codes are decoded,
+// except the ones that make a marker literal, which come back
+// backslash-escaped (`#42;` → `\*`); raw markers are formatting, as
+// mermaid draws them. A state without a title reads as its id.
+export function stateTextMarkdown(
+  source: string,
+  item: { kind: 'state'; id: string } | { kind: 'transition' | 'note'; index: number },
+): string {
+  const parsed = parseStateSource(source);
+  if (!parsed.ok) return '';
+  const { map } = parsed;
+  const escape = (s: string) => s.replace(/[\\*_`]/g, (c) => `\\${c}`);
+  let raw: string | null = null;
+  if (item.kind === 'state') {
+    const d = map.states.get(item.id)?.descriptions[0];
+    if (!d) return parsed.model.states.has(item.id) ? escape(item.id) : '';
+    raw = source.slice(d.span.start, d.span.end);
+  } else {
+    const i = (item.kind === 'transition' ? map.transitions : map.notes)[item.index];
+    const s = i === undefined ? undefined : map.statements[i];
+    const span = s?.t === 'relation' ? s.label : s?.t === 'note' ? s.text : null;
+    raw = span ? source.slice(span.start, span.end) : '';
+  }
+  return raw
+    .split(/\r?\n/)
+    .map((line) =>
+      decodeMermaidEntities(line.replace(/#(42|95|92);/g, (_m, n: string) => `\\${String.fromCharCode(Number(n))}`)).trim(),
+    )
+    .filter(Boolean)
+    .join('\n');
 }
 
 // A blank title must still be written as something: `state "" as X` is
@@ -556,10 +612,10 @@ function noteLines(text: string): string[] {
 
 // A note statement: one line, or `note … of X` / body / `end note`
 // (body lines one indent deeper than the note).
-function noteStatement(id: string, position: NotePosition, lines: string[]): string[] {
+function noteStatement(id: string, position: NotePosition, lines: string[], markdown = false): string[] {
   const head = `note ${position} of ${id}`;
-  if (lines.length === 1) return [`${head} : ${encodeStateText(lines[0], 'note')}`];
-  return [head, ...lines.map((l) => DEFAULT_INDENT + encodeStateText(l, 'body')), 'end note'];
+  if (lines.length === 1) return [`${head} : ${encodeStateText(lines[0], 'note', markdown)}`];
+  return [head, ...lines.map((l) => DEFAULT_INDENT + encodeStateText(l, 'body', markdown)), 'end note'];
 }
 
 // Transitions as an order-insensitive multiset.
@@ -618,12 +674,12 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       const d = info.descriptions[0];
       if (d) {
         // The description that is the title already: rewrite its text.
-        const text = label ? encodeStateText(label, d.quoted ? 'quoted' : 'label') : BLANK;
+        const text = label ? encodeStateText(label, d.quoted ? 'quoted' : 'label', edit.markdown) : BLANK;
         ed.splices.push({ start: d.span.start, end: d.span.end, text });
         return { source: ed.result() };
       }
       if (label === edit.id) return { source };
-      const quoted = `"${label ? encodeStateText(label, 'quoted') : BLANK}"`;
+      const quoted = `"${label ? encodeStateText(label, 'quoted', edit.markdown) : BLANK}"`;
       const block = info.blocks.find((b) => ed.stmt(b).t === 'block');
       if (st.composite && block !== undefined) {
         // `state G {` → `state "Label" as G {`
@@ -635,7 +691,7 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       // Right after the first mention, in the same scope: it neither
       // becomes the first mention (shape) nor the last one in a group.
       ed.insertAfter(info.mentions[0], [`state ${quoted} as ${edit.id}`]);
-      return finish(ed, {}, (after) => after.states.get(edit.id)?.label === label && statesUnchanged(model, after, (k) => k === edit.id));
+      return finish(ed, {}, (after) => (edit.markdown || after.states.get(edit.id)?.label === label) && statesUnchanged(model, after, (k) => k === edit.id));
     }
 
     case 'addState': {
@@ -824,9 +880,9 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
         if (!s.label) return { source };
         ed.splices.push({ start: s.to.end, end: s.end, text: '' });
       } else if (s.label) {
-        ed.splices.push({ start: s.label.start, end: s.label.end, text: encodeStateText(label, 'label') });
+        ed.splices.push({ start: s.label.start, end: s.label.end, text: encodeStateText(label, 'label', edit.markdown) });
       } else {
-        ed.splices.push({ start: s.to.end, end: s.to.end, text: ` : ${encodeStateText(label, 'label')}` });
+        ed.splices.push({ start: s.to.end, end: s.to.end, text: ` : ${encodeStateText(label, 'label', edit.markdown)}` });
       }
       return { source: ed.result() };
     }
@@ -858,7 +914,7 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       // In the state's own scope (a note on a group sits beside it), at
       // the end — so never before the state's first mention, which
       // mermaid can't draw.
-      ed.appendToScope(scopeOf(model, edit.state), noteStatement(edit.state, edit.position, lines));
+      ed.appendToScope(scopeOf(model, edit.state), noteStatement(edit.state, edit.position, lines, edit.markdown));
       return finish(
         ed,
         {},
@@ -886,7 +942,7 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       if (!s.multiline && lines.length === 1) {
         // Rewrite from the id on: mermaid reads `X:text` with a quirk
         // (it drops the first letter), so the old spacing isn't kept.
-        ed.splices.push({ start: s.tail.start, end: s.tail.end, text: ` : ${encodeStateText(lines[0], 'note')}` });
+        ed.splices.push({ start: s.tail.start, end: s.tail.end, text: ` : ${encodeStateText(lines[0], 'note', edit.markdown)}` });
         return { source: ed.result() };
       }
       // Multi-line form (kept once a note has it): replace the body,
@@ -902,7 +958,7 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
         const els = ed.lineStart(endStart);
         if (source.slice(els, endStart).trim() === '') endIndent = source.slice(els, endStart);
       }
-      const body = lines.map((l) => ed.eol + bodyIndent + encodeStateText(l, 'body')).join('');
+      const body = lines.map((l) => ed.eol + bodyIndent + encodeStateText(l, 'body', edit.markdown)).join('');
       ed.splices.push({ start: s.tail.start, end: endStart, text: body + ed.eol + endIndent + (s.multiline ? '' : 'end note') });
       return { source: ed.result() };
     }
