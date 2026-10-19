@@ -89,17 +89,19 @@ export interface Pos {
 //   markdown: `["`Text`"]`
 export type MindmapTextForm = 'bare' | 'plain' | 'quoted' | 'markdown';
 
-export interface MindmapNodeSource {
-  // Line the node starts on, and the line its text ends on (a quoted
-  // or unquoted body may run over several lines).
+// One node statement as written — shared with kanban-parser.ts, whose
+// grammar is mindmap's plus `@{…}` metadata.
+export interface NodeToken {
+  // Line the node starts on, and the line it ends on (a quoted or
+  // unquoted text, or kanban metadata, may run over several lines).
   line: number;
   endLine: number;
   // Leading whitespace on `line`.
   indent: Span;
   // Explicit id, on `line`.
   id: Span | null;
-  // Opening delimiter on `line` / closing delimiter on `endLine`; both
-  // null for a bare node.
+  // Opening delimiter on `line` / closing delimiter on the line the
+  // text ends on; both null for a bare node.
   open: Span | null;
   close: Span | null;
   openText: string;
@@ -107,12 +109,18 @@ export interface MindmapNodeSource {
   // The text as written, quotes included: [start, end).
   body: { start: Pos; end: Pos };
   form: MindmapTextForm;
+  // kanban only: the `@{ … }` metadata, braces included, and the raw
+  // text between the braces.
+  meta: { start: Pos; end: Pos; raw: string } | null;
   // `::icon(…)` / `:::…` lines that decorate this node (every one, the
   // last of each kind is the one mermaid uses).
   iconLines: number[];
   classLines: number[];
   // Last line of the node's own statements (its text and decorations).
   ownLast: number;
+}
+
+export interface MindmapNodeSource extends NodeToken {
   // Last statement line of the node's whole subtree.
   lastLine: number;
   // Index of the last node in the subtree (== own index for a leaf).
@@ -181,61 +189,88 @@ function fail(reason: string): { ok: false; reason: string } {
   return { ok: false, reason };
 }
 
-interface Scanned {
-  src: MindmapNodeSource;
+// mindmap and kanban share one lexer design; kanban adds `@{…}`
+// metadata after a node and keeps `@` out of node ids.
+export type NodeFlavor = 'mindmap' | 'kanban';
+
+export interface ScannedNode {
+  token: NodeToken;
+  // The text between the delimiters / quotes, as written.
   raw: string;
-  level: number;
-  // The node's id as written (explicit id only).
+  // The explicit id as written, null when none.
   id: string | null;
 }
 
-// Scan one node starting at column `col` of line `line`. Bodies may
-// span lines; the text is addressed as `lines` joined by '\n'.
-function scanNode(lines: string[], line: number, col: number): Scanned | string {
+export type ScannedStatement =
+  | { kind: 'icon'; value: string }
+  | { kind: 'class'; value: string }
+  | { kind: 'node'; node: ScannedNode };
+
+// One statement starting on line `k` (neither blank nor a comment):
+// a node, or an `::icon(…)` / `:::…` decoration. A string is the
+// reason mermaid would reject it.
+export function scanStatement(lines: string[], k: number, flavor: NodeFlavor): ScannedStatement | string {
+  const line = lines[k];
+  const col = indentOf(line).length;
+  const rest = line.slice(col);
+  if (/^::icon\(/i.test(rest)) {
+    const m = /^::icon\(([^)]*)\)/i.exec(rest);
+    if (!m || !TAIL_OK.test(rest.slice(m[0].length))) return 'malformed icon';
+    return { kind: 'icon', value: m[1] };
+  }
+  // mermaid takes the whole rest of the line as the class names.
+  if (rest.startsWith(':::')) return { kind: 'class', value: rest.slice(3) };
+  const node = scanNodeToken(lines, k, col, flavor);
+  return typeof node === 'string' ? node : { kind: 'node', node };
+}
+
+function emptyToken(line: number, col: number): NodeToken {
+  return {
+    line,
+    endLine: line,
+    indent: { start: 0, end: col },
+    id: null,
+    open: null,
+    close: null,
+    openText: '',
+    closeText: '',
+    body: { start: { line, col }, end: { line, col } },
+    form: 'bare',
+    meta: null,
+    iconLines: [],
+    classLines: [],
+    ownLast: line,
+  };
+}
+
+// Scan one node starting at column `col` of line `line`. Texts and
+// metadata may span lines (addressed as `lines` joined by '\n').
+function scanNodeToken(lines: string[], line: number, col: number, flavor: NodeFlavor): ScannedNode | string {
   const first = lines[line];
   const rest = first.slice(col);
-  if (/^mindmap\b/i.test(rest)) return 'a node may not start with the word "mindmap"';
+  if (new RegExp(`^${flavor}\\b`, 'i').test(rest)) return `a node may not start with the word "${flavor}"`;
+  const token = emptyToken(line, col);
   let pos = col;
-  let id: Span | null = null;
   let open = OPENERS.find((o) => rest.startsWith(o));
   if (!open) {
     // NODE_ID: everything up to a delimiter or the end of the line.
-    const m = /^[^([\n){}]+/.exec(rest);
+    const m = (flavor === 'kanban' ? /^[^([\n){}@]+/ : /^[^([\n){}]+/).exec(rest);
     if (!m) return 'unrecognised text';
-    if (m[0].length === rest.length) {
-      // A bare node: the whole rest of the line, trailing spaces too
-      // (mermaid keeps them).
-      const span = { start: col, end: first.length };
-      return {
-        raw: rest,
-        level: col,
-        id: null,
-        src: {
-          line,
-          endLine: line,
-          indent: { start: 0, end: col },
-          id: null,
-          open: null,
-          close: null,
-          openText: '',
-          closeText: '',
-          body: { start: { line, col: span.start }, end: { line, col: span.end } },
-          form: 'bare',
-          iconLines: [],
-          classLines: [],
-          ownLast: line,
-          lastLine: line,
-          lastIndex: -1,
-        },
-      };
+    const end = col + m[0].length;
+    if (end === first.length || (flavor === 'kanban' && first.startsWith('@{', end))) {
+      // A bare node: the rest of the line (trailing spaces too —
+      // mermaid keeps them), or up to kanban metadata.
+      token.body = { start: { line, col }, end: { line, col: end } };
+      return finish(lines, token, line, end, rest.slice(0, m[0].length), null, flavor);
     }
-    id = { start: col, end: col + m[0].length };
-    pos = id.end;
+    token.id = { start: col, end };
+    pos = end;
     open = OPENERS.find((o) => first.startsWith(o, pos));
     if (!open) return 'unrecognised text after the node id';
   }
-  const openSpan = { start: pos, end: pos + open.length };
-  pos = openSpan.end;
+  token.open = { start: pos, end: pos + open.length };
+  token.openText = open;
+  pos = token.open.end;
 
   // The body, which may run over several lines.
   let l = line;
@@ -251,9 +286,8 @@ function scanNode(lines: string[], line: number, col: number): Scanned | string 
   const startsAt = (s: string): boolean => lines[l].startsWith(s, c);
   const bodyStart: Pos = { line: l, col: c };
   let raw = '';
-  let form: MindmapTextForm;
   if (startsAt('"`')) {
-    form = 'markdown';
+    token.form = 'markdown';
     c += 2;
     while (at() !== '' && at() !== '`' && at() !== '"') {
       raw += at();
@@ -262,7 +296,7 @@ function scanNode(lines: string[], line: number, col: number): Scanned | string 
     if (!startsAt('`"')) return 'unterminated markdown string';
     c += 2;
   } else if (startsAt('"')) {
-    form = 'quoted';
+    token.form = 'quoted';
     c += 1;
     while (at() !== '' && at() !== '"') {
       raw += at();
@@ -271,40 +305,61 @@ function scanNode(lines: string[], line: number, col: number): Scanned | string 
     if (!startsAt('"')) return 'unterminated string';
     c += 1;
   } else {
-    form = 'plain';
+    token.form = 'plain';
     while (at() !== '' && !')](}'.includes(at())) {
       raw += at();
       advance();
     }
   }
   if (raw === '') return 'empty node text';
-  const bodyEnd: Pos = { line: l, col: c };
+  token.body = { start: bodyStart, end: { line: l, col: c } };
   const close = CLOSERS.find((d) => startsAt(d));
   if (!close) return 'unterminated node shape';
-  const closeSpan = { start: c, end: c + close.length };
-  if (!TAIL_OK.test(lines[l].slice(closeSpan.end))) return 'unexpected text after a node';
-  return {
-    raw,
-    level: col,
-    id: id ? first.slice(id.start, id.end) : null,
-    src: {
-      line,
-      endLine: l,
-      indent: { start: 0, end: col },
-      id,
-      open: openSpan,
-      close: closeSpan,
-      openText: open,
-      closeText: close,
-      body: { start: bodyStart, end: bodyEnd },
-      form,
-      iconLines: [],
-      classLines: [],
-      ownLast: l,
-      lastLine: l,
-      lastIndex: -1,
-    },
-  };
+  token.close = { start: c, end: c + close.length };
+  token.closeText = close;
+  return finish(lines, token, l, token.close.end, raw, token.id ? first.slice(token.id.start, token.id.end) : null, flavor);
+}
+
+// After the text: kanban metadata, then nothing but an optional `%%`
+// comment up to the end of the line.
+function finish(
+  lines: string[],
+  token: NodeToken,
+  l: number,
+  c: number,
+  raw: string,
+  id: string | null,
+  flavor: NodeFlavor,
+): ScannedNode | string {
+  if (flavor === 'kanban' && lines[l].startsWith('@{', c)) {
+    // mermaid's shapeData lexer: `"…"` strings may hold `}`; outside
+    // them `}` ends the data and `^` is an error.
+    const start: Pos = { line: l, col: c };
+    c += 2;
+    let data = '';
+    let inString = false;
+    for (;;) {
+      if (c >= lines[l].length) {
+        if (l + 1 >= lines.length) return 'unterminated metadata';
+        l++;
+        c = 0;
+        data += '\n';
+        continue;
+      }
+      const ch = lines[l][c];
+      if (!inString && ch === '}') break;
+      if (!inString && ch === '^') return 'unexpected ^ in metadata';
+      if (ch === '"') inString = !inString;
+      data += ch;
+      c++;
+    }
+    c++;
+    token.meta = { start, end: { line: l, col: c }, raw: data };
+  }
+  if (!TAIL_OK.test(lines[l].slice(c))) return 'unexpected text after a node';
+  token.endLine = l;
+  token.ownLast = l;
+  return { token, raw, id };
 }
 
 // The indentation step of the file, for lines the edit engine inserts.
@@ -343,35 +398,27 @@ export function parseMindmapSource(source: string): MindmapSourceParseResult {
   let base = 0;
 
   for (let k = headerLine + 1; k < lines.length; k++) {
-    const line = lines[k];
-    if (isBlankOrComment(line)) continue;
-    const col = indentOf(line).length;
-    const rest = line.slice(col);
+    if (isBlankOrComment(lines[k])) continue;
+    const st = scanStatement(lines, k, 'mindmap');
+    if (typeof st === 'string') return fail(`line ${k + 1}: ${st}`);
     const last = srcs[srcs.length - 1];
-
-    if (/^::icon\(/i.test(rest)) {
-      const m = /^::icon\(([^)]*)\)/i.exec(rest);
-      if (!m || !TAIL_OK.test(rest.slice(m[0].length))) return fail('malformed icon');
-      if (!last) return fail('an icon before the first node');
-      if (m[1]) nodes[nodes.length - 1].icon = m[1];
-      last.iconLines.push(k);
-      last.ownLast = k;
-      continue;
-    }
-    if (rest.startsWith(':::')) {
-      if (!last) return fail('a class before the first node');
-      // mermaid takes the whole rest of the line; a later one replaces it.
-      const value = rest.slice(3);
-      if (value) nodes[nodes.length - 1].classes = value.split(/\s+/).filter(Boolean);
-      last.classLines.push(k);
+    if (st.kind !== 'node') {
+      if (!last) return fail(`line ${k + 1}: a decoration before the first node`);
+      // A later icon / class line replaces an earlier one.
+      if (st.kind === 'icon') {
+        if (st.value) nodes[nodes.length - 1].icon = st.value;
+        last.iconLines.push(k);
+      } else {
+        if (st.value) nodes[nodes.length - 1].classes = st.value.split(/\s+/).filter(Boolean);
+        last.classLines.push(k);
+      }
       last.ownLast = k;
       continue;
     }
 
-    const scanned = scanNode(lines, k, col);
-    if (typeof scanned === 'string') return fail(`line ${k + 1}: ${scanned}`);
+    const scanned = st.node;
     const index = nodes.length;
-    let level = scanned.level;
+    let level = scanned.token.indent.end;
     let parent: number | null = null;
     if (index === 0) {
       base = level;
@@ -386,7 +433,7 @@ export function parseMindmapSource(source: string): MindmapSourceParseResult {
       }
       if (parent === null) return fail(`line ${k + 1}: a mindmap has exactly one root`);
     }
-    const { src } = scanned;
+    const src: MindmapNodeSource = { ...scanned.token, lastLine: scanned.token.ownLast, lastIndex: index };
     nodes.push({
       index,
       text: decodeMermaidEntities(scanned.raw),
