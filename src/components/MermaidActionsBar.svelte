@@ -22,7 +22,7 @@
 </script>
 
 {#if current}
-  <div class="mermaid-actions-bar glass" hidden={!current.visible} role="toolbar" aria-label={current.ariaLabel}>
+  <div class="mermaid-actions-bar glass" class:left={current.align === 'left'} hidden={!current.visible} role="toolbar" aria-label={current.ariaLabel}>
     {#each current.items as item (item.id)}
       <button
         type="button"
@@ -61,6 +61,7 @@
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+  .mermaid-actions-bar.left { right: auto; left: 8px; justify-content: flex-start; }
   .mermaid-actions-bar[hidden] { display: none; }
   .mermaid-action-btn {
     display: inline-flex;

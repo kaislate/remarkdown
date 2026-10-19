@@ -129,12 +129,11 @@ describe('mermaid parser', () => {
     expect(r.graph.nodes.size).toBe(2);
   });
 
-  it('returns ok:false for unsupported directives', () => {
+  it('returns ok:false for other diagram types', () => {
     const cases = [
       'sequenceDiagram\nA->>B: hello\n',
       'classDiagram\nclass A\n',
       'stateDiagram-v2\n[*] --> A\n',
-      'graph TD\nA --> B\n', // we accept `flowchart` only, not the legacy `graph` keyword (defer)
     ];
     for (const src of cases) {
       const r = parseMermaid(src);
@@ -142,15 +141,30 @@ describe('mermaid parser', () => {
     }
   });
 
-  it('returns ok:false for subgraphs (deferred feature)', () => {
-    const r = parseMermaid('flowchart TD\nsubgraph S\nA[a]\nend\n');
-    expect(r.ok).toBe(false);
+  it('reads the legacy graph keyword like flowchart (no direction = top-down)', () => {
+    const r = parseMermaid('graph TD;\nA-->B;\n');
+    expect(r.ok && r.graph.edges).toEqual([{ from: 'A', to: 'B' }]);
+    const bare = parseMermaid('graph\nA --> B\n');
+    expect(bare.ok && bare.graph.direction).toBe('TD');
   });
 
-  it('returns ok:false for classDef / class / click (deferred features)', () => {
-    expect(parseMermaid('flowchart TD\nclassDef foo fill:#fff\n').ok).toBe(false);
-    expect(parseMermaid('flowchart TD\nA[a]\nclass A foo\n').ok).toBe(false);
-    expect(parseMermaid('flowchart TD\nA[a]\nclick A "https://x"\n').ok).toBe(false);
+  it('reads subgraphs: titles, nesting, members as mermaid assigns them', () => {
+    const r = parseMermaid('flowchart TD\nsubgraph S [Outer]\nA[a]\nsubgraph T\nB\nend\nend\nA --> C\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect([...r.graph.subgraphs.values()]).toEqual([
+      { id: 'S', title: 'Outer', parent: null },
+      { id: 'T', title: 'T', parent: 'S' },
+    ]);
+    expect([...r.graph.groupOf]).toEqual([['B', 'T'], ['A', 'S']]);
+  });
+
+  it('reads classDef / class / click / style / linkStyle and keeps them', () => {
+    const r = parseMermaid('flowchart TD\nclassDef foo fill:#fff\nA[a] --> B\nclass A foo\nclick A "https://x"\nstyle B fill:#f00,stroke:#000\nlinkStyle 0 stroke:red\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodeStyles.get('B')).toEqual([{ name: 'fill', value: '#f00' }, { name: 'stroke', value: '#000' }]);
+    expect(r.graph.edgeStyles.get(0)).toEqual([{ name: 'stroke', value: 'red' }]);
   });
 
   it('round-trips a representative diagram', () => {
@@ -159,7 +173,7 @@ describe('mermaid parser', () => {
   });
 });
 
-describe('mermaid parser — new shapes', () => {
+describe('mermaid parser — shapes', () => {
   it('parses hexagon, cylinder, stadium, parallelogram', () => {
     const r = parseMermaid('flowchart TD\nA{{h}}\nB[(c)]\nC([s])\nD[/p/]\n');
     expect(r.ok).toBe(true);
@@ -174,8 +188,8 @@ describe('mermaid parser — new shapes', () => {
     expect(r.graph.nodes.get('D')?.label).toBe('p');
   });
 
-  it('round-trips all 8 shapes', () => {
-    const src = 'flowchart TD\nA[r]\nB(o)\nC((c))\nD{d}\nE{{h}}\nF[(cy)]\nG([s])\nH[/p/]\n';
+  it('round-trips every classic shape', () => {
+    const src = 'flowchart TD\nA[r]\nB(o)\nC((c))\nD{d}\nE{{h}}\nF[(cy)]\nG([s])\nH[/p/]\nI[[sub]]\nJ(((dc)))\nK>odd]\nL[\\pa\\]\nM[/tr\\]\nN[\\it/]\n';
     expect(rt(src)).toBe(src);
   });
 
@@ -188,52 +202,60 @@ describe('mermaid parser — new shapes', () => {
     expect(r.graph.nodes.get('A')?.shape).toBe('cylinder');
     expect(r.graph.nodes.get('A')?.label).toBe('cylinder content');
   });
+
+  it('reads v11 @{ shape, label } nodes', () => {
+    const r = parseMermaid('flowchart LR\nA@{ shape: cyl, label: "Orders" } --> B@{ shape: doc }\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')).toEqual({ id: 'A', shape: 'cylinder', label: 'Orders', markdown: true });
+    expect(r.graph.nodes.get('B')).toEqual({ id: 'B', shape: 'other', label: 'B' });
+  });
 });
 
-describe('mermaid parser — new edge styles', () => {
-  it('parses solid line (---) edges', () => {
+describe('mermaid parser — links', () => {
+  it('parses open (---) links', () => {
     const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA --- B\n');
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'line' }]);
+    expect(r.ok && r.graph.edges).toEqual([{ from: 'A', to: 'B', ends: 'none' }]);
   });
 
-  it('parses dotted (-.->) edges', () => {
+  it('parses dotted (-.->) links', () => {
     const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -.-> B\n');
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'dotted' }]);
+    expect(r.ok && r.graph.edges).toEqual([{ from: 'A', to: 'B', stroke: 'dotted' }]);
   });
 
-  it('parses thick (==>) edges', () => {
+  it('parses thick (==>) links', () => {
     const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA ==> B\n');
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B', style: 'thick' }]);
+    expect(r.ok && r.graph.edges).toEqual([{ from: 'A', to: 'B', stroke: 'thick' }]);
   });
 
-  it('parses labelled non-arrow edges', () => {
-    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -.->|maybe| B\n');
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.graph.edges).toEqual([
-      { from: 'A', to: 'B', label: 'maybe', style: 'dotted' },
+  it('parses labelled links in both forms', () => {
+    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA -.->|maybe| B\nA -- inline text --> B\n');
+    expect(r.ok && r.graph.edges).toEqual([
+      { from: 'A', to: 'B', label: 'maybe', stroke: 'dotted' },
+      { from: 'A', to: 'B', label: 'inline text' },
     ]);
   });
 
-  it('plain --> still parses as arrow style', () => {
-    const r = parseMermaid('flowchart TD\nA[a]\nB[b]\nA --> B\n');
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    // arrow is the implicit default — parser should set style: 'arrow'
-    // explicitly OR leave it undefined. Either is acceptable as long as
-    // round-trip preserves the canonical form.
-    expect(r.graph.edges[0].from).toBe('A');
-    expect(r.graph.edges[0].to).toBe('B');
+  it('parses circle, cross, two-way, invisible and long links', () => {
+    const r = parseMermaid('flowchart TD\nA --o B\nA --x C\nA <--> D\nA o--o E\nA x--x F\nA ~~~ G\nA ----> H\n');
+    expect(r.ok && r.graph.edges.map(({ from: _f, to: _t, ...rest }) => rest)).toEqual([
+      { ends: 'circle' },
+      { ends: 'cross' },
+      { ends: 'both-arrow' },
+      { ends: 'both-circle' },
+      { ends: 'both-cross' },
+      { stroke: 'invisible', ends: 'none' },
+      { length: 3 },
+    ]);
   });
 
-  it('round-trips all 4 edge styles', () => {
-    const src = 'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\n';
+  it('fans out & groups like mermaid', () => {
+    const r = parseMermaid('flowchart TD\nA & B --> C & D\n');
+    expect(r.ok && r.graph.edges.map((e) => `${e.from}${e.to}`)).toEqual(['AC', 'AD', 'BC', 'BD']);
+  });
+
+  it('round-trips the classic link kinds', () => {
+    const src = 'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\nA --o B\nA <--> B\n';
     expect(rt(src)).toBe(src);
   });
 
@@ -260,20 +282,21 @@ describe('mermaid parser — new edge styles', () => {
     expect(s.ok && s.graph.events[0].text).toBe('x #1114112; y');
   });
 
-  // Review finding: `[/in\]` (a trapezoid, not in the subset) was read
-  // as a parallelogram whose label ran on to B's `/]`, so the whole
-  // line became one node — renaming A then deleted B and the edge.
-  it('leaves trapezoids and labels holding shape syntax outside the subset', () => {
-    for (const src of [
-      'flowchart TD\nA[/in\\] --> B[/out/]\n',
-      'flowchart TD\nA[\\in/] --> B\n',
-      'flowchart TD\nA[\\in\\] --> B\n',
-      'flowchart TD\nA(one) --> B(two)\n'.replace('A(one)', 'A(one --> X(x)'),
-      'flowchart TD\nA[x] --> B{y} --> C[[z]]\n',
-    ]) {
-      expect(parseMermaid(src).ok, src).toBe(false);
-      expect(applyFlowchartEdit(src, { kind: 'setNodeLabel', id: 'A', label: 'x' }), src).toBeNull();
-    }
+  // Review finding (round 1): `[/in\]` was read as a parallelogram
+  // whose label ran on to B's `/]`, so the whole line became one node.
+  // Trapezoids are read now — and each node ends at its own closer.
+  it('reads trapezoids without running into the next node', () => {
+    const r = parseMermaid('flowchart TD\nA[/in\\] --> B[/out/]\n');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.nodes.get('A')).toEqual({ id: 'A', shape: 'trapezoid', label: 'in' });
+    expect(r.graph.nodes.get('B')).toEqual({ id: 'B', shape: 'parallelogram', label: 'out' });
+    expect(r.graph.edges).toEqual([{ from: 'A', to: 'B' }]);
+    expect(parseMermaid('flowchart TD\nA[\\in/] --> B\n').ok && parseMermaid('flowchart TD\nA[\\in/] --> B\n')).toMatchObject({ graph: { nodes: new Map([['A', { id: 'A', shape: 'trapezoidAlt', label: 'in' }], ['B', { id: 'B', shape: 'rect', label: 'B' }]]) } });
+    // A label holding link syntax isn't one mermaid reads either.
+    const bad = 'flowchart TD\nA(one --> X(x) --> B(two)\n';
+    expect(parseMermaid(bad).ok).toBe(false);
+    expect(applyFlowchartEdit(bad, { kind: 'setNodeLabel', id: 'A', label: 'x' })).toBeNull();
     // Ordinary labels with punctuation still parse.
     expect(parseMermaid('flowchart TD\nA[R&D: phase 1 / 2, done?] --> B\n').ok).toBe(true);
   });

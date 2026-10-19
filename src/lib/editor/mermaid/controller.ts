@@ -65,12 +65,23 @@ export interface DiagramController {
 
 export type ControllerFactory = (host: DiagramHost) => DiagramController;
 
-const registry = new Map<MermaidDiagramType, ControllerFactory>();
+interface Registration {
+  create: ControllerFactory;
+  // The same parse the controller's load() does, without a DOM — so
+  // "is this diagram editable?" has one answer everywhere.
+  canEdit: (source: string) => boolean;
+}
 
-export function registerController(type: MermaidDiagramType, factory: ControllerFactory): void {
-  registry.set(type, factory);
+const registry = new Map<MermaidDiagramType, Registration>();
+
+export function registerController(type: MermaidDiagramType, create: ControllerFactory, canEdit: (source: string) => boolean): void {
+  registry.set(type, { create, canEdit });
 }
 
 export function createController(type: MermaidDiagramType, host: DiagramHost): DiagramController | null {
-  return registry.get(type)?.(host) ?? null;
+  return registry.get(type)?.create(host) ?? null;
+}
+
+export function canEditDiagram(type: MermaidDiagramType, source: string): boolean {
+  return registry.get(type)?.canEdit(source) ?? false;
 }

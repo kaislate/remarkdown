@@ -102,10 +102,10 @@
   }
 </script>
 
-<div class="mermaid-rich {className}">
+<div class="mermaid-rich">
   <div
     bind:this={field}
-    class="mermaid-rich-field"
+    class="mermaid-rich-field {className}"
     class:empty
     contenteditable="true"
     role="textbox"

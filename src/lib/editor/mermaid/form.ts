@@ -183,6 +183,8 @@ export interface ActionsBarState {
   visible: boolean;
   ariaLabel: string;
   items: BarItem[];
+  // Corner of the diagram it sits in (default: top right).
+  align?: 'left' | 'right';
 }
 
 export const HIDDEN_BAR: ActionsBarState = { visible: false, ariaLabel: '', items: [] };
@@ -191,3 +193,6 @@ export const HIDDEN_BAR: ActionsBarState = { visible: false, ariaLabel: '', item
 // lines and text.
 export const FILL_PALETTE = ['#fde68a', '#fecaca', '#bbf7d0', '#bfdbfe', '#e9d5ff', '#fed7aa', '#e5e7eb', '#334155'];
 export const LINE_PALETTE = ['#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#2563eb', '#9333ea', '#6b7280', '#111827'];
+
+// The group picker's "New group…" choice.
+export const NEW_GROUP = '+new';

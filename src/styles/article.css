@@ -491,6 +491,25 @@ body.reattach-mode .reader-mode-toggle {
   stroke: var(--accent) !important;
 }
 
+/* Groups (flowchart subgraphs): clickable to rename / remove; the
+   selected one gets an accent outline. */
+.mermaid-block-editor .mermaid-rendered g.cluster {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.cluster:hover > rect {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.35));
+}
+.mermaid-block-editor .mermaid-rendered g.cluster.mermaid-selected > rect {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+
+/* Editable diagrams carry floating toolbars in their top corners;
+   keep the drawing clear of them. */
+.mermaid-block-editor:not(.mermaid-fallback) .mermaid-rendered {
+  padding-top: 44px;
+}
+
 /* Connect mode: the user has clicked "+ connect" and is now picking a
    destination. Cursor turns to crosshair; non-source nodes pulse to
    invite clicking. */
