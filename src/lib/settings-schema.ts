@@ -29,6 +29,10 @@ export const SettingsSchema = z.object({
   openMode: z.enum(['tabs', 'replace', 'windows']),
   // Tabs mode only: restore the previous session's tabs on launch.
   reopenTabsOnLaunch: z.boolean(),
+  // Tabs along the top of the window, or as a sidebar on the left. The
+  // sidebar either stays open (pinned) or shrinks to initials until hovered.
+  tabPosition: z.enum(['top', 'left']),
+  tabSidebarPinned: z.boolean(),
   openInFocusMode: z.boolean(),
   minimapPopoutInFocusMode: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
@@ -67,6 +71,7 @@ export const SettingsSchema = z.object({
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type OpenMode = Settings['openMode'];
+export type TabPosition = Settings['tabPosition'];
 
 export const DEFAULT_SETTINGS: Settings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -80,6 +85,8 @@ export const DEFAULT_SETTINGS: Settings = {
   openLastOnStartup: false,
   openMode: 'tabs',
   reopenTabsOnLaunch: true,
+  tabPosition: 'top',
+  tabSidebarPinned: true,
   openInFocusMode: false,
   minimapPopoutInFocusMode: false,
   dontShowWelcomeOnLaunch: false,

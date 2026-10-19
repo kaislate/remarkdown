@@ -155,6 +155,19 @@ describe('SettingsModal — opening files', () => {
     await userEvent.setup().click(box);
     expect(get(settings).reopenTabsOnLaunch).toBe(false);
   });
+
+  it('"Tab position" moves the tabs between the top and the left, in tabs mode only', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const select = document.querySelector<HTMLSelectElement>('#setting-tab-position')!;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['top', 'left']);
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Along the top', 'On the left']);
+    expect(select.value).toBe('top');
+    await userEvent.setup().selectOptions(select, 'left');
+    expect(get(settings).tabPosition).toBe('left');
+    await userEvent.setup().selectOptions(document.querySelector<HTMLSelectElement>('#setting-open-mode')!, 'replace');
+    expect(document.querySelector('#setting-tab-position')).toBeNull();
+  });
 });
 
 describe('SettingsModal — default app', () => {

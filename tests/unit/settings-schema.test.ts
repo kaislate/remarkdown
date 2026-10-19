@@ -87,4 +87,20 @@ describe('open-mode settings', () => {
   it('an unknown openMode falls back to defaults', () => {
     expect(parseSettings(JSON.stringify({ openMode: 'bogus' })).openMode).toBe('tabs');
   });
+
+  it('tabs default to the top, with the left sidebar pinned open', () => {
+    const s = parseSettings(JSON.stringify({ schemaVersion: 1 }));
+    expect(s.tabPosition).toBe('top');
+    expect(s.tabSidebarPinned).toBe(true);
+  });
+
+  it('accepts tabs on the left and an unpinned sidebar', () => {
+    const s = parseSettings(JSON.stringify({ tabPosition: 'left', tabSidebarPinned: false }));
+    expect(s.tabPosition).toBe('left');
+    expect(s.tabSidebarPinned).toBe(false);
+  });
+
+  it('an unknown tabPosition falls back to defaults', () => {
+    expect(parseSettings(JSON.stringify({ tabPosition: 'bottom' })).tabPosition).toBe('top');
+  });
 });
