@@ -41,7 +41,7 @@
   import ReattachBanner from './components/ReattachBanner.svelte';
   import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
-  import { runBeforeSwitch } from './stores/tabs';
+  import { runBeforeSwitch, activateSession } from './stores/tabs';
   import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
@@ -49,7 +49,9 @@
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
   import { availableUpdate } from './stores/updates';
-  import { openModal } from './stores/modals';
+  import { openModal, activeModal } from './stores/modals';
+  import { savesSettled, unresolvedConflict, askAboutConflict } from './lib/edit-save';
+  import { sessions, activeSession } from './stores/sessions';
   import { settings, refreshSettings, installSettingsAutosave, isFreshInstall } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -153,6 +155,8 @@
     if (e.key !== 'e' && e.key !== 'E') return;
     // Reader mode is for reading; Esc first, then edit.
     if (get(readerMode)) return;
+    // Not while a dialog is open (e.g. deciding about an edit conflict).
+    if (get(activeModal)) return;
     // Skip while a text input or contenteditable is focused — typing
     // Cmd+E inside a re.mark popover etc. shouldn't toggle the editor.
     const target = e.target as HTMLElement | null;
@@ -277,9 +281,19 @@
       // Registering this handler hands the close to JS: Tauri then calls
       // destroy() once it resolves (needs core:window:allow-destroy). Never
       // let a failed flush keep the window open.
-      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
+      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
         try {
           await runBeforeSwitch();
+          await Promise.all(get(sessions).map((s) => savesSettled(s)));
+          // Edits waiting on a "changed by another program" decision would
+          // be lost: keep the window open and ask instead.
+          const waiting = unresolvedConflict();
+          if (waiting) {
+            event.preventDefault();
+            if (get(activeSession) !== waiting) await activateSession(waiting.id);
+            askAboutConflict(waiting);
+            return;
+          }
           await flushSessionNow();
         } catch (err) {
           console.error('[remarkdown] flush on close failed:', err);

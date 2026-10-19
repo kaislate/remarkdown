@@ -10,4 +10,7 @@ export interface DocState {
   plaintext: string;
   blocks: string[];
   sidecarRaw: string | null;
+  // Increases with every load into a tab, so a forced reload of identical
+  // content still counts as a new document (the editor remounts on it).
+  loadId?: number;
 }

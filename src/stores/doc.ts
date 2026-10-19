@@ -45,7 +45,15 @@ export async function loadDocument(path: string): Promise<boolean> {
 // loads a new tab before switching to it). Returns true when the document
 // is loaded (or was already loaded and unchanged), false on a read error —
 // which has already been reported with a toast.
-export async function loadIntoSession(session: DocSession, path: string): Promise<boolean> {
+let loadCounter = 0;
+
+// `force`: reload even when the file on disk is unchanged (resolving an edit
+// conflict with "use the other version" must start the editor over).
+export async function loadIntoSession(
+  session: DocSession,
+  path: string,
+  opts: { force?: boolean } = {},
+): Promise<boolean> {
   let r;
   try {
     r = await readDocument(path);
@@ -64,7 +72,7 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
   // fires on our own writes or no-op touches.
   session.diskSha = r.sha256;
   const current = get(session.doc);
-  if (current && current.path === r.path && current.sha256 === r.sha256) {
+  if (!opts.force && current && current.path === r.path && current.sha256 === r.sha256) {
     return true;
   }
 
@@ -111,18 +119,20 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
     plaintext,
     blocks,
     sidecarRaw: r.sidecarRaw,
+    loadId: ++loadCounter,
   });
   const isActive = session === get(activeSession);
   if (isActive) docEpoch.update((e) => e + 1);
 
-  if (isNewDocOpen && get(settings).openInFocusMode) {
+  // Reader mode and edit mode never go together; "ready to edit" wins.
+  const s = get(settings);
+  if (isNewDocOpen && s.openInFocusMode && !s.openInEditMode) {
     session.readerMode.set(true);
   }
-  // "Open documents in edit mode": set the tab up exactly as entering edit
-  // mode would — with its watcher paused, so autosaves don't come back as
-  // "changed on disk" reloads.
-  if (isNewDocOpen && get(settings).openInEditMode && !get(session.editMode)) {
-    session.watcherPaused = true;
+  // "Open documents ready to edit": the tab opens in edit mode but keeps
+  // watching its file until the first keystroke (Viewer pauses it then), so
+  // outside changes to an untouched document still show up.
+  if (isNewDocOpen && s.openInEditMode && !get(session.editMode)) {
     session.editMode.set(true);
   }
 

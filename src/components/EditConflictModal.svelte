@@ -3,7 +3,7 @@
   // file. Saving for that tab is paused until the user chooses, so the
   // dialog can't be dismissed without a choice (no Esc, no scrim click).
   import { get } from 'svelte/store';
-  import { activeModal } from '../stores/modals';
+  import { activeModal, closeModal } from '../stores/modals';
   import { sessions } from '../stores/sessions';
   import { resolveEditConflict, type ConflictChoice } from '../lib/edit-save';
 
@@ -13,9 +13,16 @@
     return $sessions.find((s) => s.id === m.sessionId) ?? null;
   });
 
+  // A dialog for a tab that no longer exists would block everything
+  // invisibly (shortcuts are ignored while a dialog is open): drop it.
+  $effect(() => {
+    const m = $activeModal;
+    if (m?.kind === 'edit-conflict' && !session) closeModal();
+  });
+
   const name = $derived.by(() => {
     if (!session) return '';
-    const path = get(session.doc)?.path ?? '';
+    const path = session.editConflict?.path ?? get(session.doc)?.path ?? '';
     const base = path.split(/[\\/]/).pop() ?? path;
     return base.replace(/\.(md|markdown)$/i, '');
   });

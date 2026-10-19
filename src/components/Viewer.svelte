@@ -17,7 +17,7 @@
   import { editMode } from '../stores/edit-mode';
   import { pauseFileWatcher, resumeFileWatcher, loadIntoSession } from '../stores/doc';
   import Editor from './Editor.svelte';
-  import { saveEditedMarkdown } from '../lib/edit-save';
+  import { saveEditedMarkdown, savesSettled } from '../lib/edit-save';
   import { debounce } from '../lib/editor/debounce';
   import type { Debounced } from '../lib/editor/debounce';
   import { settings } from '../stores/settings';
@@ -228,22 +228,34 @@
       // to the edit session that just ended.
       pendingSave?.flush();
       session.editorState = null;
-      // Everything below names `session` explicitly: the reload is async and
-      // the user may have switched tabs — or re-entered edit mode — by the
-      // time it lands. Only resume watching if this tab isn't editing again.
+      // Everything below names `session` explicitly: it's async and the
+      // user may have switched tabs — or re-entered edit mode — by the time
+      // it lands. Wait for the flushed save: if it hit a conflict, the
+      // conflict dialog decides what the page shows (reloading now would
+      // put the other program's text on screen). Only resume watching if
+      // this tab isn't editing again.
       const currentDoc = get(session.doc);
-      const reload = currentDoc ? loadIntoSession(session, currentDoc.path) : Promise.resolve(true);
-      void reload.then(() => {
+      void (async () => {
+        await savesSettled(session);
+        if (session.editConflict) return;
+        if (session.skipExitReload) {
+          session.skipExitReload = false;
+          return;
+        }
+        if (currentDoc) await loadIntoSession(session, currentDoc.path);
         if (!get(session.editMode)) void resumeFileWatcher(session);
-      });
+      })();
     }
   });
 
   // Before the active tab changes: write any pending edit-mode autosave to
   // the outgoing tab's file and remember exactly where it was scrolled.
-  onDestroy(onBeforeSwitch((outgoing) => {
+  onDestroy(onBeforeSwitch(async (outgoing) => {
     pendingSave?.flush();
     if (scrollEl) outgoing.scrollTop = scrollEl.scrollTop;
+    // Callers (switch, close, window close) need to know whether that save
+    // landed or hit a conflict.
+    await savesSettled(outgoing);
   }));
 
   $effect(() => {
@@ -264,7 +276,11 @@
 
   function onEditorChange(markdown: string) {
     // Only the visible tab's editor receives input.
-    get(activeSession).editedMarkdown = markdown;
+    const session = get(activeSession);
+    session.editedMarkdown = markdown;
+    // A tab opened "ready to edit" keeps watching its file until the first
+    // keystroke; from here on our own saves would come back as reloads.
+    if (!session.watcherPaused) void pauseFileWatcher(session);
     pendingSave?.(markdown);
   }
 </script>
@@ -307,7 +323,7 @@
                each needs its own editor (restored from its saved state). -->
           <!-- …and on the disk version, so "use the other version" after an
                edit conflict remounts the editor on the reloaded file. -->
-          {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '')}
+          {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '') + ($doc?.loadId ?? '')}
             <Editor
               initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
               onChange={onEditorChange}

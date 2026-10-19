@@ -14,6 +14,7 @@ import { reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
+import { askAboutConflict, savesSettled } from '../lib/edit-save';
 import { activeModal, closeModal } from './modals';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
@@ -134,12 +135,24 @@ export async function closeSession(id: string): Promise<void> {
   const idx = list.findIndex((s) => s.id === id);
   if (idx < 0) return;
   const closing = list[idx];
-  closing.closed = true;
+
+  // Never close away edits the user hasn't decided about: if the tab's last
+  // save hit a conflict (or one is pending), keep it open and ask.
+  const keepForConflict = () => {
+    if (!closing.editConflict) return false;
+    closing.closed = false;
+    if (closing !== get(activeSession)) void activateSession(closing.id);
+    askAboutConflict(closing);
+    return true;
+  };
+  if (keepForConflict()) return;
 
   if (closing === get(activeSession)) {
     const ticket = ++switchTicket;
     cancelReattach();
     await runBeforeSwitch();
+    if (keepForConflict()) return;
+    closing.closed = true;
     // A newer switch may have happened meanwhile — then leave it be, unless
     // the closing tab is somehow still the visible one.
     if (ticket === switchTicket || get(activeSession) === closing) {
@@ -155,6 +168,12 @@ export async function closeSession(id: string): Promise<void> {
         setActive(fresh);
       }
     }
+  } else {
+    // A background tab: its pending save was flushed when the user left it,
+    // but may still be in flight.
+    await savesSettled(closing);
+    if (keepForConflict()) return;
+    closing.closed = true;
   }
 
   if (closing.disposeWatcher) {

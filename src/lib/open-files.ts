@@ -13,7 +13,8 @@ import { settings } from '../stores/settings';
 import type { OpenMode } from './settings-schema';
 import { activeSession, createSession, type DocSession } from '../stores/sessions';
 import { loadIntoSession } from '../stores/doc';
-import { activateSession, addSession, findSessionByPath } from '../stores/tabs';
+import { activateSession, addSession, findSessionByPath, runBeforeSwitch, samePath } from '../stores/tabs';
+import { askAboutConflict } from './edit-save';
 import { recordRecent } from '../stores/recent';
 import { addToast } from '../stores/toasts';
 import { openDocumentWindow, openFileDialog, takePendingOpens } from './tauri-api';
@@ -64,6 +65,8 @@ async function openPathsNow(paths: string[], opts: OpenOptions): Promise<number>
     const activeEmpty = get(active.doc) === null;
 
     if (mode === 'replace' || activeEmpty) {
+      const current = get(active.doc);
+      if (current && !samePath(current.path, path) && !(await leaveEditingFor(active, path))) continue;
       if (await loadIntoSession(active, path)) {
         opened += 1;
         toActivate = null; // it's already the visible tab
@@ -97,6 +100,26 @@ async function openPathsNow(paths: string[], opts: OpenOptions): Promise<number>
 
   if (toActivate) await activateSession(toActivate.id);
   return opened;
+}
+
+// Before a different file replaces the one being edited in this tab: save
+// the edits to THEIR file and leave edit mode cleanly. Refuses (false) while
+// that tab is waiting on a "changed by another program" decision.
+async function leaveEditingFor(session: DocSession, nextPath: string): Promise<boolean> {
+  if (!get(session.editMode)) return true;
+  await runBeforeSwitch(); // flushes this tab's pending save and waits for it
+  if (session.editConflict) {
+    askAboutConflict(session);
+    const name = nextPath.split(/[\\/]/).pop() ?? nextPath;
+    addToast({ kind: 'warning', message: `Decide about your unsaved changes first, then open ${name} again.` });
+    return false;
+  }
+  session.skipExitReload = true; // the old file isn't coming back
+  session.editedMarkdown = null;
+  session.editorState = null;
+  session.watcherPaused = false; // the new file gets its own watcher
+  session.editMode.set(false);
+  return true;
 }
 
 async function record(path: string): Promise<void> {

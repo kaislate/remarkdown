@@ -17,6 +17,11 @@ import type { EditorState } from 'prosemirror-state';
 import type { Annotation } from '../lib/schema';
 import type { DocState } from './doc-types';
 
+export interface EditConflict {
+  path: string;
+  markdown: string;
+}
+
 export interface DocSession {
   id: string;
   doc: Writable<DocState | null>;
@@ -44,11 +49,16 @@ export interface DocSession {
   // sha256 of the file as this tab last read or wrote it. Edit-mode saves
   // only write if the disk still matches (see lib/edit-save.ts).
   diskSha: string | null;
-  // Another program changed the file while editing; saving is paused until
-  // the user chooses what to keep.
-  editConflict: boolean;
-  // Set while "use the other version" reloads the tab: late saves of the
-  // discarded edits are dropped.
+  // Another program changed the file while editing: the file and the text
+  // the refused save was about. Saving is paused until the user decides
+  // (lib/edit-save.ts); later keystrokes update `markdown`.
+  editConflict: EditConflict | null;
+  // Saves for this tab run one after another (each needs the sha the
+  // previous one returned). Resolves when all queued saves are done.
+  saveChain: Promise<void>;
+  // Leaving edit mode normally reloads the tab from disk; skip that once
+  // when the tab is about to load a different file anyway.
+  skipExitReload: boolean;
   discardPendingEdits: boolean;
 }
 
@@ -70,7 +80,9 @@ export function createSession(): DocSession {
     disposeWatcher: null,
     closed: false,
     diskSha: null,
-    editConflict: false,
+    editConflict: null,
+    saveChain: Promise.resolve(),
+    skipExitReload: false,
     discardPendingEdits: false,
   };
 }
