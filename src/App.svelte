@@ -30,6 +30,8 @@
   import EditModeToggle from './components/EditModeToggle.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import ReaderModeLayer from './components/ReaderModeLayer.svelte';
+  import ReaderMeta from './components/ReaderMeta.svelte';
+  import { doc } from './stores/doc';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
@@ -369,6 +371,9 @@
 <ZoomControls />
 <ReaderModeToggle />
 <ReaderModeLayer />
+{#if $readerMode && !$editMode && $doc}
+  <ReaderMeta />
+{/if}
 <EditModeToggle />
 <TocButton />
 <NotesPanel />

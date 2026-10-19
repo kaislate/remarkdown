@@ -46,17 +46,25 @@ body.reader-mode .resize-grip .grip-glyph {
 
 /* ── 2. Reading typography ────────────────────────────────────────────── */
 
-/* The minimap's reserved gutter goes; the column sits in the middle. */
+/* The minimap's reserved gutter goes; the column sits in the middle.
+   Text scrolling up fades out before it reaches the meta line
+   (ReaderMeta.svelte) — a mask on the scroller rather than a painted
+   backdrop, so the page behind stays exactly the page in every theme. */
 body.reader-mode .scroll {
   padding-right: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 46px, #000 72px);
+  mask-image: linear-gradient(to bottom, transparent 46px, #000 72px);
 }
 /* ~62 characters a line of the reading face at ~1.12× the normal size
    (rem, so zoom still applies). Sized in em rather than `ch`: ch is the
    width of a "0", wider than an average letter, so 62ch would set ~80
    letters a line. The 96px is the article's side padding. */
+body.reader-mode {
+  --reader-column: calc(30em + 96px);
+}
 body.reader-mode .text-frame {
   font-size: 1.12rem;
-  max-width: calc(30em + 96px);
+  max-width: var(--reader-column);
   margin-left: auto;
   margin-right: auto;
 }

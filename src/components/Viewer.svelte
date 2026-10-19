@@ -8,7 +8,6 @@
   import DrawLayer from './DrawLayer.svelte';
   import MermaidRenderer from './MermaidRenderer.svelte';
   import MarginaliaColumn from './MarginaliaColumn.svelte';
-  import ReaderMeta from './ReaderMeta.svelte';
   import { readerMode } from '../stores/reader-mode';
   import { reattachTarget, cancelReattach } from '../stores/reattach';
   import { createAnchor, rangeTouchesDiagram, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
@@ -280,9 +279,6 @@
     {#key $activeSession.id}
     <div class="content" in:fade={{ duration: reducedMotion() ? 0 : 150 }}>
       <div class="text-frame">
-        {#if $readerMode && !$editMode}
-          <ReaderMeta />
-        {/if}
         <!-- The article stays mounted in edit mode (hidden via
              body.edit-mode .viewer { display:none } in edit-mode.css) so
              the minimap, which subscribes to currentViewerRoot and

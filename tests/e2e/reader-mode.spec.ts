@@ -337,6 +337,83 @@ test('"Always open documents in reader mode" opens straight into it', async ({ p
   await expect(page.locator('.reader-hint')).toBeVisible();
 });
 
+// RGBA bytes of a page region, decoded in the page (no PNG library here).
+async function regionPixels(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<number[]> {
+  const png = await page.screenshot({ clip });
+  return page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    return Array.from(ctx.getImageData(0, 0, c.width, c.height).data);
+  }, png.toString('base64'));
+}
+
+function maxDiff(a: number[], b: number[]): number {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i]));
+  return d;
+}
+
+const PAGE_BG: Record<string, [number, number, number] | null> = {
+  default: null, // the app's background has a soft glow; compared against itself below
+  paper: [251, 249, 244],
+  sepia: [243, 231, 207],
+  night: [18, 20, 23],
+  eink: [242, 242, 240],
+};
+
+test.describe('the top of the page is the page', () => {
+  const cases = [
+    { app: 'dark', theme: 'default' }, { app: 'light', theme: 'default' },
+    { app: 'dark', theme: 'paper' }, { app: 'dark', theme: 'sepia' },
+    { app: 'light', theme: 'night' }, { app: 'dark', theme: 'eink' },
+  ] as const;
+  for (const c of cases) {
+    test(`${c.theme} over the ${c.app} app theme: nothing but the page colour behind the meta line`, async ({ page }) => {
+      await open(page, [A]);
+      await settingsDo(page, async () => {
+        await page.locator('#setting-theme').selectOption(c.app);
+        await page.getByLabel('Reader theme').selectOption(c.theme);
+      });
+      await enterReader(page);
+      // Text scrolled up under the meta line.
+      await page.locator('.viewer h2').evaluate((el) => {
+        document.querySelector('.scroll')!.scrollTop += el.getBoundingClientRect().top - 10;
+      });
+      await expect(page.locator('.reader-meta')).toContainText('min left');
+      for (const sel of ['.reader-meta', '.reader-drag-band']) {
+        const bg = await page.locator(sel).evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return [cs.backgroundColor, cs.backgroundImage];
+        });
+        expect(bg, sel).toEqual(['rgba(0, 0, 0, 0)', 'none']);
+      }
+      const clip = { x: 215, y: 0, width: 665, height: 45 };
+      // The area with the meta text made invisible…
+      await page.addStyleTag({ content: '.reader-meta { color: transparent !important; }' });
+      const live = await regionPixels(page, clip);
+      // …must equal the bare page background (everything on it hidden).
+      await page.addStyleTag({ content: '.scroll, .reader-meta, .reader-drag-band { visibility: hidden !important; }' });
+      const bare = await regionPixels(page, clip);
+      expect(maxDiff(live, bare)).toBeLessThanOrEqual(1);
+      const bg = PAGE_BG[c.theme];
+      if (bg) {
+        for (let i = 0; i < live.length; i += 4) {
+          const px = [live[i], live[i + 1], live[i + 2]];
+          if (Math.max(...px.map((v, k) => Math.abs(v - bg[k]))) > 1) {
+            throw new Error(`pixel ${i / 4} is rgb(${px}) not the ${c.theme} page rgb(${bg})`);
+          }
+        }
+      }
+    });
+  }
+});
+
 test.describe('screenshots', () => {
   test.skip(!OUT, 'set READER_SHOTS_DIR to capture');
   const cases: Array<{ name: string; app: 'dark' | 'light'; theme: string; tone: 'dark' | 'light' }> = [

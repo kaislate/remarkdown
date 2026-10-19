@@ -74,28 +74,25 @@
 {/if}
 
 <style>
-  /* Sticky but zero-height, so it never moves the article (annotation
-     layers position against the text frame). The line itself overlays
-     the top of the column on a fade of the page colour. */
+  /* Fixed over the top of the column, outside the scroller, and painted
+     with nothing but its text: the page under it is the real page. Text
+     scrolling up is faded out by the scroller's own top-edge mask
+     (reader-mode.css), so the two never collide. The wrapper carries the
+     reading size so --reader-column (em-based) matches the article. */
   .reader-meta-wrap {
-    position: sticky;
+    position: fixed;
     top: 0;
-    height: 0;
-    z-index: 5;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: var(--reader-column);
+    font-size: 1.12rem;
+    z-index: 51;
     pointer-events: none;
   }
   .reader-meta {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
     display: flex;
-    padding: 22px 48px 26px;
-    background: linear-gradient(var(--bg-0) 62%, transparent);
-    /* Soft side edges, so the fade never reads as a box over the app's
-       background glow. */
-    -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
-    mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    padding: 22px 48px 0;
     color: var(--fg-2);
     font-family: var(--font-sans);
     font-size: 11px;
