@@ -119,7 +119,7 @@
 
 <style>
   /* Third in the top-left stack: hamburger (top:14), EditMode (top:60),
-     this button (top:106 = 60 + 38 + 8 gap), Focus toggle (top:152). */
+     this button (top:106 = 60 + 38 + 8 gap), Reader toggle (top:152). */
   .toc-button {
     position: fixed;
     top: 106px;

@@ -28,4 +28,16 @@ describe('NotePopover', () => {
     await user.click(screen.getByRole('button', { name: /delete/i }));
     expect(onDelete).toHaveBeenCalled();
   });
+
+  it('read-only: shows the note but offers no editing and no delete', async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    render(NotePopover, { props: { body: 'just read me', readonly: true, onUpdate, onDelete: () => {} } });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('just read me');
+    expect(textarea.readOnly).toBe(true);
+    await user.type(textarea, 'x');
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+  });
 });

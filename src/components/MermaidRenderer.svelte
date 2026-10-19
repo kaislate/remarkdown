@@ -1,6 +1,8 @@
 <script lang="ts">
   import { doc } from '../stores/doc';
   import { settings } from '../stores/settings';
+  import { readerMode } from '../stores/reader-mode';
+  import { diagramThemeFor } from '../lib/reader-themes';
   import {
     applyDiagramSizing,
     buildDiagramError,
@@ -70,9 +72,11 @@
   }
 
   $effect(() => {
-    // Re-run whenever the document or the theme changes.
+    // Re-run whenever the document or the theme changes. In reader mode
+    // the reader theme decides: light pages (paper, sepia, e-ink) get
+    // mermaid's light theme, night gets the dark one.
     void $doc;
-    const theme = $settings.theme;
+    const theme = diagramThemeFor($settings.theme, $readerMode, $settings.readerTheme);
     const root = articleEl;
     if (!root) return;
     const ctx: MermaidRenderContext = { theme, fontFamily: resolveDiagramFont(root) };

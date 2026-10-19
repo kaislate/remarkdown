@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ZOOM_LEVELS } from '../stores/ui';
 import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
+import { READER_THEMES } from './reader-themes';
 
 // Schema version is incremented when an incompatible change is made to the
 // shape so a future loader can branch on it. Today the only version is 1.
@@ -33,8 +34,14 @@ export const SettingsSchema = z.object({
   // sidebar either stays open (pinned) or shrinks to initials until hovered.
   tabPosition: z.enum(['top', 'left']),
   tabSidebarPinned: z.boolean(),
+  // "Always open documents in reader mode" (the key predates the rename).
   openInFocusMode: z.boolean(),
+  // Retired: reader mode has no minimap at all now. Kept so settings files
+  // that carry it still load; nothing reads it.
   minimapPopoutInFocusMode: z.boolean(),
+  // Reader mode's page colours (styles/reader-mode.css). 'default' keeps the
+  // app's own colours.
+  readerTheme: z.enum(READER_THEMES),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -89,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tabSidebarPinned: true,
   openInFocusMode: false,
   minimapPopoutInFocusMode: false,
+  readerTheme: 'default',
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,

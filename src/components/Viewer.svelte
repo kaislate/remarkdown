@@ -8,6 +8,7 @@
   import DrawLayer from './DrawLayer.svelte';
   import MermaidRenderer from './MermaidRenderer.svelte';
   import MarginaliaColumn from './MarginaliaColumn.svelte';
+  import { readerMode } from '../stores/reader-mode';
   import { reattachTarget, cancelReattach } from '../stores/reattach';
   import { createAnchor, rangeTouchesDiagram, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
   import { addToast } from '../stores/toasts';
@@ -25,7 +26,10 @@
   import { onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
 
+  // No cross-fade under reduced motion, nor on the E-ink reader theme
+  // (no animation at all there).
   function reducedMotion(): boolean {
+    if (get(readerMode) && get(settings).readerTheme === 'eink') return true;
     return typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   }

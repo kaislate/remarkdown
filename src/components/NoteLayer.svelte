@@ -2,6 +2,7 @@
   import { get } from 'svelte/store';
   import { ulid } from 'ulid';
   import { tool } from '../stores/tool';
+  import { readerMode } from '../stores/reader-mode';
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
   import {
@@ -112,6 +113,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     if (typeof requestAnimationFrame === 'undefined') {
       resizeTick += 1;
       return;
@@ -302,6 +304,11 @@
     if (e.button !== 0) return;
     if (get(tool).mode === 'eraser') return; // Eraser handled by onclick.
     e.stopPropagation();
+    // Reader mode: pins open, but stay where they are.
+    if (get(readerMode)) {
+      openPinId = openPinId === pinId ? null : pinId;
+      return;
+    }
     dragPinId = pinId;
     dragStart = { x: e.clientX, y: e.clientY };
     dragOffset = { x: 0, y: 0 };
@@ -366,7 +373,15 @@
     document.addEventListener('click', onClickViewer);
     return () => document.removeEventListener('click', onClickViewer);
   });
+
+  // Esc closes the open re.mark (in reader mode this comes before Esc
+  // leaving reader mode — see stores/reader-mode.ts).
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && openPinId !== null) openPinId = null;
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="notes-layer" class:eraser={$tool.mode === 'eraser'}>
   {#each pins as p (p.note.id)}
@@ -390,6 +405,7 @@
       <div class="popover-wrap" style="top:{p.popover.top}px; left:{p.popover.left}px">
         <NotePopover
           body={p.note.body}
+          readonly={$readerMode}
           onUpdate={(next) => updateAnnotation(p.note.id, (a) => ({ ...(a as Note), body: next }))}
           onDelete={() => { removeAnnotation(p.note.id); openPinId = null; }}
         />
