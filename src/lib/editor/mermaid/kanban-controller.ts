@@ -12,6 +12,7 @@ import { kanbanElementFor, kanbanTargetAt, type KanbanTarget } from './kanban-sv
 import { parseRich, hasFormatting, richToPlain } from './rich-text';
 import type { DiagramController, DiagramHost, EmptyState } from './controller';
 import { mountUi, type MountedUi } from './ui';
+import { ownEditingHost } from './mindmap-controller';
 import { HIDDEN_BAR, HIDDEN_FORM, type ActionsBarState, type ChoiceOption, type FormAction, type FormPopoverState } from './form';
 
 // Columns by index, cards by (column, position in it) — what the edit
@@ -48,8 +49,10 @@ export class KanbanController implements DiagramController {
 
   constructor(host: DiagramHost) {
     this.host = host;
-    this.form = mountUi(host, MermaidFormPopover, 'mermaid-popover-host mermaid-form-popover-host', HIDDEN_FORM);
-    this.actions = mountUi(host, MermaidActionsBar, 'mermaid-popover-host mermaid-actions-host', HIDDEN_BAR);
+    // See ownEditingHost: the rich fields need their own editing host.
+    const ui = ownEditingHost(host);
+    this.form = mountUi(ui, MermaidFormPopover, 'mermaid-popover-host mermaid-form-popover-host', HIDDEN_FORM);
+    this.actions = mountUi(ui, MermaidActionsBar, 'mermaid-popover-host mermaid-actions-host', HIDDEN_BAR);
   }
 
   load(source: string): boolean {

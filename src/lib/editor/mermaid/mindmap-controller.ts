@@ -30,6 +30,31 @@ const SHAPES: ChoiceOption[] = [
   { value: 'hexagon', label: 'Hexagon', icon: 'hexagon' },
 ];
 
+// The node view's wrapper sits inside ProseMirror's contenteditable, so
+// a UI host inherits editability: a rich-text field in it is then NOT
+// its own editing host — clicking it leaves the focus (and Ctrl+A,
+// and typing) in the document. Hosts made non-editable give the field
+// its own editing context.
+export function ownEditingHost(host: DiagramHost): DiagramHost {
+  return {
+    get dom() {
+      return host.dom;
+    },
+    get renderedEl() {
+      return host.renderedEl;
+    },
+    source: () => host.source(),
+    commit: (source) => host.commit(source),
+    createUiHost: (className) => {
+      const el = host.createUiHost(className);
+      el.contentEditable = 'false';
+      return el;
+    },
+    anchor: (el, placement) => host.anchor(el, placement),
+    setEscapeHandler: (handler) => host.setEscapeHandler(handler),
+  };
+}
+
 export class MindmapController implements DiagramController {
   private host: DiagramHost;
   // Latest successfully-parsed mindmap; null in fallback mode.
@@ -43,8 +68,9 @@ export class MindmapController implements DiagramController {
 
   constructor(host: DiagramHost) {
     this.host = host;
-    this.form = mountUi(host, MermaidFormPopover, 'mermaid-popover-host mermaid-form-popover-host', HIDDEN_FORM);
-    this.actions = mountUi(host, MermaidActionsBar, 'mermaid-popover-host mermaid-actions-host', HIDDEN_BAR);
+    const ui = ownEditingHost(host);
+    this.form = mountUi(ui, MermaidFormPopover, 'mermaid-popover-host mermaid-form-popover-host', HIDDEN_FORM);
+    this.actions = mountUi(ui, MermaidActionsBar, 'mermaid-popover-host mermaid-actions-host', HIDDEN_BAR);
     host.dom.addEventListener('keydown', this.onKey);
   }
 
