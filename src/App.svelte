@@ -50,7 +50,7 @@
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool, setMode } from './stores/tool';
-  import { readerMode, exitReaderMode } from './stores/reader-mode';
+  import { readerMode, installReaderMode } from './stores/reader-mode';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import { editMode, toggleEditMode } from './stores/edit-mode';
@@ -102,14 +102,9 @@
     }
   });
 
-  // Reflect the reader-mode store on body so reader-mode.css can hide
-  // every chrome layer at once. Toggling rather than setting so we
-  // don't fight any pre-existing class set by another path.
-  const unsubReaderMode = readerMode.subscribe((on) => {
-    if (typeof document === 'undefined') return;
-    document.body.classList.toggle('reader-mode', on);
-    syncMinimapPopoutClass();
-  });
+  // Reader mode (body class + reader theme, Esc to leave, read-only
+  // annotation tools) — see stores/reader-mode.ts.
+  const disposeReaderMode = installReaderMode();
 
   // Reflect the edit-mode store on body so edit-mode.css can hide
   // annotation layers and apply edit mode styling.
@@ -118,32 +113,9 @@
     document.body.classList.toggle('edit-mode', on);
   });
 
-  // body.minimap-popout is the combined signal (reader-mode AND the
-  // setting both on). reader-mode.css uses it to keep the minimap
-  // mounted but slid offscreen, with a peek-zone trigger sliding it
-  // back in on hover. Both inputs feed this — re-sync whenever either
-  // changes.
-  function syncMinimapPopoutClass() {
-    if (typeof document === 'undefined') return;
-    const on = get(readerMode) && get(settings).minimapPopoutInFocusMode;
-    document.body.classList.toggle('minimap-popout', on);
-  }
-  const unsubMinimapPopout = settings.subscribe(syncMinimapPopoutClass);
-
-  // ESC exits reader mode. Other ESC handlers (modal close, popover
-  // close, menu close) live in their own components and run on the
-  // same keydown — that's fine; pressing ESC while a modal is open AND
-  // reader mode is on does both, which is what the user expects.
-  function onReaderModeEsc(e: KeyboardEvent) {
-    if (e.key !== 'Escape') return;
-    if (!get(readerMode)) return;
-    exitReaderMode();
-  }
-
-  // ESC cancels an in-progress re-attach operation. Runs on the same
-  // keydown as onReaderModeEsc — both fire simultaneously, which is
-  // intentional: the user can exit reader mode and cancel a re-attach
-  // in one keystroke if both are active.
+  // ESC cancels an in-progress re-attach operation. In reader mode that
+  // Esc only cancels the re-attach — leaving reader mode takes a second
+  // Esc (stores/reader-mode.ts checks for an open layer first).
   function onReattachEsc(e: KeyboardEvent) {
     if (e.key !== 'Escape') return;
     if (!get(reattachTarget)) return;
@@ -157,6 +129,8 @@
   function onTutorialKey(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key !== '?') return;
+    // The tutorial points at chrome reader mode has hidden.
+    if (get(readerMode)) return;
     const target = e.target as HTMLElement | null;
     if (target && (
       target.tagName === 'INPUT' ||
@@ -171,6 +145,8 @@
   function onEditModeKey(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key !== 'e' && e.key !== 'E') return;
+    // Reader mode is for reading; Esc first, then edit.
+    if (get(readerMode)) return;
     // Skip while a text input or contenteditable is focused — typing
     // Cmd+E inside a re.mark popover etc. shouldn't toggle the editor.
     const target = e.target as HTMLElement | null;
@@ -231,6 +207,9 @@
 
   function onToolShortcut(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Annotations are read-only in reader mode (the tool is parked on
+    // cursor — see stores/reader-mode.ts).
+    if (get(readerMode)) return;
     const target = e.target as HTMLElement | null;
     if (target && (
       target.tagName === 'INPUT' ||
@@ -278,7 +257,6 @@
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onToolShortcut);
-    window.addEventListener('keydown', onReaderModeEsc);
     window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
     window.addEventListener('keydown', onEditModeKey);
@@ -362,13 +340,11 @@
     unsubZoom();
     unsubTool();
     unsubTheme();
-    unsubReaderMode();
+    disposeReaderMode();
     unsubEditMode();
-    unsubMinimapPopout();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
       window.removeEventListener('keydown', onToolShortcut);
-      window.removeEventListener('keydown', onReaderModeEsc);
       window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);
       window.removeEventListener('keydown', onEditModeKey);
