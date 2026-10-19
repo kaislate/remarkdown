@@ -3,6 +3,11 @@
 // and check the exact source that comes out.
 import { describe, it, expect } from 'vitest';
 import { action, barButton, click, field, flush, form, makeView, typeBlur, typeEnter } from './mermaid-node-view-harness';
+import { corpusBlocks } from './mermaid-test-utils';
+import { EXTRA_CORPUS } from './mermaid-oracle-utils';
+import { canEditDiagram } from '../../../src/lib/editor/mermaid/controller';
+import { detectDiagramType } from '../../../src/lib/editor/mermaid-detect';
+import '../../../src/lib/editor/mermaid/registry';
 
 const PIE = [
   'pie',
@@ -120,5 +125,19 @@ describe('MermaidNodeView pie', () => {
     click(button);
     await flush();
     expect(text()).toBe('pie\n    "Slice 1" : 10');
+  });
+});
+
+// The extra pie / gantt / timeline corpus (mermaid-corpus-pie-gantt-
+// timeline.md): every block routes to its controller and is editable.
+describe('pie / gantt / timeline corpus editability', () => {
+  const blocks = corpusBlocks(undefined, [EXTRA_CORPUS]);
+  it('every block is visually editable', () => {
+    expect(blocks.length).toBeGreaterThanOrEqual(20);
+    for (const b of blocks) {
+      const type = detectDiagramType(b.source);
+      expect(['pie', 'gantt', 'timeline'], b.heading).toContain(type);
+      expect(canEditDiagram(type, b.source), b.heading).toBe(true);
+    }
   });
 });

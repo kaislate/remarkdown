@@ -716,3 +716,66 @@ body.reattach-mode .reader-mode-toggle {
 .md-rendered a.footnote-backref:hover {
   opacity: 1;
 }
+
+/* ── Pie charts (pie-controller.ts): wedges, legend entries and the
+   title are clickable; the selected slice gets an accent outline. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.slice,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.pieTitleText {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle:hover,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend:hover > rect {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle.mermaid-selected,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend.mermaid-selected > rect {
+  stroke: var(--accent) !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.pieTitleText.mermaid-selected {
+  fill: var(--accent) !important;
+}
+
+/* ── Gantt charts (gantt-controller.ts): bars, their labels, section
+   titles and the title are clickable; the selected bar is outlined. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text[id$="-text"],
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.sectionTitle,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.titleText {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task.mermaid-selected {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.sectionTitle.mermaid-selected,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.titleText.mermaid-selected {
+  fill: var(--accent) !important;
+}
+
+/* ── Timelines (timeline-controller.ts): every box (section header,
+   period, event) and the title are clickable. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] > text {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node.mermaid-selected {
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node.mermaid-selected path {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] > text.mermaid-selected {
+  fill: var(--accent) !important;
+}

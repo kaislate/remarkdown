@@ -73,7 +73,8 @@ export function choose(select: HTMLSelectElement | null | undefined, value: stri
 }
 
 export function field<T extends HTMLElement = HTMLInputElement>(parent: HTMLElement, id: string, selector = 'input, select'): T | null {
-  return form(parent)?.querySelector<T>(`[data-field="${id}"] ${selector}`.trim()) ?? null;
+  const scoped = selector.split(',').map((s) => `[data-field="${id}"] ${s.trim()}`).join(', ');
+  return form(parent)?.querySelector<T>(scoped) ?? null;
 }
 
 export function action(parent: HTMLElement, id: string): Element | null {
