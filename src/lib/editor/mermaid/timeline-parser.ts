@@ -28,7 +28,7 @@
 // its period by a section / title line, a line ending in a bare `:`,
 // events after a section name.
 import { findPreamble, isBlank, type Span } from './source-text';
-import { displayLines, displayText } from './display-text';
+import { displayLines, displayText, maskEntities } from './display-text';
 import type { TitleStatement } from './title-edit';
 
 export interface TimelineSection {
@@ -153,7 +153,10 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
   let blockOpen = false;
 
   for (let i = headerLine + 1; i < lines.length; i++) {
-    const line = lines[i];
+    // Syntax is looked for in line (entity codes masked), text is
+    // sliced from 	ext (the real line).
+    const text = lines[i];
+    const line = maskEntities(text);
     const t = line.trim();
     const indent = line.length - line.trimStart().length;
     if (isBlank(line)) continue;
@@ -180,7 +183,7 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
       const start = indent + 6;
       const lead = line.slice(start).length - line.slice(start).trimStart().length;
       map.titles.push({ line: i, value: { start: start + lead, end: line.trimEnd().length }, cut: null });
-      model.title = displayText(line.slice(start));
+      model.title = displayText(text.slice(start));
       blockOpen = false;
       continue;
     }
@@ -194,7 +197,7 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
       const raw = section[1];
       const start = indent + 8 + (raw.length - raw.trimStart().length);
       map.sections.push({ line: i, name: { start, end: Math.max(start, indent + 8 + raw.trimEnd().length) } });
-      model.sections.push({ name: timelineText(raw) });
+      model.sections.push({ name: timelineText(text.slice(indent + 8, indent + 8 + raw.length)) });
       blockOpen = false;
       continue;
     }
@@ -207,14 +210,14 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
       if (!events) return { ok: false, reason: `unreadable events: ${t}` };
       last.events.push(...events);
       last.lastLine = i;
-      model.periods[model.periods.length - 1].events.push(...events.map((e) => timelineText(line.slice(e.text.start, e.text.end))));
+      model.periods[model.periods.length - 1].events.push(...events.map((e) => timelineText(text.slice(e.text.start, e.text.end))));
       continue;
     }
 
     // A period: text up to `:` / `#` / the end of the line.
     const stop = line.slice(indent).search(/[:#]/);
     const labelEnd = stop < 0 ? line.length : indent + stop;
-    const labelRaw = line.slice(indent, labelEnd);
+    const labelRaw = text.slice(indent, labelEnd);
     let events: TimelineEventSource[] = [];
     if (stop >= 0 && line[labelEnd] === ':') {
       const ev = readEvents(line, i, labelEnd);
@@ -225,7 +228,7 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
     model.periods.push({
       label: timelineText(labelRaw),
       section: model.sections.length ? model.sections.length - 1 : null,
-      events: events.map((e) => timelineText(line.slice(e.text.start, e.text.end))),
+      events: events.map((e) => timelineText(text.slice(e.text.start, e.text.end))),
     });
     blockOpen = true;
   }

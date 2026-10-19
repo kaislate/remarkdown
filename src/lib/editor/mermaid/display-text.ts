@@ -24,6 +24,14 @@ export function collapseSpace(text: string): string {
   return text.replace(COLLAPSIBLE, ' ').trim();
 }
 
+// mermaid replaces every `#name;` code with a placeholder BEFORE its
+// lexer runs, so a `#` or `:` inside a code is never syntax. Parsers
+// look for syntax in the masked line (codes blanked out, same length)
+// and slice text from the real one.
+export function maskEntities(line: string): string {
+  return line.replace(/#\w+;/g, (m) => 'x'.repeat(m.length));
+}
+
 // Raw source text → displayed text.
 export function displayText(raw: string): string {
   return collapseSpace(decodeMermaidEntities(raw));

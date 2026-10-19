@@ -51,6 +51,8 @@ describe('timeline parser', () => {
       { label: '2002', section: 0, events: ['a:b', 'c', 'd'] },
       { label: '2003 %% kept', section: 0, events: ['e # kept'] },
     ]);
+    // Entity codes are replaced before mermaid lexes, so their `#` is no comment.
+    expect(model('timeline\n  2001 #35; x#58; y : a#58; b\n').periods).toEqual([{ label: '2001 # x: y', section: null, events: ['a: b'] }]);
   });
 
   it('skips comments, directives, accessibility statements and blank lines', () => {
