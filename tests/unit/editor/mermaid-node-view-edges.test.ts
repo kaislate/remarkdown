@@ -69,10 +69,11 @@ describe('MermaidNodeView edge identity', () => {
     const popover = parent.querySelector('.mermaid-edge-popover');
     expect(popover).not.toBeNull();
     expect(popover!.hasAttribute('hidden')).toBe(false);
-    const input = popover!.querySelector<HTMLInputElement>(
+    // The label is a rich-text field (contenteditable).
+    const input = popover!.querySelector<HTMLElement>(
       '.mermaid-edge-popover-label',
     );
-    expect(input?.value).toBe('second');
+    expect(input?.textContent).toBe('second');
     // The highlight lands on the clicked path, not its sibling.
     expect(
       parent.querySelector('path.flowchart-link.mermaid-selected')?.getAttribute('data-id'),
@@ -96,8 +97,8 @@ describe('MermaidNodeView edge identity', () => {
     expect(popover).not.toBeNull();
     expect(popover!.hasAttribute('hidden')).toBe(false);
     expect(
-      popover!.querySelector<HTMLInputElement>('.mermaid-edge-popover-label')
-        ?.value,
+      popover!.querySelector<HTMLElement>('.mermaid-edge-popover-label')
+        ?.textContent,
     ).toBe('link');
     view.destroy();
     parent.remove();
@@ -144,8 +145,8 @@ describe('MermaidNodeView edge identity', () => {
     expect(edge).not.toBeNull();
     edge!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush(1);
-    const input = parent.querySelector<HTMLInputElement>('.mermaid-edge-popover .mermaid-edge-popover-label')!;
-    input.value = 'renamed';
+    const input = parent.querySelector<HTMLElement>('.mermaid-edge-popover .mermaid-edge-popover-label')!;
+    input.textContent = 'renamed';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await flush(1);

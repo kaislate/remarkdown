@@ -7,11 +7,30 @@
   import FlowArrow from 'phosphor-svelte/lib/FlowArrow';
   import CaretDown from 'phosphor-svelte/lib/CaretDown';
 
-  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'footnote' | 'mermaid' | 'sequence' | 'image';
+  import MermaidDiagramThumb from './MermaidDiagramThumb.svelte';
+  import type { StarterKind } from '../lib/editor/mermaid-commands';
+
+  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'footnote' | 'mermaid' | 'sequence' | 'diagram' | 'image';
 
   interface Props {
-    onInsert: (action: ToolbarAction) => void;
+    // 'diagram' comes with the kind of diagram to insert.
+    onInsert: (action: ToolbarAction, diagram?: StarterKind) => void;
   }
+
+  // The diagram menu: a picture and a plain name for each kind the
+  // editor can edit (flowchart / sequence keep their original actions).
+  const DIAGRAMS: Array<{ kind: StarterKind; label: string; hint: string; action: string }> = [
+    { kind: 'flowchart', label: 'Flowchart', hint: 'Boxes joined by arrows', action: 'flowchart' },
+    { kind: 'sequence', label: 'Sequence', hint: 'Who sends what to whom, in order', action: 'sequence' },
+    { kind: 'pie', label: 'Pie chart', hint: 'Shares of a whole', action: 'diagram-pie' },
+    { kind: 'timeline', label: 'Timeline', hint: 'Events through time', action: 'diagram-timeline' },
+    { kind: 'gantt', label: 'Gantt chart', hint: 'A schedule of tasks', action: 'diagram-gantt' },
+    { kind: 'state', label: 'States', hint: 'Steps something moves through', action: 'diagram-state' },
+    { kind: 'class', label: 'Classes', hint: 'Things, their parts and how they relate', action: 'diagram-class' },
+    { kind: 'er', label: 'Database (ER)', hint: 'Tables and how they connect', action: 'diagram-er' },
+    { kind: 'mindmap', label: 'Mind map', hint: 'Ideas branching from one centre', action: 'diagram-mindmap' },
+    { kind: 'kanban', label: 'Board (kanban)', hint: 'Cards in columns', action: 'diagram-kanban' },
+  ];
   let { onInsert }: Props = $props();
 
   // After clicking a dropdown option, close the <details> menu so it
@@ -97,33 +116,26 @@
       <span class="label">Diagram</span>
       <CaretDown size={10} weight="bold" />
     </summary>
-    <div class="toolbar-dropdown-menu" role="menu">
-      <button
-        type="button"
-        class="toolbar-dropdown-item"
-        data-action="flowchart"
-        role="menuitem"
-        onmousedown={(e) => e.preventDefault()}
-        onclick={() => {
-          onInsert('mermaid');
-          closeMenu();
-        }}
-      >
-        Flowchart
-      </button>
-      <button
-        type="button"
-        class="toolbar-dropdown-item"
-        data-action="sequence"
-        role="menuitem"
-        onmousedown={(e) => e.preventDefault()}
-        onclick={() => {
-          onInsert('sequence');
-          closeMenu();
-        }}
-      >
-        Sequence
-      </button>
+    <div class="toolbar-dropdown-menu toolbar-diagram-menu" role="menu">
+      {#each DIAGRAMS as d (d.kind)}
+        <button
+          type="button"
+          class="toolbar-dropdown-item toolbar-diagram-tile"
+          data-action={d.action}
+          role="menuitem"
+          title={d.hint}
+          onmousedown={(e) => e.preventDefault()}
+          onclick={() => {
+            if (d.kind === 'flowchart') onInsert('mermaid');
+            else if (d.kind === 'sequence') onInsert('sequence');
+            else onInsert('diagram', d.kind);
+            closeMenu();
+          }}
+        >
+          <MermaidDiagramThumb kind={d.kind} />
+          <span>{d.label}</span>
+        </button>
+      {/each}
     </div>
   </details>
 </div>
@@ -216,6 +228,23 @@
     cursor: pointer;
     font-family: var(--font-sans);
     font-size: 12px;
+  }
+  /* The diagram menu is a grid of pictured tiles. */
+  .toolbar-diagram-menu {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 2px;
+    min-width: 260px;
+  }
+  .toolbar-diagram-tile {
+    gap: 8px;
+  }
+  .toolbar-diagram-tile :global(svg) {
+    flex: none;
+    color: var(--fg-2);
+  }
+  .toolbar-diagram-tile:hover :global(svg) {
+    color: var(--accent);
   }
   .toolbar-dropdown-item:hover {
     background: var(--bg-2);

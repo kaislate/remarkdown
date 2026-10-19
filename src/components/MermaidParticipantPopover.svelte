@@ -1,5 +1,8 @@
 <script lang="ts">
   import Trash from 'phosphor-svelte/lib/Trash';
+  import Square from 'phosphor-svelte/lib/Square';
+  import User from 'phosphor-svelte/lib/User';
+  import BoundingBox from 'phosphor-svelte/lib/BoundingBox';
   import type { Readable } from 'svelte/store';
 
   // Props are sourced from a Svelte store so the NodeView (plain TS,
@@ -12,6 +15,12 @@
     y: number;
     display: string;
     onDisplayChange: (display: string) => void;
+    // Drawn as a box ('participant') or a stick figure ('actor').
+    kind?: 'participant' | 'actor';
+    onKindChange?: (kind: 'participant' | 'actor') => void;
+    // The coloured box (group) it's drawn in, if any.
+    boxLabel?: string | null;
+    onEditBox?: () => void;
     onDelete: () => void;
     onClose: () => void;
   }
@@ -88,6 +97,26 @@
       onkeydown={onKey}
       placeholder="Display name (optional)"
     />
+    {#if current.onKindChange}
+      <div class="mermaid-participant-kind" role="radiogroup" aria-label="Drawn as">
+        <button type="button" class="mermaid-participant-kind-btn" class:active={(current.kind ?? 'participant') === 'participant'}
+          role="radio" aria-checked={(current.kind ?? 'participant') === 'participant'} title="Box" aria-label="Box"
+          onmousedown={(e) => e.preventDefault()} onclick={() => current!.onKindChange!('participant')}>
+          <Square size={14} />
+        </button>
+        <button type="button" class="mermaid-participant-kind-btn" class:active={current.kind === 'actor'}
+          role="radio" aria-checked={current.kind === 'actor'} title="Person" aria-label="Person"
+          onmousedown={(e) => e.preventDefault()} onclick={() => current!.onKindChange!('actor')}>
+          <User size={14} />
+        </button>
+      </div>
+    {/if}
+    {#if current.onEditBox}
+      <button type="button" class="mermaid-participant-kind-btn" title="Edit its group box" aria-label="Edit group box"
+        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onEditBox!()}>
+        <BoundingBox size={14} />
+      </button>
+    {/if}
     <button
       type="button"
       class="mermaid-participant-popover-delete"
@@ -145,4 +174,17 @@
     background: var(--bg-2);
     color: var(--danger, #f0a0a0);
   }
+  .mermaid-participant-kind { display: flex; gap: 1px; }
+  .mermaid-participant-kind-btn {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--fg-1);
+    padding: 4px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .mermaid-participant-kind-btn:hover { background: var(--bg-2); color: var(--fg-0); }
+  .mermaid-participant-kind-btn.active { background: var(--accent-soft); color: var(--accent); }
 </style>

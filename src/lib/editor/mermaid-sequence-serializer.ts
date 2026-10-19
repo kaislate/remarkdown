@@ -1,7 +1,7 @@
-// Emit a SequenceGraph as mermaid sequenceDiagram source.
-// Single source of truth for the round-trip property:
+// Emit a SequenceGraph as mermaid sequenceDiagram source, and the
+// statement pieces mermaid-sequence-edit.ts splices into existing
+// sources. Round-trip property for whole graphs:
 //   parse(serialize(parse(text))) === parse(text)
-// for the supported subset.
 import type {
   SequenceGraph,
   Participant,
@@ -9,15 +9,13 @@ import type {
   NoteEvent,
   MessageStyle,
   NotePosition,
+  BlockKind,
 } from './mermaid-sequence-graph';
-import { encodeSequenceText } from './mermaid-sequence-parser';
+import { encodeSequenceText, MESSAGE_STYLES, BRANCH_KEYWORD } from './mermaid-sequence-parser';
 
-export const MESSAGE_DELIM: Record<MessageStyle, string> = {
-  solid: '->',
-  arrow: '->>',
-  dotted: '-->',
-  reply: '-->>',
-};
+export const MESSAGE_DELIM: Record<Exclude<MessageStyle, 'other'>, string> = Object.fromEntries(
+  MESSAGE_STYLES.map((s) => [s.style, s.delim]),
+) as Record<Exclude<MessageStyle, 'other'>, string>;
 
 const NOTE_PREFIX: Record<NotePosition, string> = {
   leftOf: 'Note left of',
@@ -47,7 +45,7 @@ export function emitParticipantTail(display: string): string {
 }
 
 function emitParticipant(p: Participant): string {
-  return `participant ${p.id}${emitParticipantTail(p.display)}`;
+  return `${p.kind === 'actor' ? 'actor' : 'participant'} ${p.id}${emitParticipantTail(p.display)}`;
 }
 
 // mermaid 11 requires the colon even when there's no text: `A->>B`
@@ -59,8 +57,13 @@ export function emitMessageTail(text: string): string {
   return encoded ? `: ${encoded}` : ':';
 }
 
+export function activationMark(activation: MessageEvent['activation']): string {
+  return activation === 'activate' ? '+' : activation === 'deactivate' ? '-' : '';
+}
+
 function emitMessage(m: MessageEvent): string {
-  return `${m.from}${MESSAGE_DELIM[m.style]}${m.to}${emitMessageTail(m.text)}`;
+  const delim = m.style === 'other' ? MESSAGE_DELIM.arrow : MESSAGE_DELIM[m.style];
+  return `${m.from}${delim}${activationMark(m.activation)}${m.to}${emitMessageTail(m.text)}`;
 }
 
 export function emitNoteHead(position: NotePosition, participants: string[]): string {
@@ -72,8 +75,23 @@ function emitNote(n: NoteEvent): string {
   return `Note ${emitNoteHead(n.position, n.participants)}: ${encode(n.text)}`;
 }
 
+// A block's opening line (`loop Every minute`, `rect rgb(…)`). A rect's
+// label is its colour and is written as given.
+export function emitBlockStart(kind: BlockKind, label: string): string {
+  const text = kind === 'rect' ? label : encode(label);
+  return text ? `${kind} ${text}` : kind;
+}
+
+export function emitBranch(kind: BlockKind, label: string): string {
+  const kw = BRANCH_KEYWORD[kind] ?? 'else';
+  const text = encode(label);
+  return text ? `${kw} ${text}` : kw;
+}
+
 export function serializeSequence(graph: SequenceGraph): string {
   const lines: string[] = ['sequenceDiagram'];
+  if (graph.title) lines.push(`title ${encode(graph.title)}`);
+  if (graph.autonumber) lines.push('autonumber');
   for (const p of graph.participants.values()) {
     lines.push(emitParticipant(p));
   }

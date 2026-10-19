@@ -53,7 +53,7 @@ beforeEach(() => {
 
 describe('MermaidNodeView: diagrams that can\'t be edited visually', () => {
   it('says editing is coming soon and that the diagram is kept as is — never "markdown" or "source"', async () => {
-    const { view, parent } = makeView('```mermaid\nclassDiagram\nclass Animal\n```\n');
+    const { view, parent } = makeView('```mermaid\ngitGraph\n  commit\n```\n');
     await flush();
     const el = note(parent);
     expect(el).not.toBeNull();

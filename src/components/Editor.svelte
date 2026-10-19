@@ -4,7 +4,8 @@
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
   import { TextSelection } from 'prosemirror-state';
-  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram } from '../lib/editor/view';
+  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram, insertDiagram } from '../lib/editor/view';
+  import type { StarterKind } from '../lib/editor/mermaid-commands';
   import { insertFootnote } from '../lib/editor/footnote-commands';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
@@ -159,7 +160,7 @@
     v.dispatch(tr);
   }
 
-  function onToolbarInsert(action: string) {
+  function onToolbarInsert(action: string, diagram?: StarterKind) {
     const v = view;
     if (!v) return;
     // Focus first so the editor is the active element when the command
@@ -182,6 +183,8 @@
       insertMermaid()(v.state, v.dispatch);
     } else if (action === 'sequence') {
       insertSequenceDiagram()(v.state, v.dispatch);
+    } else if (action === 'diagram' && diagram) {
+      insertDiagram(diagram)(v.state, v.dispatch);
     }
     v.focus();
   }
