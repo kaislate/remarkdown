@@ -101,8 +101,8 @@ describe('MermaidNodeView', () => {
     await new Promise((r) => setTimeout(r, 0));
     const popover = parent.querySelector('.mermaid-popover');
     if (popover) {
-      const input = popover.querySelector<HTMLInputElement>('.mermaid-popover-label');
-      expect(input?.value).toBe('Start');
+      const input = popover.querySelector<HTMLElement>('.mermaid-popover-label');
+      expect(input?.textContent).toBe('Start');
     }
     view.destroy();
     parent.remove();
