@@ -17,3 +17,7 @@ registerController('sequence', (host) => new SequenceController(host), (src) => 
 registerController('pie', (host) => new PieController(host), (src) => parsePie(src).ok);
 registerController('timeline', (host) => new TimelineController(host), (src) => parseTimeline(src).ok);
 registerController('gantt', (host) => new GanttController(host), (src) => parseGantt(src).ok);
+import { StateController } from './state-controller';
+import { parseState } from './state-parser';
+
+registerController('state', (host) => new StateController(host), (src) => parseState(src).ok);

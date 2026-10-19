@@ -799,3 +799,22 @@ body.reattach-mode .reader-mode-toggle {
 .mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] > text.mermaid-selected {
   fill: var(--accent) !important;
 }
+/* ── State diagrams in edit mode (mermaid/state-controller.ts) ────────
+   States, notes and start / end circles are g.node (rules above). Groups
+   are g.statediagram-cluster (not g.cluster), transitions
+   path.transition with a clickable label. Everything scoped to
+   svg.statediagram so other diagram types are unaffected. */
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster,
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.note-cluster,
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.edgeLabel {
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster:hover rect.outer {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.35));
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster.mermaid-selected rect.outer {
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition {
+  transition: stroke 0.12s ease, filter 0.12s ease;
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition:hover {
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition.mermaid-selected {
+/* Connect mode: groups invite a click too. */
+.mermaid-block-editor.mermaid-connect-mode .mermaid-rendered svg.statediagram g.statediagram-cluster rect.outer {
+  animation: mermaidConnectPulse 1.4s ease-in-out infinite;
+/* ── end state diagrams ─────────────────────────────────────────────── */
