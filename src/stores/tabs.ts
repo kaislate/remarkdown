@@ -171,3 +171,26 @@ export async function cycleSession(delta: 1 | -1): Promise<void> {
   const i = list.indexOf(get(activeSession));
   await activateSession(list[(i + delta + list.length) % list.length].id);
 }
+
+// Bulk closes from the tab context menu. The tab the user right-clicked
+// becomes (or stays) the visible one first, so closing the rest never
+// flashes a neighbour that is about to go too.
+async function closeAllBut(keep: DocSession, closing: DocSession[]): Promise<void> {
+  if (closing.includes(get(activeSession))) await activateSession(keep.id);
+  for (const s of closing) await closeSession(s.id);
+}
+
+export async function closeOtherSessions(id: string): Promise<void> {
+  const list = get(sessions);
+  const keep = list.find((s) => s.id === id);
+  if (!keep) return;
+  await closeAllBut(keep, list.filter((s) => s !== keep));
+}
+
+// "Close tabs to the right" (or "below", with tabs on the left).
+export async function closeSessionsAfter(id: string): Promise<void> {
+  const list = get(sessions);
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return;
+  await closeAllBut(list[i], list.slice(i + 1));
+}

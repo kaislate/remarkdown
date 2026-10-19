@@ -53,6 +53,10 @@
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-fill: rgba(255, 255, 255, 0.04);
 
+  /* Solid window chrome (the title band and tab sidebar while tabs are
+     shown) — a step above the page so the active tab reads as part of it. */
+  --chrome: #15131f;
+
   /* Problem accents (e.g. a diagram that couldn't be drawn). */
   --danger: #ff7a7a;
 }
@@ -79,6 +83,8 @@
 
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-fill: rgba(0, 0, 0, 0.03);
+
+  --chrome: #ebe6db;
 
   /* Darker red: #ff7a7a on warm paper is ~2:1 contrast; this is >5:1. */
   --danger: #b42318;

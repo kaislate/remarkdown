@@ -320,7 +320,9 @@
        added via padding/margin trick — actually via margin-left so
        the cards measure inside this 280px width. */
     left: 100%;
-    margin-left: 32px;
+    /* The article's text runs 48px past the frame (its side padding), so
+       48 + the 32px gap keeps the cards clear of the text. */
+    margin-left: 80px;
     bottom: 0;
     width: 280px;
     /* No display:none gate — clipping handles overflow at narrow

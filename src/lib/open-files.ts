@@ -10,6 +10,7 @@
 
 import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
+import type { OpenMode } from './settings-schema';
 import { activeSession, createSession, type DocSession } from '../stores/sessions';
 import { loadIntoSession } from '../stores/doc';
 import { activateSession, addSession, findSessionByPath } from '../stores/tabs';
@@ -33,12 +34,18 @@ export function runOpenExclusive<T>(fn: () => Promise<T>): Promise<T> {
 
 // Returns how many of `paths` ended up open (including ones that were
 // already open). Failures have already been reported with a toast.
-export function openPaths(paths: string[]): Promise<number> {
-  return runOpenExclusive(() => openPathsNow(paths));
+export interface OpenOptions {
+  // Overrides the "When opening a file" setting for this open — e.g. the
+  // recents context menu's "Open in new window", or middle-click → new tab.
+  mode?: OpenMode;
 }
 
-async function openPathsNow(paths: string[]): Promise<number> {
-  const mode = get(settings).openMode;
+export function openPaths(paths: string[], opts: OpenOptions = {}): Promise<number> {
+  return runOpenExclusive(() => openPathsNow(paths, opts));
+}
+
+async function openPathsNow(paths: string[], opts: OpenOptions): Promise<number> {
+  const mode = opts.mode ?? get(settings).openMode;
   let opened = 0;
   let toActivate: DocSession | null = null;
   let lastAdded: DocSession | null = null;

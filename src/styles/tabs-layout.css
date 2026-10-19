@@ -1,0 +1,38 @@
+/* Room for the tabs. TabBar.svelte sets these body classes while tabs are
+   shown:
+     has-tab-band        — the solid title band is up (top or left tabs)
+     tabs-left           — tabs live in the sidebar on the left
+     tab-sidebar-pinned  — that sidebar is pinned open
+   The page (Viewer's .scroll) starts below the band and right of the
+   sidebar, so its scroll box is exactly the visible part of the page (the
+   minimap's viewport box relies on that). */
+
+:root {
+  --tab-band-h: 0px;
+  --tab-side-w: 0px;
+}
+/* Reader mode hides every bit of chrome, the band and sidebar included,
+   and the page gets the whole window back. */
+body.has-tab-band:not(.reader-mode) {
+  --tab-band-h: 40px;
+}
+body.has-tab-band.tabs-left:not(.reader-mode) {
+  --tab-side-w: 52px;
+}
+body.has-tab-band.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
+  --tab-side-w: 200px;
+}
+
+/* The floating buttons down the left edge (and the watermark) move over
+   with the sidebar. `translate` composes with their own transforms. */
+body .edit-mode-toggle,
+body .toc-button,
+body .toc-popover,
+body .reader-mode-toggle,
+body .zoom-rail,
+body .notes-pill-wrap,
+body .notes-popup-wrap,
+body div.dismiss,
+body .left-title {
+  translate: var(--tab-side-w) 0;
+}

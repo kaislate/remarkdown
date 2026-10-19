@@ -3,7 +3,7 @@
   import { settings, updateSettings, resetSettings } from '../stores/settings';
   import { ZOOM_LEVELS } from '../stores/ui';
   import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
-  import type { OpenMode } from '../lib/settings-schema';
+  import type { OpenMode, TabPosition } from '../lib/settings-schema';
   import { defaultAppStatus, makeDefaultApp, type DefaultAppStatus } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
 
@@ -205,6 +205,17 @@
                 checked={$settings.reopenTabsOnLaunch}
                 onchange={(e) => updateSettings({ reopenTabsOnLaunch: (e.currentTarget as HTMLInputElement).checked })}
               />
+            </div>
+            <div class="row">
+              <label for="setting-tab-position">Tab position</label>
+              <select
+                id="setting-tab-position"
+                value={$settings.tabPosition}
+                onchange={(e) => updateSettings({ tabPosition: (e.currentTarget as HTMLSelectElement).value as TabPosition })}
+              >
+                <option value="top">Along the top</option>
+                <option value="left">On the left</option>
+              </select>
             </div>
           {:else}
             <div class="row">

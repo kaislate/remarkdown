@@ -63,11 +63,15 @@
     }
   }
 
-  // Close popover when clicking outside.
+  // Close popover when clicking outside. Checked against the event's path,
+  // not target.closest(): opening redraws the button's icon (regular ->
+  // fill), so by the time the click bubbles here the clicked <path> has
+  // left the document and would read as an outside click.
   function onDocumentClick(e: MouseEvent) {
     if (!open) return;
-    const t = e.target as HTMLElement | null;
-    if (t?.closest('.toc-popover') || t?.closest('.toc-button')) return;
+    const inside = e.composedPath().some((n) =>
+      n instanceof Element && (n.classList.contains('toc-popover') || n.classList.contains('toc-button')));
+    if (inside) return;
     open = false;
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeMinimapLayout, minimapClickToScrollTop } from '../../src/lib/minimap-math';
+import { computeMinimapLayout, minimapClickToScrollTop, indicatorRange } from '../../src/lib/minimap-math';
 
 describe('computeMinimapLayout', () => {
   it('uniform scale when content fits within minimap height', () => {
@@ -103,5 +103,43 @@ describe('minimapClickToScrollTop', () => {
     const scrollTop = minimapClickToScrollTop(200, -300, scale, 600, 20000);
     // posInContent = 500 * (720/100) = 3600; newScroll = 3600 - 300 = 3300
     expect(scrollTop).toBeCloseTo(3300, 0);
+  });
+});
+
+describe('viewport box accuracy', () => {
+  // The box, mapped back through the clone's scale and shift, must cover
+  // exactly the scroll container's visible range — for every scroll
+  // position, with the article starting below the top of the scroll
+  // content, and whether or not the scaled article fits in the map.
+  const cases = [
+    { name: 'short article, flush', scrollHeight: 2000, clientHeight: 700, articleTop: 0, articleHeight: 2000 },
+    { name: 'tall article, flush', scrollHeight: 12000, clientHeight: 740, articleTop: 0, articleHeight: 12000 },
+    { name: 'tall article, offset', scrollHeight: 12040, clientHeight: 700, articleTop: 40, articleHeight: 11900 },
+    { name: 'article shorter than the scroll content', scrollHeight: 3000, clientHeight: 740, articleTop: 0, articleHeight: 2600 },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      const max = c.scrollHeight - c.clientHeight;
+      for (const f of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
+        const scrollTop = max * f;
+        const l = computeMinimapLayout(scrollTop, c.scrollHeight, c.clientHeight, 816, 122, 600, c.articleTop, c.articleHeight);
+        const [top, bottom] = indicatorRange(l, c.articleTop);
+        expect(top).toBeCloseTo(scrollTop, 6);
+        expect(bottom).toBeCloseTo(scrollTop + c.clientHeight, 6);
+      }
+    });
+  }
+
+  it('the article clone is shifted by the scroll position only as far as the map needs', () => {
+    const l = computeMinimapLayout(11340, 12040, 700, 816, 122, 600, 40, 11900);
+    // At the very bottom the clone's bottom edge meets the map's.
+    expect(11900 * l.scale + l.translateY).toBeCloseTo(600, 6);
+  });
+
+  it('clicking centres the page on the clicked spot of an offset article', () => {
+    const l = computeMinimapLayout(0, 12040, 700, 816, 122, 600, 40, 11900);
+    const y = 300; // map px
+    const target = minimapClickToScrollTop(y, l.translateY, l.scale, 700, 12040, 40);
+    expect(target).toBeCloseTo(40 + (y - l.translateY) / l.scale - 350, 6);
   });
 });

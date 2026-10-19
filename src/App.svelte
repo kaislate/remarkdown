@@ -8,6 +8,7 @@
   import './styles/scrollbars.css';
   import './styles/reader-mode.css';
   import './styles/edit-mode.css';
+  import './styles/tabs-layout.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';

@@ -11,6 +11,9 @@
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
+  import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
+  import { showInFolder, copyPath } from '../lib/file-actions';
+  import type { OpenMode } from '../lib/settings-schema';
 
   let open = $state(false);
 
@@ -69,18 +72,38 @@
     return p.split(/[\\/]/).pop() ?? p;
   }
 
-  async function openRecent(path: string) {
+  // `mode` overrides the open-mode setting (context menu, middle-click).
+  async function openRecent(path: string, mode?: OpenMode) {
     open = false;
     if (get(recentExistence)[path] === false) {
       addToast({ kind: 'warning', message: `File not found: ${basename(path)}` });
       return;
     }
     try {
-      await openPaths([path]);
+      await (mode ? openPaths([path], { mode }) : openPaths([path]));
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
     }
+  }
+
+  // Right-click on a recent file.
+  let recentMenu = $state<{ path: string; x: number; y: number } | null>(null);
+
+  function recentMenuItems(path: string): ContextMenuEntry[] {
+    const missing = get(recentExistence)[path] === false;
+    return [
+      { label: 'Open in new tab', hint: 'Middle-click', disabled: missing, onSelect: () => void openRecent(path, 'tabs') },
+      { label: 'Open in new window', disabled: missing, onSelect: () => void openRecent(path, 'windows') },
+      { label: 'Open here', disabled: missing, onSelect: () => void openRecent(path, 'replace') },
+      'separator',
+      { label: 'Show in folder', onSelect: () => void showInFolder(path) },
+      { label: 'Copy path', onSelect: () => void copyPath(path) },
+      'separator',
+      { label: 'Remove from list', danger: true, onSelect: () => void removeFromRecent(path).catch((err) => {
+        addToast({ kind: 'error', message: `Could not remove from recents: ${(err as Error).message}` });
+      }) },
+    ];
   }
 
   async function removeRecentItem(path: string, e: MouseEvent) {
@@ -197,6 +220,16 @@
               if ((e.target as HTMLElement).closest?.('.recent-remove')) return;
               openRecent(path);
             }}
+            onauxclick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              void openRecent(path, 'tabs');
+            }}
+            onmousedown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              recentMenu = { path, x: e.clientX, y: e.clientY };
+            }}
           >
             <span class="recent-name">
               {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
@@ -227,6 +260,16 @@
     </div>
   {/if}
 </div>
+
+{#if recentMenu}
+  <ContextMenu
+    x={recentMenu.x}
+    y={recentMenu.y}
+    label={`${basename(recentMenu.path)} actions`}
+    items={recentMenuItems(recentMenu.path)}
+    onclose={() => (recentMenu = null)}
+  />
+{/if}
 
 <style>
   .menu-root {
@@ -441,6 +484,38 @@
     height: 1.5px;
     background: var(--fg-1);
     border-radius: 1px;
+  }
+
+  /* Inside the solid title band (tabs shown, see TabBar): a smaller,
+     flat button and wordmark centred in the 40px band, the pre-release
+     tag in line after the wordmark instead of hanging below it. The
+     popover still lands at (60, 60). */
+  :global(body.has-tab-band) .menu-root {
+    top: 5px;
+    left: 10px;
+    gap: 10px;
+  }
+  :global(body.has-tab-band) .hamburger {
+    width: 30px;
+    height: 30px;
+    gap: 4px;
+    border-radius: 8px;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  :global(body.has-tab-band) .bar {
+    width: 13px;
+  }
+  :global(body.has-tab-band) .wordmark {
+    font-size: 15px;
+  }
+  :global(body.has-tab-band) .pre-tag {
+    position: static;
+  }
+  :global(body.has-tab-band) .popover {
+    top: 55px;
+    left: 50px;
   }
   .popover {
     position: absolute;

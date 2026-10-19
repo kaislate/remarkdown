@@ -8,6 +8,10 @@ const close = vi.fn();
 const startDragging = vi.fn();
 const startResizeDragging = vi.fn();
 const setSize = vi.fn();
+let maximized = false;
+let resizedCb: (() => void) | null = null;
+const isMaximized = vi.fn(async () => maximized);
+const onResized = vi.fn(async (cb: () => void) => { resizedCb = cb; return () => { resizedCb = null; }; });
 
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
@@ -17,6 +21,8 @@ vi.mock('@tauri-apps/api/window', () => ({
     startDragging,
     startResizeDragging,
     setSize,
+    isMaximized,
+    onResized,
   }),
   LogicalSize: class {
     constructor(public width: number, public height: number) {}
@@ -32,6 +38,8 @@ beforeEach(() => {
   startDragging.mockReset();
   startResizeDragging.mockReset();
   setSize.mockReset();
+  maximized = false;
+  resizedCb = null;
 });
 
 describe('TitleBar', () => {
@@ -165,5 +173,33 @@ describe('TitleBar', () => {
     render(TitleBar);
     await user.click(screen.getByRole('button', { name: /close/i }));
     expect(close).toHaveBeenCalled();
+  });
+
+  it('window icons are drawn as centred SVGs, not text glyphs', () => {
+    render(TitleBar);
+    for (const name of [/minimize/i, /maximize/i, /close/i]) {
+      const btn = screen.getByRole('button', { name });
+      expect(btn.querySelector('svg')).not.toBeNull();
+      expect(btn.textContent?.trim()).toBe('');
+    }
+  });
+
+  it('shows Restore with the two-squares icon while maximized', async () => {
+    maximized = true;
+    render(TitleBar);
+    expect(await screen.findByRole('button', { name: /restore/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^maximize$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /restore/i }).querySelector('[data-icon="restore"]')).not.toBeNull();
+  });
+
+  it('switches between Maximize and Restore when the window is resized', async () => {
+    render(TitleBar);
+    expect(await screen.findByRole('button', { name: /^maximize$/i })).toBeInTheDocument();
+    maximized = true;
+    resizedCb?.();
+    expect(await screen.findByRole('button', { name: /restore/i })).toBeInTheDocument();
+    maximized = false;
+    resizedCb?.();
+    expect(await screen.findByRole('button', { name: /^maximize$/i })).toBeInTheDocument();
   });
 });

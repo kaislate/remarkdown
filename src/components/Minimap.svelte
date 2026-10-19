@@ -8,15 +8,20 @@
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
   import { prefixIds } from '../lib/prefix-ids';
 
-  // Must match Viewer.svelte's .text-frame max-width + .viewer padding.
-  // The clone is rendered at VIEWER_OUTER_WIDTH (content + horizontal padding)
-  // so its total box matches the article's, making the indicator math exact.
+  // Must match Viewer.svelte's .viewer padding. The clone is rendered at the
+  // article's measured width (its width follows the article-width setting
+  // and the room the window leaves), so the clone wraps every line exactly
+  // where the article does and the indicator math is exact.
   const VIEWER_CONTENT_WIDTH = 720;
   const VIEWER_PADDING_H = 48;
   const VIEWER_PADDING_T = 96;
   const VIEWER_PADDING_B = 160;
   const VIEWER_OUTER_WIDTH = VIEWER_CONTENT_WIDTH + 2 * VIEWER_PADDING_H;
   const MINIMAP_WIDTH = 140;
+
+  // The live article being mirrored, and its border-box width.
+  let articleEl: HTMLElement | null = null;
+  let cloneWidth = $state(VIEWER_OUTER_WIDTH);
 
   let minimapEl = $state<HTMLElement | null>(null);
 
@@ -26,6 +31,7 @@
   let indicatorHeight = $state(20);
 
   let dragging = $state(false);
+  let lastArticleTop = 0;
 
   // We mirror the live article DOM (post mermaid + any other JS-driven
   // transforms) rather than re-rendering $doc.html. That way the minimap
@@ -43,13 +49,31 @@
     const innerWidth = map.clientWidth - 16; // 8px padding each side
     const innerHeight = map.clientHeight - 16;
 
+    // Where the article sits in the scroll content. The scroll container is
+    // exactly the visible page (it starts below the title band / right of
+    // the tab sidebar), so the box is [scrollTop, scrollTop + clientHeight]
+    // in these coordinates. In edit mode the article is hidden (no layout):
+    // fall back to treating the whole scroll content as the page.
+    let articleTop = 0;
+    let articleHeight = scroll.scrollHeight;
+    let width = VIEWER_OUTER_WIDTH;
+    if (articleEl && articleEl.offsetWidth > 0) {
+      articleTop = articleEl.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+      articleHeight = articleEl.offsetHeight;
+      width = articleEl.offsetWidth;
+    }
+    cloneWidth = width;
+    lastArticleTop = articleTop;
+
     const layout = computeMinimapLayout(
       scroll.scrollTop,
       scroll.scrollHeight,
       scroll.clientHeight,
-      VIEWER_OUTER_WIDTH,
+      width,
       innerWidth,
       innerHeight,
+      articleTop,
+      articleHeight,
     );
     scale = layout.scale;
     translateY = layout.translateY;
@@ -70,6 +94,7 @@
       scale,
       scroll.clientHeight,
       scroll.scrollHeight,
+      lastArticleTop,
     );
   }
 
@@ -100,17 +125,16 @@
 
   onMount(() => {
     let currentScrollEl: HTMLElement | null = null;
-    let currentArticleEl: HTMLElement | null = null;
     let mutationObserver: MutationObserver | null = null;
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
     function snapshotArticle(): void {
-      if (!currentArticleEl) return;
+      if (!articleEl) return;
       // Mirror a clone whose ids are prefixed (references rewritten to
       // match) — the clone shares the document with the article, and
       // each diagram svg alone carries dozens of ids its own markers,
       // gradients and inline styles point at. See prefix-ids.ts.
-      const clone = currentArticleEl.cloneNode(true) as HTMLElement;
+      const clone = articleEl.cloneNode(true) as HTMLElement;
       prefixIds(clone, 'minimap-');
       mirroredHtml = clone.innerHTML;
       // Recompute the indicator after the new HTML lays out in the clone.
@@ -124,10 +148,21 @@
       snapshotTimer = setTimeout(snapshotArticle, 120);
     }
 
+    // Layout changes that move or resize the page without a scroll event:
+    // the title band / tab sidebar appearing, zoom, window size, images or
+    // diagrams settling.
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => updateLayout());
+
     const unsubScroll = viewerScroll.subscribe((el) => {
-      if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
+      if (currentScrollEl) {
+        currentScrollEl.removeEventListener('scroll', updateLayout);
+        resizeObserver?.unobserve(currentScrollEl);
+      }
       currentScrollEl = el;
       if (el) {
+        resizeObserver?.observe(el);
         el.addEventListener('scroll', updateLayout, { passive: true });
         updateLayout();
         requestAnimationFrame(updateLayout);
@@ -139,7 +174,9 @@
         mutationObserver.disconnect();
         mutationObserver = null;
       }
-      currentArticleEl = el;
+      if (articleEl) resizeObserver?.unobserve(articleEl);
+      articleEl = el;
+      if (el) resizeObserver?.observe(el);
       if (!el) {
         mirroredHtml = '';
         return;
@@ -181,6 +218,7 @@
       if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
       window.removeEventListener('resize', updateLayout);
       if (mutationObserver) mutationObserver.disconnect();
+      resizeObserver?.disconnect();
       if (snapshotTimer) clearTimeout(snapshotTimer);
       unsubDoc();
       unsubShown();
@@ -215,7 +253,7 @@
     <div class="minimap-inner">
       <div
         class="minimap-content md-rendered"
-        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: content-box;"
+        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {cloneWidth}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: border-box;"
       >
         {@html mirroredHtml}
       </div>
@@ -301,6 +339,9 @@
     position: absolute;
     left: 0;
     right: 0;
+    /* Borders inside the box, so its outer edges are exactly the visible
+       range (content-box made it 2px too tall). */
+    box-sizing: border-box;
     background: rgba(139, 127, 255, 0.18);
     border-top: 1px solid rgba(139, 127, 255, 0.36);
     border-bottom: 1px solid rgba(139, 127, 255, 0.36);
