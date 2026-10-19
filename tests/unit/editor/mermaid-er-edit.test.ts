@@ -299,10 +299,38 @@ describe('ER edits: corpus property', () => {
   });
 
   for (const block of blocks) {
-    it(`${block.heading}: every visual edit is exact, minimal and valid`, async () => {
+    it(`${block.heading}: every visual edit is exact, minimal and valid`, () => checkAllOps(block.source), 120_000);
+  }
+});
+
+// Valid but unusual ways of writing things.
+const ODD = [
+  'erDiagram\n',
+  'erDiagram\n  A ||--o{ B : x C ||--|| D : y\n',
+  'erDiagram\n  A { int a string b }\n',
+  'erDiagram\n  A:::c ||--o{ B:::d : x\n',
+  'erDiagram\n  A["al"]:::c\n  B[b]:::d {\n    int x\n  }\n',
+  'erDiagram\n  A u--o{ B : x\n  C 1 to 1 D : y\n',
+  'erDiagram\n  A {}\n  B\n',
+  'erDiagram\r\n  A ||--o{ B : x\r\n  A {\r\n    int id\r\n  }\r\n  %% c\r\n',
+];
+
+describe('ER edits: property on unusual sources', () => {
+  for (const src of ODD) {
+    it(JSON.stringify(src), async () => {
+      expect(await mermaidAccepts(src)).toBe(true);
+      await checkAllOps(src);
+    }, 120_000);
+  }
+});
+
+async function checkAllOps(source: string): Promise<void> {
+  {
+    {
+      const block = { source };
       const parsed = parseErSource(block.source);
       if (!parsed.ok) throw new Error(parsed.reason);
-      const lines = block.source.split('\n');
+      const lines = block.source.split(/\r?\n/);
       for (const op of opsFor(parsed.model, parsed.map)) {
         const res = applyErEdit(block.source, op.edit);
         expect(res, op.name).not.toBeNull();
@@ -319,6 +347,6 @@ describe('ER edits: corpus property', () => {
         }
         expect(await mermaidAccepts(out), `${op.name}:\n${out}`).toBe(true);
       }
-    }, 120_000);
+    }
   }
-});
+}

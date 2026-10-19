@@ -213,6 +213,9 @@ export interface ClassSourceMap {
   namespaces: NamespaceSource[];
   // Statement where each class came into being.
   created: Map<string, number>;
+  // The generic part (`T` of `Shape~T~`) each class got there, as
+  // written.
+  generics: Map<string, string>;
   // `direction XX` statements: the two-letter direction word.
   directions: Span[];
 }
@@ -504,6 +507,7 @@ class ClassParser {
       notes: [],
       namespaces: [],
       created: new Map(),
+      generics: new Map(),
       directions: [],
     };
   }
@@ -578,6 +582,7 @@ class ClassParser {
       };
       this.classes.set(name.id, c);
       this.map.created.set(name.id, stmt);
+      if (name.generic) this.map.generics.set(name.id, decodePlaceholders(name.generic));
       this.map.members.set(name.id, []);
       this.map.annotations.set(name.id, []);
     }

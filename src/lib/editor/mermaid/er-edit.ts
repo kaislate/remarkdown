@@ -33,7 +33,7 @@ import {
   type ErSourceMap,
 } from './er-parser';
 import { parseGenericTypes } from './class-parser';
-import { encodeChars, encodeText, flatten } from './entity-text';
+import { breakDirection, encodeChars, encodeText, flatten } from './entity-text';
 import { Splicer } from './splice';
 import { DEFAULT_INDENT, indentOf, joinLines, nextFreeId, splitLines } from './source-text';
 
@@ -190,7 +190,9 @@ function uniqueKeys(keys: ErKey[]): ErKey[] {
 // Comments are shown through mermaid's generics pass too, so `~` is
 // encoded with the rest.
 function emitComment(comment: string): string {
-  return `"${encodeChars(flatten(comment))}"`;
+  // An inline block (`A { int a "…" }`) shares its line with
+  // statement-level text, where `direction XX` swallows the line.
+  return `"${breakDirection(encodeChars(flatten(comment)), 'i')}"`;
 }
 
 function emitAttribute(a: ErAttributeInput, raw?: { type: string; name: string; keys: string | null; comment: string | null; was: ErAttribute }): string {

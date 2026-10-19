@@ -698,7 +698,7 @@ function removeMember(map: ClassSourceMap, sp: Splicer, id: string, index: numbe
     return;
   }
   const stmt = map.statements[src.stmt];
-  if (map.created.get(id) === src.stmt) sp.replace(stmt.span, `class ${emitClassRef(id)}`);
+  if (map.created.get(id) === src.stmt) sp.replace(stmt.span, keepAlive(map, id));
   else sp.remove(stmt.span);
 }
 
@@ -834,6 +834,13 @@ function setAnnotation(model: ClassModel, map: ClassSourceMap, sp: Splicer, id: 
   return true;
 }
 
+// `class X` standing in for the statement that created X — generic
+// part included, which only the creating statement can give.
+function keepAlive(map: ClassSourceMap, id: string): string {
+  const g = map.generics.get(id);
+  return `class ${emitClassRef(id)}${g ? `~${g}~` : ''}`;
+}
+
 // Remove statement `stmt` (a relation or an `X : m` line). Classes it
 // created that must survive (not in `dying`) get a `class X` line in
 // its place, so they — and the class order — stay.
@@ -845,7 +852,7 @@ function removeCreating(model: ClassModel, map: ClassSourceMap, sp: Splicer, stm
     return;
   }
   const indent = indentAtOff(map.text, st.span.start);
-  sp.replace(st.span, keep.map((id) => `class ${emitClassRef(id)}`).join(`\n${indent}`));
+  sp.replace(st.span, keep.map((id) => keepAlive(map, id)).join(`\n${indent}`));
 }
 
 // Remove statements; a namespace left with no statements goes too.

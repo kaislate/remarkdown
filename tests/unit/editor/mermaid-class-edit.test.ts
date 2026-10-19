@@ -521,16 +521,13 @@ describe('class edits: namespace moves over the corpus', () => {
   }
 });
 
-describe('class edits: corpus property', () => {
-  it('finds class diagrams in the corpus', () => {
-    expect(blocks.length).toBeGreaterThanOrEqual(15);
-  });
-
-  for (const block of blocks) {
-    it(`${block.heading}: every visual edit is exact, minimal and valid`, async () => {
+// Every op × item on `source`: (a) exact model change, (b) only the
+// touched lines change, (c) mermaid accepts the result.
+async function checkAllOps(source: string): Promise<void> {
+      const block = { source };
       const parsed = parseClassSource(block.source);
       if (!parsed.ok) throw new Error(parsed.reason);
-      const lines = block.source.split('\n');
+      const lines = block.source.split(/\r?\n/);
       for (const op of opsFor(parsed.model, parsed.map)) {
         const res = applyClassEdit(block.source, op.edit);
         // Deleting the only class of a diagram is refused.
@@ -555,6 +552,40 @@ describe('class edits: corpus property', () => {
         // (c) mermaid accepts it.
         expect(await mermaidAccepts(out), `${op.name}:\n${out}`).toBe(true);
       }
+}
+
+describe('class edits: corpus property', () => {
+  it('finds class diagrams in the corpus', () => {
+    expect(blocks.length).toBeGreaterThanOrEqual(15);
+  });
+
+  for (const block of blocks) {
+    it(`${block.heading}: every visual edit is exact, minimal and valid`, () => checkAllOps(block.source), 120_000);
+  }
+});
+
+// Valid but unusual ways of writing things.
+const ODD = [
+  'classDiagram\nclass A\nclass B\n',
+  'classDiagram\n  A-->B\n  C<|--D:label\n',
+  'classDiagram\n  A "1"-->"2" B\n',
+  'classDiagram\n  class A { +x }\n  class B{\n  +y\n  }\n',
+  'classDiagram\n  namespace N { class X }\n  class Y\n',
+  'classDiagram\n  class X <<interface>> {\n    +a\n  }\n  class Z <<service>>\n',
+  'classDiagram\n  class `A B`["c"]\n  `A B` --> C\n',
+  'classDiagram\n  class A~T~\n  A~T~ --> B~U~\n',
+  'classDiagram\n  A ()-- B\n  C --() D\n',
+  'classDiagram\n  class X:::a\n  class Y:::b {\n    +z\n  }\n',
+  'classDiagram\n  direction RL\n  class X\n  X : +a\n  X : +b()\n',
+  'classDiagram\n  accTitle: Hello\n  class X\n',
+  'classDiagram\r\n  class A {\r\n    +x\r\n  }\r\n  A --> B : x\r\n  %% c\r\n',
+];
+
+describe('class edits: property on unusual sources', () => {
+  for (const src of ODD) {
+    it(JSON.stringify(src), async () => {
+      expect(await mermaidAccepts(src)).toBe(true);
+      await checkAllOps(src);
     }, 120_000);
   }
 });
