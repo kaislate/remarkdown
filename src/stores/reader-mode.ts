@@ -13,6 +13,7 @@
 // active session's store; see sessions.ts.
 import { get } from 'svelte/store';
 import { activeProxy } from './sessions';
+import { editMode } from './edit-mode';
 import { settings } from './settings';
 import { activeModal } from './modals';
 import { reattachTarget } from './reattach';
@@ -22,6 +23,9 @@ import type { Tool } from '../lib/schema';
 export const readerMode = activeProxy((s) => s.readerMode);
 
 export function toggleReaderMode() {
+  // Reader mode is for reading: leave edit mode first (the normal way —
+  // its pending save is flushed and the page reloads from disk).
+  if (!get(readerMode) && get(editMode)) editMode.set(false);
   readerMode.update((v) => !v);
 }
 

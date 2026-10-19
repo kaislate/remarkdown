@@ -488,4 +488,16 @@ describe('TabBar — right-click menu', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Copy path' }));
     expect(writeText).toHaveBeenCalledWith('C:\\x\\Alpha.md');
   });
+
+  it('in reader mode Ctrl+Tab still switches, but nothing closes or opens tabs out of sight', async () => {
+    const { a } = twoTabs();
+    a.readerMode.set(true);
+    render(TabBar);
+    await fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true });
+    expect(cycleSession).toHaveBeenCalledWith(1);
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    await fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
+    expect(closeSession).not.toHaveBeenCalled();
+    expect(openViaDialog).not.toHaveBeenCalled();
+  });
 });

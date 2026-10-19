@@ -41,11 +41,14 @@ describe('settings store', () => {
     expect(get(settings).splashEnabled).toBe(DEFAULT_SETTINGS.splashEnabled);
   });
 
-  it('refreshSettings falls back to defaults on IPC failure', async () => {
-    vi.mocked(loadSettingsJson).mockRejectedValue(new Error('no host'));
-    updateSettings({ theme: 'light' }); // pollute, ensure it's reset
-    await refreshSettings();
-    expect(get(settings)).toEqual(DEFAULT_SETTINGS);
+  it('a failed first load falls back to defaults', async () => {
+    vi.resetModules();
+    const api = await import('../../src/lib/tauri-api');
+    vi.mocked(api.loadSettingsJson).mockImplementation(async () => { throw new Error('no host'); });
+    const fresh = await import('../../src/stores/settings');
+    fresh.updateSettings({ theme: 'light' }); // pollute, ensure it's reset
+    await fresh.refreshSettings();
+    expect(get(fresh.settings)).toEqual(DEFAULT_SETTINGS);
   });
 
   it('updateSettings merges a partial patch into the store', () => {
@@ -72,6 +75,41 @@ describe('settings store', () => {
     expect(written.theme).toBe('light');
     expect(written.maxRecent).toBe(5);
 
+    dispose();
+  });
+});
+
+describe('reader mode and edit mode exclude each other', () => {
+  it('turning on "always open ready to edit" turns off "always open in reader mode", and back', () => {
+    updateSettings({ openInFocusMode: true });
+    updateSettings({ openInEditMode: true });
+    expect(get(settings).openInFocusMode).toBe(false);
+    updateSettings({ openInFocusMode: true });
+    expect(get(settings).openInEditMode).toBe(false);
+  });
+});
+
+describe('settings that fail to load are never overwritten by defaults', () => {
+  it('a failed reload keeps the settings already in use', async () => {
+    vi.mocked(loadSettingsJson).mockResolvedValueOnce(JSON.stringify({ ...DEFAULT_SETTINGS, theme: 'light' }));
+    await refreshSettings();
+    expect(get(settings).theme).toBe('light');
+    vi.mocked(loadSettingsJson).mockImplementationOnce(async () => { throw new Error('locked'); });
+    await refreshSettings();
+    expect(get(settings).theme).toBe('light');
+  });
+
+  it('defaults used after a failed first load are not written back on their own', async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const api = await import('../../src/lib/tauri-api');
+    vi.mocked(api.loadSettingsJson).mockImplementation(async () => { throw new Error('locked'); });
+    vi.mocked(api.saveSettingsJson).mockClear();
+    const fresh = await import('../../src/stores/settings');
+    const dispose = fresh.installSettingsAutosave();
+    await fresh.refreshSettings();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(api.saveSettingsJson).not.toHaveBeenCalled();
     dispose();
   });
 });

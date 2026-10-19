@@ -28,6 +28,7 @@
   import { showInFolder, copyPath } from '../lib/file-actions';
   import { settings, updateSettings } from '../stores/settings';
   import { activeModal } from '../stores/modals';
+  import { readerMode } from '../stores/reader-mode';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
 
   interface TabItem {
@@ -219,6 +220,11 @@
     if (e.key === 'Tab') {
       e.preventDefault();
       void cycleSession(e.shiftKey ? -1 : 1);
+    } else if (get(readerMode)) {
+      // Reader mode shows nothing but the page: Ctrl+Tab (above) still
+      // flips between documents, but nothing closes or opens tabs out of
+      // sight.
+      return;
     } else if (key === 'w' && !e.shiftKey) {
       e.preventDefault();
       if (e.repeat) return; // holding Ctrl+W must not close tab after tab

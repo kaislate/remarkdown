@@ -29,8 +29,8 @@ body.reader-mode .toc-popover,
 body.reader-mode .edit-mode-toggle,
 body.reader-mode .reader-mode-toggle,
 body.reader-mode .marginalia,
-body.reader-mode .toasts,
-body.reader-mode .banner[role='alert'],
+/* Toasts and the save-error banner stay visible: an unnoticed "couldn't
+   save" costs more than a moment of chrome. */
 body.reader-mode .reattach-banner,
 body.reader-mode .saved-pulse,
 body.reader-mode .editor-toolbar,

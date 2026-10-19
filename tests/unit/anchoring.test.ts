@@ -262,3 +262,30 @@ describe('anchors across several blocks', () => {
     expect(resolveAnchor(legacy, root)!.toString()).toBe('ends here.\nThe second');
   });
 });
+
+describe('cross-block anchors over a diagram', () => {
+  const svg = (id: string) =>
+    `<svg id="${id}"><style>#${id}{fill:#333}</style><g><text>Start</text><text>End</text></g></svg>`;
+
+  it('ignore the diagram, so the highlight survives the diagram being redrawn', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">Before the chart we explain things.</p>\n` +
+      `<div class="mermaid-block" data-block-id="div:2">${svg('mermaid-1')}</div>\n` +
+      `<p data-block-id="p:3">After the chart we conclude.</p>\n`,
+    );
+    const p1 = root.querySelector('[data-block-id="p:1"]')!.firstChild as Text;
+    const p3 = root.querySelector('[data-block-id="p:3"]')!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(p1, 7);
+    range.setEnd(p3, 15); // ends after "After the chart"
+    const a = createAnchor(range, root)!;
+    expect(a.text).not.toMatch(/mermaid|fill|Start|End/);
+    expect(a.text).toContain('the chart we explain things.');
+    expect(a.text).toContain('After the chart');
+    // Next launch: drawn again with a new id (and briefly empty before that).
+    root.querySelector('.mermaid-block')!.innerHTML = '';
+    expect(resolveAnchor(a, root)).not.toBeNull();
+    root.querySelector('.mermaid-block')!.innerHTML = svg('mermaid-7');
+    expect(resolveAnchor(a, root)).not.toBeNull();
+  });
+});

@@ -16,6 +16,8 @@ export function isFreshInstall(): boolean {
   return freshInstall;
 }
 
+let loadedOnce = false;
+
 export async function refreshSettings(): Promise<void> {
   try {
     const raw = await loadSettingsJson();
@@ -23,8 +25,14 @@ export async function refreshSettings(): Promise<void> {
     const parsed = parseSettings(raw);
     // What's on disk now — the autosave below skips writing it back.
     lastSavedJson = serialize(parsed);
+    loadedOnce = true;
     settings.set(parsed);
   } catch {
+    // Couldn't read the settings file (locked, permissions…). Never let that
+    // replace the user's settings: keep what's in use, or on a first load
+    // use the defaults without saving them over the unreadable file.
+    if (loadedOnce) return;
+    lastSavedJson = serialize(DEFAULT_SETTINGS);
     settings.set(DEFAULT_SETTINGS);
   }
 }
@@ -98,7 +106,12 @@ export function installSettingsAutosave(): () => void {
 }
 
 export function updateSettings(patch: Partial<Settings>): void {
-  settings.update((s) => ({ ...s, ...patch }));
+  // Reader mode (nothing but the page) and edit mode never go together:
+  // switching one "always open in…" on switches the other off.
+  const p = { ...patch };
+  if (p.openInEditMode === true && p.openInFocusMode === undefined) p.openInFocusMode = false;
+  if (p.openInFocusMode === true && p.openInEditMode === undefined) p.openInEditMode = false;
+  settings.update((s) => ({ ...s, ...p }));
 }
 
 export function resetSettings(): void {

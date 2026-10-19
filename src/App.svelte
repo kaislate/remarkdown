@@ -341,7 +341,10 @@
     // First launch: "How do you want to use remarkdown?" Only for new
     // installs — people upgrading keep their setup (it's in Settings →
     // About if they want it).
-    if (isFreshInstall() && !get(settings).onboardingCompleted) {
+    // (Versions before 0.8 only wrote settings once one was changed, so
+    // a missing settings file alone doesn't prove a new user: anyone with
+    // recent files has used remarkdown before.)
+    if (isFreshInstall() && get(recent).length === 0 && !get(settings).onboardingCompleted) {
       openModal({ kind: 'onboarding' });
     }
 

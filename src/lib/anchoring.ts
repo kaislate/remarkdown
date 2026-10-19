@@ -19,14 +19,32 @@ function findContainingBlock(node: Node): HTMLElement | null {
   return null;
 }
 
-function blockText(block: HTMLElement): string {
-  return block.textContent ?? '';
+// The text nodes that make up a scope's plain text. Across the whole article
+// (cross-block anchors) diagrams are left out: their svg text — inline
+// styles, generated ids — changes on every render and isn't reading text,
+// so an anchor that included it could never be found again.
+function textWalker(scope: HTMLElement, skipDiagrams: boolean): TreeWalker {
+  if (!skipDiagrams) return document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+  return document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      if (n.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+      return (n as Element).classList.contains('mermaid-block') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+    },
+  });
+}
+
+function blockText(block: HTMLElement, skipDiagrams = false): string {
+  if (!skipDiagrams) return block.textContent ?? '';
+  let out = '';
+  const walker = textWalker(block, true);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) out += (n as Text).data;
+  return out;
 }
 
 // Convert a DOM position (node + offset) to a plaintext offset within a block.
-function posToPlaintextOffset(block: HTMLElement, node: Node, offset: number): number {
+function posToPlaintextOffset(block: HTMLElement, node: Node, offset: number, skipDiagrams = false): number {
   let acc = 0;
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const walker = textWalker(block, skipDiagrams);
   let tn: Node | null = walker.nextNode();
   while (tn) {
     if (tn === node) return acc + offset;
@@ -37,9 +55,9 @@ function posToPlaintextOffset(block: HTMLElement, node: Node, offset: number): n
 }
 
 // Convert a plaintext offset within a block back to a DOM (node, offset) pair.
-function plaintextOffsetToPos(block: HTMLElement, target: number): { node: Text; offset: number } | null {
+function plaintextOffsetToPos(block: HTMLElement, target: number, skipDiagrams = false): { node: Text; offset: number } | null {
   let acc = 0;
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const walker = textWalker(block, skipDiagrams);
   let tn = walker.nextNode() as Text | null;
   while (tn) {
     const next = acc + tn.data.length;
@@ -74,18 +92,19 @@ export function createAnchor(range: Range, viewerRoot: HTMLElement): Anchor | nu
   const startBlock = findContainingBlock(range.startContainer);
   const endBlock = findContainingBlock(range.endContainer);
   if (!startBlock || !endBlock) return null;
-  const text = range.toString();
-  if (!text) return null;
 
   // A selection over several blocks includes the text between them (the
   // newlines separating paragraphs), so it only exists in the article's
-  // full text. Anchor it there and remember both ends.
+  // full text. Anchor it there — without any diagrams it passes over — and
+  // remember both ends.
   const crossBlock = startBlock !== endBlock;
   const scope = crossBlock ? viewerRoot : startBlock;
-  const startOffset = posToPlaintextOffset(scope, range.startContainer, range.startOffset);
-  const endOffset = posToPlaintextOffset(scope, range.endContainer, range.endOffset);
+  const startOffset = posToPlaintextOffset(scope, range.startContainer, range.startOffset, crossBlock);
+  const endOffset = posToPlaintextOffset(scope, range.endContainer, range.endOffset, crossBlock);
 
-  const full = blockText(scope);
+  const full = blockText(scope, crossBlock);
+  const text = crossBlock ? full.slice(startOffset, endOffset) : range.toString();
+  if (!text) return null;
   const prefix = full.slice(Math.max(0, startOffset - CONTEXT_LEN), startOffset);
   const suffix = full.slice(endOffset, endOffset + CONTEXT_LEN);
 
@@ -142,9 +161,9 @@ function scoreCandidate(anchor: Anchor, full: string, index: number): number {
   return (trailMatch(anchor.prefix, cPrefix) + headMatch(anchor.suffix, cSuffix)) / 2;
 }
 
-function rangeFromBlockOffsets(block: HTMLElement, start: number, end: number): Range | null {
-  const s = plaintextOffsetToPos(block, start);
-  const e = plaintextOffsetToPos(block, end);
+function rangeFromBlockOffsets(block: HTMLElement, start: number, end: number, skipDiagrams = false): Range | null {
+  const s = plaintextOffsetToPos(block, start, skipDiagrams);
+  const e = plaintextOffsetToPos(block, end, skipDiagrams);
   if (!s || !e) return null;
   const range = document.createRange();
   range.setStart(s.node, s.offset);
@@ -157,20 +176,22 @@ function rangeFromBlockOffsets(block: HTMLElement, start: number, end: number): 
 // scores low — used to recover highlights saved by versions that anchored
 // cross-block text to its first block with clipped context.
 function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean): Range | null {
-  const full = blockText(viewerRoot);
+  // Same text createAnchor used: the article without its diagrams. (This
+  // also keeps the lenient fallback from landing in diagram labels.)
+  const full = blockText(viewerRoot, true);
   const indices = allIndexOf(full, anchor.text);
   if (indices.length === 0) return null;
   if (indices.length === 1) {
     const score = scoreCandidate(anchor, full, indices[0]);
     if (lenient || score >= SCORE_THRESHOLD / 2) {
-      return rangeFromBlockOffsets(viewerRoot, indices[0], indices[0] + anchor.text.length);
+      return rangeFromBlockOffsets(viewerRoot, indices[0], indices[0] + anchor.text.length, true);
     }
     return null;
   }
   const scored = indices.map((i) => ({ i, s: scoreCandidate(anchor, full, i) }));
   scored.sort((a, b) => b.s - a.s);
   if (scored[0].s >= SCORE_THRESHOLD && scored[0].s - scored[1].s >= MIN_GAP) {
-    return rangeFromBlockOffsets(viewerRoot, scored[0].i, scored[0].i + anchor.text.length);
+    return rangeFromBlockOffsets(viewerRoot, scored[0].i, scored[0].i + anchor.text.length, true);
   }
   return null;
 }
