@@ -108,7 +108,10 @@ export type ClassEdit =
   | { kind: 'addNote'; text: string; classId?: string }
   | { kind: 'setNoteText'; index: number; text: string }
   | { kind: 'deleteNote'; index: number }
-  | { kind: 'setDirection'; direction: ClassDirection };
+  | { kind: 'setDirection'; direction: ClassDirection }
+  // Put a class into namespace `namespace` (created when missing), or
+  // out of any namespace with null.
+  | { kind: 'setClassNamespace'; id: string; namespace: string | null };
 
 export interface ClassEditResult {
   source: string;
@@ -576,7 +579,91 @@ function run(
       else sp.lineAfter(map.header.end, firstIndent(map), `direction ${edit.direction}`);
       return true;
     }
+
+    case 'setClassNamespace': {
+      const c = model.classes.get(edit.id);
+      if (!c) return false;
+      const target = edit.namespace === null ? null : flatten(edit.namespace) || null;
+      if (c.namespace === target) return 'unchanged';
+      setClassNamespace(map, sp, edit.id, target);
+      return true;
+    }
   }
+}
+
+// How to write namespace name `id`.
+function emitNamespaceName(id: string): string {
+  return /^\w+(\.\w+)*$/.test(id) && !CLASS_KEYWORDS.has(id) ? id : '`' + id.replace(/`/g, '') + '`';
+}
+
+function reindent(block: string, from: string, to: string): string {
+  return block
+    .split('\n')
+    .map((l) => (l.startsWith(from) ? to + l.slice(from.length) : l))
+    .join('\n');
+}
+
+// A class's namespace is set by the `class X` statements inside
+// namespace blocks. Moving it:
+//   - out of its namespace: those declarations (bodies and all) move to
+//     the top level, right after the block (where the block was, when
+//     it is left empty and goes)
+//   - into a namespace: they move into that block; a class declared
+//     only at the top level (or implicitly) gets a `class X` line in the
+//     block instead — its top-level declaration stays where it is
+//   - a namespace that doesn't exist yet is added after the last
+//     statement
+function setClassNamespace(map: ClassSourceMap, sp: Splicer, id: string, target: string | null): void {
+  const text = map.text;
+  const inNs = map.statements
+    .map((s, k) => ({ s, k }))
+    .filter((x) => x.s.kind === 'class' && x.s.refs[0] === id && x.s.namespace !== null);
+  const drop = new Set(inNs.map((x) => x.k));
+  // Blocks the move empties (they go with their last declaration).
+  const emptied = new Set(
+    map.namespaces
+      .map((_n, i) => i)
+      .filter((i) => {
+        const kids = map.statements.map((s, k) => ({ s, k })).filter((x) => x.s.namespace === i);
+        return kids.length > 0 && kids.every((x) => drop.has(x.k));
+      }),
+  );
+  const moved = inNs.map(({ s }) => ({
+    text: text.slice(sp.lineStart(s.span.start), s.span.end),
+    indent: indentAtOff(text, s.span.start),
+    ns: s.namespace!,
+  }));
+  removeStatements(map, sp, drop);
+
+  if (target === null) {
+    for (const m of moved) {
+      const block = map.statements[map.namespaces[m.ns].stmt];
+      const indent = indentAtOff(text, block.span.start);
+      const decl = reindent(m.text, m.indent, indent);
+      if (emptied.has(m.ns)) sp.insert(sp.lineStart(block.span.start), `${decl}\n`);
+      else sp.lineAfter(block.span.end, '', decl);
+    }
+    return;
+  }
+  const decls = moved.length ? moved : [{ text: `class ${emitClassRef(id)}`, indent: '', ns: -1 }];
+  const blocks = map.namespaces.map((n, i) => ({ n, i })).filter((x) => x.n.id === target && !emptied.has(x.i));
+  const block = blocks[blocks.length - 1];
+  if (block) {
+    const kids = map.statements.filter((s) => s.namespace === block.i);
+    const last = kids[kids.length - 1];
+    const indent = indentAtOff(text, last.span.start);
+    for (const d of decls) sp.lineAfter(last.span.end, '', reindent(d.text, d.indent, indent));
+    return;
+  }
+  const where = lastTopLevel(map);
+  const inner = where.indent + DEFAULT_INDENT;
+  const body = decls.map((d) => reindent(d.text, d.indent, inner)).join('\n');
+  const block2 = `namespace ${emitNamespaceName(target)} {\n${body}\n${where.indent}}`;
+  // After the last statement — unless that is a block going away.
+  const top = map.statements.filter((s) => s.namespace === null);
+  const lastNs = map.namespaces.findIndex((n) => n.stmt === map.statements.indexOf(top[top.length - 1]));
+  if (lastNs >= 0 && emptied.has(lastNs)) sp.insert(sp.lineStart(top[top.length - 1].span.start), `${where.indent}${block2}\n`);
+  else sp.lineAfter(where.at, where.indent, block2);
 }
 
 // An empty note can't be written (`note ""` is a syntax error): it is

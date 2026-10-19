@@ -67,8 +67,9 @@ export class Splicer {
   }
   apply(): string {
     // Drop edits inside a larger replaced range (insertions only when
-    // strictly inside), then apply from the end (equal starts: the
-    // earlier-queued text ends up first).
+    // strictly inside), then apply from the end. At one offset the
+    // replaced range goes first, so text inserted there lands before
+    // it; insertions there keep their queue order.
     const reps = this.reps.map((r, i) => ({ ...r, i }));
     const ranges = reps.filter((r) => r.end > r.start);
     const inside = (r: (typeof reps)[number], o: (typeof reps)[number]) =>
@@ -76,7 +77,8 @@ export class Splicer {
         ? o.start <= r.start && r.end <= o.end && (o.end - o.start > r.end - r.start || o.i < r.i)
         : o.start < r.start && r.start < o.end;
     const kept = reps.filter((r) => !ranges.some((o) => o !== r && inside(r, o)));
-    kept.sort((a, b) => b.start - a.start || b.i - a.i);
+    const isRange = (r: Rep) => (r.end > r.start ? 1 : 0);
+    kept.sort((a, b) => b.start - a.start || isRange(b) - isRange(a) || b.i - a.i);
     let t = this.text;
     for (const r of kept) t = t.slice(0, r.start) + r.text + t.slice(r.end);
     return t;

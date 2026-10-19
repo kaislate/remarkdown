@@ -214,6 +214,23 @@ describe('class edits: targeted examples', () => {
     expect(edit('classDiagram\n  direction RL\n  class A\n', { kind: 'setDirection', direction: 'BT' })).toBe('classDiagram\n  direction BT\n  class A\n');
   });
 
+  it('moves classes into and out of namespaces', () => {
+    const src = 'classDiagram\n  namespace N {\n    class A {\n      +x\n    }\n    class C\n  }\n  class B\n  A --> B\n';
+    // In: a `class B` line joins the block; B's own declaration stays.
+    expect(edit(src, { kind: 'setClassNamespace', id: 'B', namespace: 'N' })).toBe(src.replace('    class C\n', '    class C\n    class B\n'));
+    // Out: the declaration (body and all) moves after the block.
+    expect(edit(src, { kind: 'setClassNamespace', id: 'A', namespace: null })).toBe(
+      'classDiagram\n  namespace N {\n    class C\n  }\n  class A {\n    +x\n  }\n  class B\n  A --> B\n',
+    );
+    // Into a new namespace; an emptied one goes.
+    const one = 'classDiagram\n  namespace N {\n    class A\n  }\n  class B\n';
+    expect(edit(one, { kind: 'setClassNamespace', id: 'A', namespace: 'Other space' })).toBe(
+      'classDiagram\n  class B\n  namespace `Other space` {\n      class A\n  }\n',
+    );
+    expect(edit(one, { kind: 'setClassNamespace', id: 'A', namespace: null })).toBe('classDiagram\n  class A\n  class B\n');
+    expect(model(edit(one, { kind: 'setClassNamespace', id: 'B', namespace: 'N' })).namespaces).toEqual([{ id: 'N', classIds: ['A', 'B'] }]);
+  });
+
   it('refuses edits naming things that do not exist', () => {
     expect(applyClassEdit(SRC, { kind: 'setClassLabel', id: 'Nope', label: 'x' })).toBeNull();
     expect(applyClassEdit(SRC, { kind: 'removeMember', classId: 'Animal', index: 9 })).toBeNull();
@@ -466,6 +483,43 @@ function clone(m: ClassModel): ClassModel {
 function shape(m: ClassModel) {
   return { ...m, classes: [...m.classes.values()] };
 }
+
+describe('class edits: namespace moves over the corpus', () => {
+  for (const block of blocks) {
+    it(`${block.heading}: every class into every namespace, a new one, and out`, async () => {
+      const parsed = parseClassSource(block.source);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      const { model: before, map } = parsed;
+      const lines = block.source.split('\n');
+      const targets: Array<string | null> = [...before.namespaces.map((n) => n.id), null, 'Moved.Here'];
+      // Namespace headers and closing braces may change too.
+      const nsLines = lineSet(map, map.namespaces.flatMap((n) => [{ start: map.statements[n.stmt].span.start, end: map.statements[n.stmt].span.start }, { start: n.close, end: n.close }]));
+      for (const [id, c] of before.classes) {
+        const decls = lineSet(map, map.statements.filter((s) => s.kind === 'class' && s.refs[0] === id).map((s) => s.span));
+        for (const ns of targets) {
+          if (c.namespace === ns) continue;
+          const name = `${id} → ${ns}`;
+          const res = applyClassEdit(block.source, { kind: 'setClassNamespace', id, namespace: ns });
+          expect(res, name).not.toBeNull();
+          const back = parseClass(res!.source);
+          expect(back.ok, `${name}:\n${res!.source}`).toBe(true);
+          if (!back.ok) continue;
+          const after = back.model;
+          expect(after.classes.get(id)?.namespace, `${name}:\n${res!.source}`).toBe(ns);
+          expect({ ...after.classes.get(id)!, namespace: c.namespace }, name).toEqual(c);
+          for (const [k, v] of before.classes) if (k !== id) expect(after.classes.get(k), `${name}: ${k}`).toEqual(v);
+          expect(after.relations, name).toEqual(before.relations);
+          expect(after.notes, name).toEqual(before.notes);
+          const allowed = new Set([...decls, ...nsLines].map((l) => lines[l]));
+          for (const line of removedLines(block.source, res!.source)) {
+            expect(allowed.has(line), `${name} changed an unrelated line ${JSON.stringify(line)}:\n${res!.source}`).toBe(true);
+          }
+          expect(await mermaidAccepts(res!.source), `${name}:\n${res!.source}`).toBe(true);
+        }
+      }
+    }, 120_000);
+  }
+});
 
 describe('class edits: corpus property', () => {
   it('finds class diagrams in the corpus', () => {
