@@ -3,6 +3,7 @@ import {
   countWords,
   wordsBelow,
   minutesLeft,
+  sectionAt,
   READING_WPM,
 } from '../../src/lib/reading-time';
 
@@ -31,6 +32,19 @@ describe('reading time', () => {
   it('a block with no height counts as below once its top is below the fold', () => {
     expect(wordsBelow([{ top: 500, bottom: 500, words: 9 }], 200)).toBe(9);
     expect(wordsBelow([{ top: 100, bottom: 100, words: 9 }], 200)).toBe(0);
+  });
+
+  it('names the section once its heading has scrolled off the top', () => {
+    const heads = [
+      { text: 'Intro', bottom: -400 },
+      { text: 'Chapter 3', bottom: -20 },
+      { text: 'Later', bottom: 300 },
+    ];
+    expect(sectionAt(heads, 0)).toBe('Chapter 3');
+    expect(sectionAt(heads, -500)).toBeNull();
+    expect(sectionAt([], 0)).toBeNull();
+    // The heading still on screen doesn't need repeating above itself.
+    expect(sectionAt([{ text: 'Title', bottom: 120 }], 0)).toBeNull();
   });
 
   it('rounds the remaining time up to whole minutes; nothing left is 0', () => {

@@ -34,6 +34,18 @@ export function wordsBelow(blocks: readonly BlockExtent[], fold: number): number
   return Math.round(total);
 }
 
+// The section being read: the last heading that has scrolled off above
+// `top` (the viewport's top edge). Headings come in document order with
+// viewport-relative bottoms. Null before the first one has gone by.
+export function sectionAt(headings: readonly { text: string; bottom: number }[], top: number): string | null {
+  let current: string | null = null;
+  for (const h of headings) {
+    if (h.bottom > top) break;
+    current = h.text;
+  }
+  return current;
+}
+
 export function minutesLeft(words: number, wpm: number = READING_WPM): number {
   return words <= 0 ? 0 : Math.ceil(words / wpm);
 }
