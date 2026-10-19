@@ -236,6 +236,17 @@ gantt
     Hands-on    :w, 2026-09-08, 2d
 ```
 
+## gantt-default-format
+
+```mermaid
+gantt
+    title No dateFormat line
+    section Only
+    Kickoff  :k, 2026-04-01, 2026-04-03
+    Work     :after k, 5d
+    Wrap-up  :2026-04-10 09:30, 4h
+```
+
 ## timeline-basic
 
 ```mermaid
