@@ -60,8 +60,8 @@ function plaintextOffsetToPos(block: HTMLElement, target: number): { node: Text;
 export const DIAGRAM_ANNOTATION_HINT = 'Use the pen to mark up diagrams.';
 
 // Only the range's ENDS matter: a selection across several paragraphs
-// that happens to pass over a diagram anchors in the paragraph it
-// starts in (createAnchor clamps to the start block), as before.
+// that happens to pass over a diagram is anchored to the article's text
+// between its ends (see createAnchor), so it can still be highlighted.
 export function rangeTouchesDiagram(range: Range): boolean {
   const inDiagram = (n: Node): boolean => {
     const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
@@ -70,34 +70,33 @@ export function rangeTouchesDiagram(range: Range): boolean {
   return inDiagram(range.startContainer) || inDiagram(range.endContainer);
 }
 
-export function createAnchor(range: Range, _viewerRoot: HTMLElement): Anchor | null {
+export function createAnchor(range: Range, viewerRoot: HTMLElement): Anchor | null {
   const startBlock = findContainingBlock(range.startContainer);
   const endBlock = findContainingBlock(range.endContainer);
   if (!startBlock || !endBlock) return null;
-  // Clamp cross-block ranges by anchoring to the start block only.
-  const block = startBlock;
   const text = range.toString();
   if (!text) return null;
 
-  const startOffset = posToPlaintextOffset(block, range.startContainer, range.startOffset);
-  // For cross-block ranges we clamp to the start block. text.length includes
-  // characters from both blocks, so the clamped endOffset may be past the block's
-  // actual text; Math.min protects against that. Prefix/suffix windows will be
-  // slightly off in this case — acceptable for v1 since cross-block selection is rare.
-  const endOffset = startBlock === endBlock
-    ? posToPlaintextOffset(block, range.endContainer, range.endOffset)
-    : Math.min(startOffset + text.length, blockText(block).length);
+  // A selection over several blocks includes the text between them (the
+  // newlines separating paragraphs), so it only exists in the article's
+  // full text. Anchor it there and remember both ends.
+  const crossBlock = startBlock !== endBlock;
+  const scope = crossBlock ? viewerRoot : startBlock;
+  const startOffset = posToPlaintextOffset(scope, range.startContainer, range.startOffset);
+  const endOffset = posToPlaintextOffset(scope, range.endContainer, range.endOffset);
 
-  const full = blockText(block);
+  const full = blockText(scope);
   const prefix = full.slice(Math.max(0, startOffset - CONTEXT_LEN), startOffset);
   const suffix = full.slice(endOffset, endOffset + CONTEXT_LEN);
 
-  return {
+  const anchor: Anchor = {
     text,
     prefix,
     suffix,
-    blockHint: block.dataset.blockId!,
+    blockHint: startBlock.dataset.blockId!,
   };
+  if (crossBlock) anchor.endBlockHint = endBlock.dataset.blockId!;
+  return anchor;
 }
 
 // Find all plaintext offsets of `needle` in `hay`. Linear scan.
@@ -153,7 +152,32 @@ function rangeFromBlockOffsets(block: HTMLElement, start: number, end: number): 
   return range;
 }
 
+// Search the article's full text (what a cross-block selection's text is
+// part of). `lenient` accepts a single exact match even when the context
+// scores low — used to recover highlights saved by versions that anchored
+// cross-block text to its first block with clipped context.
+function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean): Range | null {
+  const full = blockText(viewerRoot);
+  const indices = allIndexOf(full, anchor.text);
+  if (indices.length === 0) return null;
+  if (indices.length === 1) {
+    const score = scoreCandidate(anchor, full, indices[0]);
+    if (lenient || score >= SCORE_THRESHOLD / 2) {
+      return rangeFromBlockOffsets(viewerRoot, indices[0], indices[0] + anchor.text.length);
+    }
+    return null;
+  }
+  const scored = indices.map((i) => ({ i, s: scoreCandidate(anchor, full, i) }));
+  scored.sort((a, b) => b.s - a.s);
+  if (scored[0].s >= SCORE_THRESHOLD && scored[0].s - scored[1].s >= MIN_GAP) {
+    return rangeFromBlockOffsets(viewerRoot, scored[0].i, scored[0].i + anchor.text.length);
+  }
+  return null;
+}
+
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
+  if (anchor.endBlockHint) return resolveInRoot(anchor, viewerRoot, false);
+
   const hinted = viewerRoot.querySelector(`[data-block-id="${CSS.escape(anchor.blockHint)}"]`) as HTMLElement | null;
   if (hinted) {
     const full = blockText(hinted);
@@ -186,7 +210,11 @@ export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | 
       }
     }
   }
-  if (!best) return null;
+  if (!best) {
+    // Text that no single block contains may span blocks — an anchor saved
+    // before cross-block anchors recorded their end. Only a unique match.
+    return resolveInRoot(anchor, viewerRoot, true);
+  }
   if (best.score < SCORE_THRESHOLD) return null;
   if (best.score - secondBest < MIN_GAP) return null;
   return rangeFromBlockOffsets(best.block, best.i, best.i + anchor.text.length);
