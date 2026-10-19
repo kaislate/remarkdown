@@ -34,13 +34,15 @@ export function wordsBelow(blocks: readonly BlockExtent[], fold: number): number
   return Math.round(total);
 }
 
-// The section being read: the last heading that has scrolled off above
-// `top` (the viewport's top edge). Headings come in document order with
-// viewport-relative bottoms. Null before the first one has gone by.
-export function sectionAt(headings: readonly { text: string; bottom: number }[], top: number): string | null {
+// The section being read: the last heading that has come up to the reading
+// line (a third of the way down the view, where the eye actually is), so
+// it's named while its text is on screen rather than after it has gone.
+// Headings come in document order with viewport-relative tops. Null before
+// the first one reaches the line.
+export function sectionAt(headings: readonly { text: string; top: number }[], line: number): string | null {
   let current: string | null = null;
   for (const h of headings) {
-    if (h.bottom > top) break;
+    if (h.top > line) break;
     current = h.text;
   }
   return current;

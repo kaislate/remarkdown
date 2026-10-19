@@ -9,6 +9,8 @@
     playing?: boolean;
     value?: unknown;
   }
+  import { READER_THEME_SWATCHES, type ReaderTheme } from '../../lib/reader-themes';
+
   let { name, playing = false, value }: Props = $props();
 
   const num = (v: unknown, d: number) => (typeof v === 'number' ? v : d);
@@ -102,13 +104,25 @@
     {#each [0, 1, 2] as i (i)}<rect x="10.5" y={21 + i * 10} width="6" height="6" rx="1.5" class="tab" class:active={i === 0} />{/each}
 
   {:else if name === 'reader-theme'}
-    {@const pal = ({
-      default: ['var(--bg-0)', 'var(--fg-1)'], paper: ['#fbf9f4', '#3d3a33'], sepia: ['#f3e7cf', '#4f4130'],
-      night: ['#121417', '#a9a59c'], eink: ['#f2f2f0', '#222222'],
-    } as Record<string, [string, string]>)[str(value, 'default')] ?? ['var(--bg-0)', 'var(--fg-1)']}
+    {@const sw = READER_THEME_SWATCHES[str(value, 'default') as ReaderTheme] ?? READER_THEME_SWATCHES.default}
+    {@const pal = [sw.page, sw.ink]}
     <rect x="8" y="6" width="96" height="58" rx="4" class="themepage" style:fill={pal[0]} />
     <rect x="30" y="16" width="40" height="4" rx="2" style:fill={pal[1]} />
     {#each [26, 33, 40, 47, 54] as y, i (y)}<rect x="30" y={y} width={[52, 48, 52, 44, 30][i]} height="2.5" rx="1.25" style:fill={pal[1]} opacity="0.7" />{/each}
+
+  {:else if name === 'reader-minimap'}
+    <g class="readpage">
+      {#each [12, 19, 26, 33, 40, 47, 54] as y, i (y)}
+        <rect x="22" y={y} width={[44, 50, 46, 52, 40, 48, 44][i]} height="3" rx="1.5" class="ln" />
+      {/each}
+    </g>
+    <g class="mm" class:off={!bool(value)}>
+      <rect x="82" y="9" width="20" height="52" rx="3" class="mmframe" />
+      {#each Array.from({ length: 14 }, (_, i) => 13 + i * 3.3) as y, i (i)}
+        <rect x="85" y={y} width={[13, 11, 14, 9, 12, 14, 10, 13, 12, 8, 14, 11, 13, 10][i]} height="1.2" rx="0.6" class="ln" />
+      {/each}
+      <rect x="83" y="11" width="18" height="14" rx="2" class="mmbox" />
+    </g>
 
   {:else if name === 'restore'}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
@@ -260,6 +274,10 @@
   .theme-dark { clip-path: inset(0 0 0 50%); transition: clip-path 0.5s ease; }
   .theme-dark.right { clip-path: inset(0 0 0 100%); }
   .col { transition: width 0.3s ease, x 0.3s ease; }
+  .mm { transition: opacity 0.3s ease, transform 0.3s ease; }
+  .mm.off { opacity: 0; transform: translateX(8px); }
+  .mmframe { fill: var(--glass-fill); stroke: var(--glass-border); }
+  .mmbox { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.8; }
 
   /* ---- motion: only while playing ---- */
   .playing .theme-dark { animation: wipe 2.4s ease-in-out infinite; }
@@ -313,6 +331,11 @@
   .playing .badge, .playing .beta { animation: ctxpulse 2.4s ease-in-out infinite; }
   .playing .arrow { animation: drop 2.2s ease-in-out infinite; }
   @keyframes drop { 0% { transform: translateY(-6px); opacity: 0; } 40%, 100% { transform: none; opacity: 1; } }
+
+  .playing .readpage { animation: readscroll 3.2s ease-in-out infinite; }
+  @keyframes readscroll { 0%, 10% { transform: none; } 60%, 75% { transform: translateY(-6px); } 100% { transform: none; } }
+  .playing .mmbox { animation: mmslide 3.2s ease-in-out infinite; }
+  @keyframes mmslide { 0%, 10% { transform: none; } 60%, 75% { transform: translateY(32px); } 100% { transform: none; } }
 
   @media (prefers-reduced-motion: reduce) {
     .depiction *, .depiction { animation: none !important; transition: none !important; }

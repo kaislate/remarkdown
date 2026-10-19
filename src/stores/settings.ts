@@ -8,20 +8,11 @@ export const settings = writable<Settings>(DEFAULT_SETTINGS);
 // Load persisted settings on startup. Failures (no Tauri host, IO error,
 // malformed file) fall back to defaults silently — settings should never
 // block app launch.
-// True once settings have been loaded and no settings file existed yet —
-// a fresh install. Used to offer the first-run onboarding only to new
-// users, not to people upgrading.
-let freshInstall = false;
-export function isFreshInstall(): boolean {
-  return freshInstall;
-}
-
 let loadedOnce = false;
 
 export async function refreshSettings(): Promise<void> {
   try {
     const raw = await loadSettingsJson();
-    freshInstall = raw == null;
     const parsed = parseSettings(raw);
     // What's on disk now — the autosave below skips writing it back.
     lastSavedJson = serialize(parsed);

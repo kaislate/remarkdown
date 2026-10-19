@@ -1,6 +1,7 @@
 <!-- src/components/Editor.svelte -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
+  import { get } from 'svelte/store';
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
   import { TextSelection } from 'prosemirror-state';
@@ -21,6 +22,7 @@
 
   import type { DocSession } from '../stores/sessions';
   import { onBeforeSwitch } from '../stores/tabs';
+  import { currentEditorRoot } from '../stores/viewport';
 
   interface Props {
     initialMarkdown: string;
@@ -260,6 +262,7 @@
       updateBubble();
       updateTableMenu();
     }, session?.editorState ?? undefined);
+    currentEditorRoot.set(view.dom);
     parentEl.addEventListener('mouseup', onSelectionMaybeChanged);
     parentEl.addEventListener('keyup', onSelectionMaybeChanged);
     document.addEventListener('mousedown', onAnyMouseDown);
@@ -283,6 +286,8 @@
       parentEl.removeEventListener('keyup', onSelectionMaybeChanged);
     }
     document.removeEventListener('mousedown', onAnyMouseDown);
+    // Only clear it if it's still ours (a remount may have set the next one).
+    if (view && get(currentEditorRoot) === view.dom) currentEditorRoot.set(null);
     view?.destroy();
     view = null;
   });

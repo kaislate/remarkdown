@@ -52,7 +52,7 @@
   import { openModal, activeModal } from './stores/modals';
   import { savesSettled, unresolvedConflict, askAboutConflict } from './lib/edit-save';
   import { sessions, activeSession } from './stores/sessions';
-  import { settings, refreshSettings, installSettingsAutosave, isFreshInstall } from './stores/settings';
+  import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
@@ -338,13 +338,11 @@
       }
     }
 
-    // First launch: "How do you want to use remarkdown?" Only for new
-    // installs — people upgrading keep their setup (it's in Settings →
-    // About if they want it).
-    // (Versions before 0.8 only wrote settings once one was changed, so
-    // a missing settings file alone doesn't prove a new user: anyone with
-    // recent files has used remarkdown before.)
-    if (isFreshInstall() && get(recent).length === 0 && !get(settings).onboardingCompleted) {
+    // "How do you want to use remarkdown?" — once, in the main window, for
+    // everyone who hasn't answered it: new installs, and everyone updating
+    // to 0.8, the version that introduced it (earlier versions never wrote
+    // onboardingCompleted). It's in Settings → About after that.
+    if (!presetPath && !get(settings).onboardingCompleted) {
       openModal({ kind: 'onboarding' });
     }
 

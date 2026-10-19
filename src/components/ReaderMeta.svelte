@@ -2,7 +2,7 @@
   // Reader mode's small meta line at the top of the column:
   // "Chapter 3 · 6 min left". The time is the words still below the
   // viewport at ~230 wpm; the section is the last heading that has
-  // scrolled by. Both follow the scroll position. Hidden once there is
+  // reached the reading line (lib/reading-time.ts). Both follow the scroll position. Hidden once there is
   // nothing left to read.
   import { viewerScroll } from '../stores/viewport';
   import { currentViewerRoot } from '../stores/annots';
@@ -31,10 +31,11 @@
     for (const el of Array.from(article.children)) {
       const r = el.getBoundingClientRect();
       blocks.push({ top: r.top, bottom: r.bottom, words: wordsIn(el) });
-      if (el.matches('h1, h2')) headings.push({ text: (el.textContent ?? '').trim(), bottom: r.bottom });
+      if (el.matches('h1, h2')) headings.push({ text: (el.textContent ?? '').trim(), top: r.top });
     }
     minutes = minutesLeft(wordsBelow(blocks, view.bottom));
-    section = sectionAt(headings, view.top);
+    // At the very top the title is right there; no need to name it.
+    section = scroll.scrollTop < 8 ? null : sectionAt(headings, view.top + view.height / 3);
   }
 
   $effect(() => {
@@ -92,7 +93,8 @@
   }
   .reader-meta {
     display: flex;
-    padding: 22px 48px 0;
+    /* Centred on the window buttons' line (38px), with the back arrow. */
+    padding: 12px 48px 0;
     color: var(--fg-2);
     font-family: var(--font-sans);
     font-size: 11px;

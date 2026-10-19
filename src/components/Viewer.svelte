@@ -341,13 +341,12 @@
 </div>
 
 <style>
-  /* The page's own box: below the solid title band and right of the tab
-     sidebar while tabs are shown (tabs-layout.css), the whole window
-     otherwise. Its clientHeight is exactly the part of the page you can
+  /* The page's own box: right of the tab sidebar while it's shown
+     (tabs-layout.css), the whole window otherwise. Its clientHeight is exactly the part of the page you can
      see, which the minimap's viewport box mirrors. */
   .scroll {
     position: absolute;
-    top: var(--tab-band-h, 0px);
+    top: 0;
     left: var(--tab-side-w, 0px);
     right: 0;
     bottom: 0;
@@ -399,7 +398,7 @@
   .content {
     position: relative;
     width: 100%;
-    min-height: calc(100vh - var(--tab-band-h, 0px));
+    min-height: 100vh;
   }
   /* Text column — centered on narrower windows, capped to a max left margin
      on wider ones so content doesn't drift away from the left edge as the

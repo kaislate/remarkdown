@@ -1,8 +1,10 @@
 <script lang="ts">
   // First launch: "How do you want to use remarkdown?" Three starting
-  // layouts with real screenshots. Continue applies one; "Customize this
-  // layout" applies it and shows its option cards to adjust before
-  // finishing (Back undoes it). Re-openable from Settings → About.
+  // layouts with real screenshots, and right below them reader mode's page
+  // colours and minimap, each with a moving picture. Continue applies the
+  // layout and those picks; "Customize this layout" applies them and shows
+  // the layout's option cards to adjust before finishing (Back undoes it).
+  // Re-openable from Settings → About.
   import { get } from 'svelte/store';
   import { tick } from 'svelte';
   import { activeModal, closeModal } from '../stores/modals';
@@ -11,6 +13,8 @@
   import { PROFILES, type Profile } from '../lib/profiles';
   import { OPTIONS } from '../lib/settings-catalog';
   import OptionCard from './settings/OptionCard.svelte';
+  import ReaderStylePreview from './settings/ReaderStylePreview.svelte';
+  import { READER_THEMES, READER_THEME_LABELS, type ReaderTheme } from '../lib/reader-themes';
 
   const isOpen = $derived($activeModal?.kind === 'onboarding');
 
@@ -18,16 +22,52 @@
   let step = $state<'pick' | 'customize'>('pick');
   let before: Settings | null = null;
   let cardEls: HTMLButtonElement[] = $state([]);
+  let themeEls: HTMLButtonElement[] = $state([]);
+
+  // Reader mode picks. The style follows the chosen layout (the Reader
+  // layout reads on Paper) until the user picks one themselves.
+  let readerTheme = $state<ReaderTheme>('default');
+  let readerMinimap = $state(true);
+  let themePicked = false;
 
   $effect(() => {
     if (isOpen) {
       step = 'pick';
       chosen = PROFILES[1];
+      themePicked = false;
+      readerTheme = get(settings).readerTheme;
+      readerMinimap = get(settings).readerMinimap;
     }
   });
 
+  function choose(p: Profile) {
+    chosen = p;
+    if (!themePicked) readerTheme = p.settings.readerTheme ?? get(settings).readerTheme;
+  }
+
+  function pickTheme(t: ReaderTheme) {
+    readerTheme = t;
+    themePicked = true;
+  }
+
+  async function onThemeKeydown(e: KeyboardEvent, i: number) {
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % READER_THEMES.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + READER_THEMES.length) % READER_THEMES.length;
+    if (next < 0) return;
+    e.preventDefault();
+    pickTheme(READER_THEMES[next]);
+    await tick();
+    themeEls[next]?.focus();
+  }
+
+  // The layout plus the reader-mode picks.
+  function picks(): Partial<Settings> {
+    return { ...chosen.settings, readerTheme, readerMinimap };
+  }
+
   function finish(apply: boolean) {
-    if (apply) updateSettings(chosen.settings);
+    if (apply) updateSettings(picks());
     updateSettings({ onboardingCompleted: true });
     before = null;
     closeModal();
@@ -35,7 +75,7 @@
 
   function customize() {
     before = get(settings);
-    updateSettings(chosen.settings);
+    updateSettings(picks());
     step = 'customize';
   }
 
@@ -43,7 +83,7 @@
     if (before) {
       // Undo only what the profile changed (and anything adjusted since).
       const restore: Partial<Settings> = {};
-      const keys = new Set([...Object.keys(chosen.settings), ...chosen.customize
+      const keys = new Set([...Object.keys(picks()), ...chosen.customize
         .map((id) => OPTIONS.find((o) => o.id === id)?.control)
         .flatMap((c) => (c && c.type !== 'custom' ? [c.key] : []))]);
       for (const k of keys) (restore as Record<string, unknown>)[k] = before[k as keyof Settings];
@@ -59,7 +99,7 @@
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + PROFILES.length) % PROFILES.length;
     if (next < 0) return;
     e.preventDefault();
-    chosen = PROFILES[next];
+    choose(PROFILES[next]);
     await tick();
     cardEls[next]?.focus();
   }
@@ -92,7 +132,7 @@
               aria-checked={chosen.id === p.id}
               tabindex={chosen.id === p.id ? 0 : -1}
               bind:this={cardEls[i]}
-              onclick={() => (chosen = p)}
+              onclick={() => choose(p)}
               onkeydown={(e) => onCardKeydown(e, i)}
             >
               <img src={p.screenshot} alt={`remarkdown set up for ${p.title.toLowerCase()}s`} />
@@ -104,6 +144,35 @@
             </button>
           {/each}
         </div>
+
+        <section class="reader-picks" aria-labelledby="onb-reader">
+          <h3 id="onb-reader">Reader mode</h3>
+          <div class="reader-row">
+            <div class="themes" role="radiogroup" aria-label="Reader mode colours">
+              {#each READER_THEMES as t, i (t)}
+                <button
+                  class="theme"
+                  role="radio"
+                  aria-checked={readerTheme === t}
+                  tabindex={readerTheme === t ? 0 : -1}
+                  bind:this={themeEls[i]}
+                  onclick={() => pickTheme(t)}
+                  onkeydown={(e) => onThemeKeydown(e, i)}
+                >
+                  <ReaderStylePreview theme={t} />
+                  <span>{READER_THEME_LABELS[t]}</span>
+                </button>
+              {/each}
+            </div>
+            <label class="minimap-pick">
+              <ReaderStylePreview theme={readerTheme} minimap={readerMinimap} />
+              <span class="minimap-label">
+                <input type="checkbox" role="switch" bind:checked={readerMinimap} />
+                Show the minimap in reader mode
+              </span>
+            </label>
+          </div>
+        </section>
 
         <div class="actions">
           <button class="link" onclick={() => finish(false)}>Skip for now</button>
@@ -211,6 +280,59 @@
     color: var(--fg-2);
   }
   .options { display: flex; flex-direction: column; gap: 10px; }
+
+  /* Reader mode picks: the five page styles, then the minimap switch with
+     its own picture (in the style picked to its left). */
+  .reader-picks {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 2px;
+  }
+  .reader-picks h3 { margin: 0; font: 600 13px var(--font-sans); color: var(--fg-1); }
+  .reader-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 190px;
+    gap: 16px;
+    align-items: start;
+  }
+  .themes {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .theme,
+  .minimap-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: var(--bg-0);
+    color: var(--fg-1);
+    font: 500 12px var(--font-sans);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .theme:hover,
+  .minimap-pick:hover { transform: translateY(-1px); }
+  .theme[aria-checked='true'] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    color: var(--fg-0);
+  }
+  .theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .minimap-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: left;
+  }
+  .minimap-label input { accent-color: var(--accent); margin: 0; }
+  .minimap-pick:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
   .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .spacer { flex: 1 1 auto; }
   .actions button {
@@ -227,8 +349,10 @@
   .link:hover { color: var(--fg-0); }
   @media (max-width: 720px) {
     .cards { grid-template-columns: 1fr; }
+    .reader-row { grid-template-columns: 1fr; }
+    .themes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .card { transition: none; }
+    .card, .theme, .minimap-pick { transition: none; }
   }
 </style>

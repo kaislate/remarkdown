@@ -21,6 +21,7 @@ vi.mock('../../src/lib/tauri-api', async () => {
 });
 
 import { get } from 'svelte/store';
+import { viewerScroll } from '../../src/stores/viewport';
 import TabBar from '../../src/components/TabBar.svelte';
 import { activateSession, closeSession, cycleSession, closeOtherSessions, closeSessionsAfter } from '../../src/stores/tabs';
 import { revealInFolder } from '../../src/lib/tauri-api';
@@ -221,42 +222,53 @@ async function rightClick(el: Element) {
   await fireEvent.contextMenu(el, { clientX: 120, clientY: 20 });
 }
 
-describe('TabBar — title band', () => {
+describe('TabBar — no title band', () => {
   beforeEach(() => resetSettings());
 
-  it('a solid band sits behind the title area while tabs are shown', () => {
+  it('tabs sit on the window background: no band, a fade behind them only once the page scrolls', async () => {
     twoTabs();
+    const scroll = document.createElement('div');
+    document.body.appendChild(scroll);
+    viewerScroll.set(scroll);
     render(TabBar);
-    expect(document.querySelector('.tab-band')).not.toBeNull();
-    expect(document.body.classList.contains('has-tab-band')).toBe(true);
+    expect(document.querySelector('.tab-band')).toBeNull();
+    expect(document.body.classList.contains('has-tabs')).toBe(true);
+    const haze = document.querySelector('.tab-haze')!;
+    expect(haze.classList.contains('shown')).toBe(false);
+    Object.defineProperty(scroll, 'scrollTop', { value: 200, configurable: true }); // jsdom doesn't scroll
+    scroll.dispatchEvent(new Event('scroll'));
+    await tick();
+    expect(haze.classList.contains('shown')).toBe(true);
+    viewerScroll.set(null);
+    scroll.remove();
   });
 
-  it('no band (the title area stays see-through) while tabs are hidden', () => {
+  it('no tab classes while tabs are hidden', () => {
     updateSettings({ openMode: 'replace' });
     const a = withDoc('/a.md');
     sessions.set([a]);
     activeSession.set(a);
     render(TabBar);
-    expect(document.querySelector('.tab-band')).toBeNull();
-    expect(document.body.classList.contains('has-tab-band')).toBe(false);
+    expect(document.querySelector('.tab-haze')).toBeNull();
+    expect(document.body.classList.contains('has-tabs')).toBe(false);
   });
 
-  it('the band goes away once the tabs do', async () => {
+  it('the classes go away once the tabs do', async () => {
     const { b } = twoTabs();
     updateSettings({ openMode: 'replace' });
     render(TabBar);
-    expect(document.body.classList.contains('has-tab-band')).toBe(true);
+    expect(document.body.classList.contains('has-tabs')).toBe(true);
     sessions.set([b]);
     activeSession.set(b);
     await tick();
-    expect(document.body.classList.contains('has-tab-band')).toBe(false);
+    expect(document.body.classList.contains('has-tabs')).toBe(false);
   });
 });
 
 describe('TabBar — top', () => {
   beforeEach(() => resetSettings());
 
-  it('lays the tabs out in a row in the title band, flat (no pills)', () => {
+  it('lays the tabs out in a row along the top, flat (no pills)', () => {
     twoTabs();
     render(TabBar);
     const list = screen.getByRole('tablist');
@@ -309,11 +321,12 @@ describe('TabBar — left', () => {
     expect(initials).toEqual(['A', 'B', '3']);
   });
 
-  it('the title band stays solid with tabs on the left', () => {
+  it('no band and no top fade with tabs on the left', () => {
     twoTabs();
     render(TabBar);
-    expect(document.querySelector('.tab-band')).not.toBeNull();
-    expect(document.body.classList.contains('has-tab-band')).toBe(true);
+    expect(document.querySelector('.tab-band')).toBeNull();
+    expect(document.querySelector('.tab-haze')).toBeNull();
+    expect(document.body.classList.contains('has-tabs')).toBe(true);
     expect(document.body.classList.contains('tabs-left')).toBe(true);
   });
 

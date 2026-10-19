@@ -7,11 +7,14 @@
 <script lang="ts">
   // The only things reader mode adds on top of the page:
   //   - an invisible band along the top edge that still moves the window
-  //     (the title bar is hidden with the rest of the chrome);
-  //   - a short hint on entry saying how to get out (Esc is the only way).
+  //     (the title bar is hidden with the rest of the chrome; the window
+  //     buttons stay, muted, on the same line);
+  //   - a quiet back arrow top-left, the other way out besides Esc;
+  //   - a short hint on entry saying how to get out.
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { readerMode } from '../stores/reader-mode';
+  import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
+  import { readerMode, exitReaderMode } from '../stores/reader-mode';
 
   let hint = $state(false);
   let hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +93,14 @@
     onpointerdown={onBandPointerDown}
     ondblclick={onBandDoubleClick}
   ></div>
+  <button
+    class="reader-back"
+    aria-label="Leave reader mode"
+    title="Leave reader mode (Esc)"
+    onclick={exitReaderMode}
+  >
+    <ArrowLeft size={16} weight="bold" />
+  </button>
 {/if}
 
 {#if hint}
@@ -107,6 +118,37 @@
     height: 38px;
     z-index: 50;
     background: transparent;
+  }
+
+  /* Top-left, centred on the same line as the window buttons (38px tall)
+     and the meta line. Faint at rest, in the page's own ink. */
+  .reader-back {
+    position: fixed;
+    top: 5px;
+    left: 10px;
+    width: 28px;
+    height: 28px;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-2);
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+  }
+  .reader-back:hover,
+  .reader-back:focus-visible {
+    opacity: 1;
+    color: var(--fg-0);
+    background: var(--glass-fill);
+  }
+  .reader-back:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 
   /* Bottom centre, in the page's own muted ink (reader-mode.css sets the

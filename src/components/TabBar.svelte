@@ -1,11 +1,15 @@
 <script lang="ts">
-  // Tabs: one per open document (session), either in the title band between
-  // the wordmark and the window controls (Notepad-style flat tabs) or as a
-  // sidebar down the left edge (settings.tabPosition). While tabs are shown
-  // the title band turns solid; the body classes set below let the page and
-  // the floating chrome make room for it (see styles/tabs-layout.css).
+  // Tabs: one per open document (session), either along the top between
+  // the wordmark and the window controls (flat, Notepad-style) or as a
+  // sidebar down the left edge (settings.tabPosition). They sit on the
+  // window's own background like the rest of the floating chrome: no title
+  // band, and the menu button and wordmark look the same with or without
+  // tabs. Top tabs float over the page; once it has scrolled, a soft
+  // frosted fade behind them keeps text passing underneath from clashing.
+  // The body classes set below let the page and the floating chrome make
+  // room for the sidebar (see styles/tabs-layout.css).
   //
-  // The band's empty space stays a window-drag region (and double-click
+  // The strip's empty space stays a window-drag region (and double-click
   // still maximises), like the .titlebar-drag band underneath it.
   //
   // Motion: tabs grow in / shrink out (rows slide in / out on the left),
@@ -29,6 +33,7 @@
   import { settings, updateSettings } from '../stores/settings';
   import { activeModal } from '../stores/modals';
   import { readerMode } from '../stores/reader-mode';
+  import { viewerScroll } from '../stores/viewport';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
 
   interface TabItem {
@@ -65,14 +70,27 @@
   const left = $derived($settings.tabPosition === 'left');
   const pinned = $derived($settings.tabSidebarPinned);
 
-  // Layout signals for the rest of the window: the page starts below the
-  // solid band (and right of the sidebar); the floating buttons move over.
+  // Layout signals for the rest of the window: the page starts right of the
+  // sidebar and the floating buttons move over; the editor's toolbar sticks
+  // below top tabs.
   $effect(() => {
     const body = document.body;
-    body.classList.toggle('has-tab-band', visible);
+    body.classList.toggle('has-tabs', visible);
     body.classList.toggle('tabs-left', visible && left);
     body.classList.toggle('tab-sidebar-pinned', visible && left && pinned);
-    return () => body.classList.remove('has-tab-band', 'tabs-left', 'tab-sidebar-pinned');
+    return () => body.classList.remove('has-tabs', 'tabs-left', 'tab-sidebar-pinned');
+  });
+
+  // The frosted fade behind top tabs shows only while the page is scrolled
+  // (at the top there's nothing under the tabs but the background).
+  let scrolled = $state(false);
+  $effect(() => {
+    const el = $viewerScroll;
+    if (!el) return;
+    const check = () => { scrolled = el.scrollTop > 2; };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    return () => el.removeEventListener('scroll', check);
   });
 
   // People who don't know what markdown is shouldn't have to see ".md".
@@ -310,12 +328,11 @@
 {/snippet}
 
 {#if visible}
-  <!-- The solid title band: purely a backdrop. The hamburger, wordmark,
-       tabs and window controls all sit on top of it, and the drag region
-       underneath (TitleBar) keeps working through it. -->
-  <div class="tab-band" aria-hidden="true"></div>
-
   {#if !left}
+    <!-- Purely a backdrop for text scrolling under the tabs: never takes
+         the pointer, so the drag region underneath keeps working. -->
+    <div class="tab-haze" class:shown={scrolled} aria-hidden="true"></div>
+
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="tabbar"
@@ -454,52 +471,58 @@
 {/if}
 
 <style>
-  /* Full-width solid band behind the title area. Below the drag region
-     (z:50) and everything that sits in the band. */
-  .tab-band {
+  /* Behind top tabs while the page is scrolled: the text passing under
+     them is frosted and faded out, so there's never a bar — at the top of
+     the page there's nothing here at all. Below the drag region (z:50)
+     and everything that sits on the top edge. */
+  .tab-haze {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: var(--tab-band-h, 40px);
-    box-sizing: border-box;
-    background: var(--chrome);
-    border-bottom: 1px solid var(--glass-border);
+    height: 80px;
     z-index: 49;
     pointer-events: none;
+    /* Solid enough to read the tab names over by their bottom edge (y=49),
+       then fading out over the next ~25px. */
+    background: color-mix(in srgb, var(--bg-0) 92%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+    mask-image: linear-gradient(to bottom, #000 62%, transparent);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .tab-haze.shown {
+    opacity: 1;
   }
 
   /* ---- Top tabs ---------------------------------------------------------- */
+  /* On the same line as the menu button and wordmark (centred at y=33),
+     right of where the wordmark ends when it unfolds to "remarkdown" on
+     hover; left of the window controls. */
   .tabbar {
     position: fixed;
-    top: 0;
-    /* Right of the hamburger + wordmark (fixed, so the strip doesn't jump
-       when the wordmark morphs on hover — "remarkdown" ends at 133px);
-       left of the window controls. */
-    left: 142px;
+    top: 17px;
+    left: 174px;
     right: 140px;
-    height: 40px;
+    height: 32px;
     /* Above .titlebar-drag (z:50) whose job it takes over here; below the
        menu backdrop (z:125) so an open menu dims it. */
     z-index: 55;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 2px;
     padding: 0 4px;
     box-sizing: border-box;
-  }
-  /* The pre-release tag sits after the wordmark in the band. */
-  :global(body:has(.pre-tag)) .tabbar {
-    left: 188px;
   }
 
   .tab-strip {
     position: relative;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     min-width: 0;
     height: 100%;
-    padding-top: 6px;
     box-sizing: border-box;
     overflow-x: auto;
     overflow-y: hidden;
@@ -514,20 +537,21 @@
   }
 
   /* Flat, Notepad-style: inactive tabs are plain text with thin dividers;
-     the active one is filled with the page colour so it opens straight
-     into the document below. */
+     the active one is lifted by a faint fill and underlined in the accent
+     (the sliding .indicator). Nothing heavier: they sit on the page's own
+     background. */
   .tab {
     position: relative;
     flex: 0 1 auto;
     min-width: 96px;
     max-width: 200px;
-    height: 34px;
+    height: 30px;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 0 6px 0 14px;
     box-sizing: border-box;
-    border-radius: 8px 8px 0 0;
+    border-radius: 8px;
     cursor: pointer;
     color: var(--fg-2);
     font-family: var(--font-sans);
@@ -546,6 +570,7 @@
     bottom: 9px;
     width: 1px;
     background: var(--glass-border);
+    opacity: 0.7;
     transition: opacity 0.18s ease;
   }
   .tab.active::before,
@@ -560,7 +585,7 @@
   }
   .tab.active {
     color: var(--fg-0);
-    background: var(--bg-0);
+    background: var(--glass-fill);
   }
   .tab:focus-visible {
     outline: 2px solid var(--accent);
@@ -601,13 +626,15 @@
     background: var(--glass-border);
   }
 
-  /* The accent line along the active tab's top edge; slides between tabs. */
+  /* A short accent line under the active tab's name; slides between tabs.
+     (Positioned over the whole tab, inset so it's shorter than the tab.) */
   .indicator {
     position: absolute;
     left: 0;
-    top: 6px;
+    bottom: 2px;
     height: 2px;
-    border-radius: 0 0 2px 2px;
+    border-radius: 2px;
+    clip-path: inset(0 14px);
     background: var(--accent);
     opacity: 0;
     pointer-events: none;
@@ -623,7 +650,6 @@
   .new-tab {
     flex: 0 0 auto;
     align-self: center;
-    margin-top: 4px;
     width: 26px;
     height: 26px;
     display: grid;
@@ -644,14 +670,16 @@
   }
 
   /* ---- Left sidebar ------------------------------------------------------ */
-  /* Below the band, down the left edge. Collapsed it shows only the
-     initials (52px) and opens over the page on hover; pinned it stays
-     open and the page moves over (--tab-side-w, tabs-layout.css). Above
-     the floating buttons (z:100–110) it overlaps when open, below the
-     hamburger menu (z:130). */
+  /* Down the left edge, below the menu button (which keeps its place and
+     look). Collapsed it shows only the initials (52px) and opens over the
+     page on hover; pinned it stays open and the page moves over
+     (--tab-side-w, tabs-layout.css). No panel of its own: it sits on the
+     window's background, and only takes a soft one while it's open over
+     the page. Above the floating buttons (z:100-110) it overlaps when
+     open, below the hamburger menu (z:130). */
   .tab-sidebar {
     position: fixed;
-    top: var(--tab-band-h, 40px);
+    top: 60px;
     left: 0;
     bottom: 0;
     width: 52px;
@@ -662,11 +690,12 @@
     padding: 8px;
     box-sizing: border-box;
     overflow: hidden;
-    background: var(--chrome);
-    border-right: 1px solid var(--glass-border);
+    background: transparent;
+    border-radius: 0 12px 12px 0;
     font-family: var(--font-sans);
     transition:
       width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+      background-color 0.22s ease,
       box-shadow 0.22s ease;
   }
   .tab-sidebar.pinned,
@@ -676,7 +705,8 @@
   }
   .tab-sidebar:not(.pinned):hover,
   .tab-sidebar:not(.pinned):has(:focus-visible) {
-    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.45);
+    background: color-mix(in srgb, var(--bg-1) 94%, transparent);
+    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.3);
     /* Hover intent: a pointer passing by on its way to the page doesn't
        fling the sidebar open. */
     transition-delay: 120ms;
@@ -723,7 +753,7 @@
   }
   .side-tab.active {
     color: var(--fg-0);
-    background: var(--bg-0);
+    background: var(--glass-fill);
     box-shadow: inset 2px 0 0 var(--accent);
   }
 

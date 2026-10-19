@@ -98,6 +98,12 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'reader theme paper sepia night e-ink eink',
   },
   {
+    id: 'setting-reader-minimap', section: 'reading', title: 'Show the minimap in reader mode', depiction: 'reader-minimap',
+    description: 'A small map of the whole document beside the page, showing where you are.',
+    control: { type: 'switch', key: 'readerMinimap' },
+    keywords: 'reader minimap map overview position',
+  },
+  {
     id: 'setting-open-edit', section: 'reading', title: 'Always open documents ready to edit', depiction: 'edit-mode',
     description: 'Every file opens in edit mode, as if you had pressed Ctrl+E.',
     control: { type: 'switch', key: 'openInEditMode' },

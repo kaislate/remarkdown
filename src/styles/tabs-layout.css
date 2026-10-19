@@ -1,26 +1,30 @@
 /* Room for the tabs. TabBar.svelte sets these body classes while tabs are
    shown:
-     has-tab-band        — the solid title band is up (top or left tabs)
+     has-tabs            — tabs are shown (top or left)
      tabs-left           — tabs live in the sidebar on the left
      tab-sidebar-pinned  — that sidebar is pinned open
-   The page (Viewer's .scroll) starts below the band and right of the
-   sidebar, so its scroll box is exactly the visible part of the page (the
-   minimap's viewport box relies on that). */
+   Top tabs float over the page like the rest of the chrome, so the page
+   keeps the whole window; the sidebar takes a strip on the left and the
+   page (Viewer's .scroll) starts right of it, so its scroll box is exactly
+   the visible part of the page (the minimap's viewport box relies on
+   that). */
 
 :root {
-  --tab-band-h: 0px;
   --tab-side-w: 0px;
 }
-/* Reader mode hides every bit of chrome, the band and sidebar included,
-   and the page gets the whole window back. */
-body.has-tab-band:not(.reader-mode) {
-  --tab-band-h: 40px;
-}
-body.has-tab-band.tabs-left:not(.reader-mode) {
+/* Reader mode hides every bit of chrome, the sidebar included, and the
+   page gets the whole window back. */
+body.has-tabs.tabs-left:not(.reader-mode) {
   --tab-side-w: 52px;
 }
-body.has-tab-band.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
+body.has-tabs.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
   --tab-side-w: 200px;
+}
+
+/* Editing under top tabs: the formatting toolbar sticks just below them
+   instead of under them. */
+body.has-tabs:not(.tabs-left) .editor-toolbar {
+  top: 54px;
 }
 
 /* The floating buttons down the left edge (and the watermark) move over

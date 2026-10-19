@@ -34,17 +34,20 @@ describe('reading time', () => {
     expect(wordsBelow([{ top: 100, bottom: 100, words: 9 }], 200)).toBe(0);
   });
 
-  it('names the section once its heading has scrolled off the top', () => {
+  it('names the section as soon as its heading reaches the reading line', () => {
+    // The reading line sits a third of the way down the view (y = 240 here):
+    // a heading that has come up to it is where the reader now is, even
+    // though it's still on screen.
     const heads = [
-      { text: 'Intro', bottom: -400 },
-      { text: 'Chapter 3', bottom: -20 },
-      { text: 'Later', bottom: 300 },
+      { text: 'Intro', top: -400 },
+      { text: 'Chapter 3', top: 200 },
+      { text: 'Later', top: 500 },
     ];
-    expect(sectionAt(heads, 0)).toBe('Chapter 3');
+    expect(sectionAt(heads, 240)).toBe('Chapter 3');
     expect(sectionAt(heads, -500)).toBeNull();
-    expect(sectionAt([], 0)).toBeNull();
-    // The heading still on screen doesn't need repeating above itself.
-    expect(sectionAt([{ text: 'Title', bottom: 120 }], 0)).toBeNull();
+    expect(sectionAt([], 240)).toBeNull();
+    // Still below the line: the previous section is the one being read.
+    expect(sectionAt([{ text: 'Intro', top: -400 }, { text: 'Next', top: 260 }], 240)).toBe('Intro');
   });
 
   it('rounds the remaining time up to whole minutes; nothing left is 0', () => {

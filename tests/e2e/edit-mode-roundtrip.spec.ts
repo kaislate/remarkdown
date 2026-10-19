@@ -136,8 +136,8 @@ test.describe('edit mode — code blocks', () => {
   test('toggle on → existing fenced code block renders with language pill', async ({ page }) => {
     await page.locator('.edit-mode-toggle').click();
     // The NodeView's pill is the marker that the code-block surface mounted.
-    await expect(page.locator('.code-block-lang-pill')).toBeVisible();
-    await expect(page.locator('.code-block-lang-pill')).toHaveText('typescript');
+    await expect(page.locator('.editor-surface .code-block-lang-pill')).toBeVisible();
+    await expect(page.locator('.editor-surface .code-block-lang-pill')).toHaveText('typescript');
   });
 
   test('insert-code-block button wraps a paragraph and saves with ``` syntax', async ({ page }) => {

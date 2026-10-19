@@ -1,9 +1,10 @@
 import { chooseSetting } from './support/settings';
 import { test, expect, type Page } from '@playwright/test';
 
-// Tabs v2 layout, measured in a real browser: the solid title band, the
-// left sidebar (pinned / collapsed / hover), nothing in edit mode hiding
-// under them, and the minimap's viewport box matching what's on screen.
+// Tabs layout, measured in a real browser: tabs on the window's own
+// background (no title band), the left sidebar (pinned / collapsed / hover),
+// nothing in edit mode hiding under them, and the minimap's viewport box
+// matching what's on screen.
 
 const A = '/e2e/layout/Alpha.md';
 const B = '/e2e/layout/Beta.md';
@@ -45,31 +46,54 @@ test.beforeEach(async ({ page }) => {
   }, DOCS);
 });
 
-test('with tabs on top the title band is solid and the page starts below it', async ({ page }) => {
-  await openViaLaunch(page, [A, B]);
-  await expect(tabs(page)).toHaveCount(2);
-  const band = await rect(page, '.tab-band');
-  expect(band).toMatchObject({ top: 0, left: 0, height: 40 });
-  expect(band.width).toBe(1100);
-  expect(await page.locator('.tab-band').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(21, 19, 31)');
-  const scroll = await rect(page, '.scroll');
-  expect(scroll.top).toBe(40);
-  expect(scroll.left).toBe(0);
-  // The active tab sits on the band's bottom edge, opening into the page.
-  const active = await rect(page, '[role="tab"][aria-selected="true"]');
-  expect(active.bottom).toBe(40);
-  // Its accent line runs along its top edge (once it has slid there).
-  await expect.poll(async () => {
-    const line = await rect(page, '.tabbar .indicator');
-    return Math.abs(line.top - active.top) <= 0.5 && line.left > active.left && line.right < active.right;
-  }).toBe(true);
-});
-
-test('the band goes see-through again when tabs are not shown', async ({ page }) => {
+// Tabs sit on the window's own background: no title band, and the menu
+// button, wordmark and pre-release tag look and sit exactly as they do
+// without tabs. The page keeps the whole window.
+test('with tabs on top there is no title band and the menu and wordmark are unchanged', async ({ page }) => {
   await setSettings(page, { openMode: 'replace' });
   await openViaLaunch(page, [A]);
   await expect(h1(page)).toHaveText('Alpha');
+  const menuBefore = await rect(page, '.hamburger');
+  const markBefore = await rect(page, '.wordmark');
+
+  await setSettings(page, { openMode: 'tabs' });
+  await openViaLaunch(page, [B]);
+  await expect(tabs(page)).toHaveCount(2);
   await expect(page.locator('.tab-band')).toHaveCount(0);
+  expect(await rect(page, '.hamburger')).toEqual(menuBefore);
+  expect(await rect(page, '.wordmark')).toEqual(markBefore);
+  expect(await rect(page, '.scroll')).toMatchObject({ top: 0, left: 0 });
+
+  // The tabs share the menu button's line.
+  const active = await rect(page, '[role="tab"][aria-selected="true"]');
+  const menuMid = menuBefore.top + menuBefore.height / 2;
+  expect(Math.abs(active.top + active.height / 2 - menuMid)).toBeLessThanOrEqual(1.5);
+  // A short accent line under the active tab's name (once it has slid there).
+  await expect.poll(async () => {
+    const line = await rect(page, '.tabbar .indicator');
+    return line.bottom <= active.bottom && line.bottom >= active.bottom - 4 && line.left > active.left && line.right < active.right;
+  }).toBe(true);
+  // Clear of the wordmark even when it unfolds to "remarkdown" on hover.
+  await page.locator('.hamburger').hover();
+  await page.waitForTimeout(400);
+  const first = await rect(page, '[role="tab"]');
+  expect((await rect(page, '.wordmark')).right).toBeLessThan(first.left);
+
+  // Nothing behind the tabs at the top of the page; a fade once it scrolls.
+  await expect(page.locator('.tab-haze')).toHaveCSS('opacity', '0');
+  await tabs(page).nth(0).click();
+  await expect(h1(page)).toHaveText('Alpha');
+  await page.locator('.scroll').evaluate((el) => { el.scrollTop = 600; });
+  await expect(page.locator('.tab-haze')).toHaveCSS('opacity', '1');
+  await page.locator('.scroll').evaluate((el) => { el.scrollTop = 0; });
+  await expect(page.locator('.tab-haze')).toHaveCSS('opacity', '0');
+});
+
+test('no tab chrome at all when tabs are not shown', async ({ page }) => {
+  await setSettings(page, { openMode: 'replace' });
+  await openViaLaunch(page, [A]);
+  await expect(h1(page)).toHaveText('Alpha');
+  await expect(page.locator('.tab-haze')).toHaveCount(0);
   expect((await rect(page, '.scroll')).top).toBe(0);
 });
 
@@ -83,8 +107,11 @@ test('tabs on the left: a sidebar switches documents and the page moves over', a
   await expect(page.locator('.tab-sidebar [role="tab"] .label')).toHaveText(['Alpha', 'Beta', 'Gamma']);
   await expect(page.locator('.tab-sidebar [role="tab"] .tab-initial')).toHaveText(['A', 'B', 'G']);
   await expect.poll(async () => (await rect(page, '.tab-sidebar')).width).toBe(200);
-  expect(await rect(page, '.tab-sidebar')).toMatchObject({ top: 40, left: 0 });
-  expect(await rect(page, '.scroll')).toMatchObject({ top: 40, left: 200 });
+  // Below the menu button, which keeps its place; no panel of its own.
+  expect(await rect(page, '.tab-sidebar')).toMatchObject({ top: 60, left: 0 });
+  expect((await rect(page, '.hamburger')).bottom).toBeLessThan(60);
+  expect(await rect(page, '.scroll')).toMatchObject({ top: 0, left: 200 });
+  await expect(sidebar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
   await tabs(page).nth(0).click();
   await expect(h1(page)).toHaveText('Alpha');
@@ -99,10 +126,12 @@ test('tabs on the left: a sidebar switches documents and the page moves over', a
   expect((await rect(page, '.scroll')).left).toBe(52);
   await expect(page.locator('.tab-sidebar [role="tab"] .label').first()).toHaveCSS('opacity', '0');
 
-  // Hover opens it over the page without moving the page.
+  // Hover opens it over the page without moving the page, on a soft
+  // background of its own while it covers the page.
   await page.mouse.move(26, 120);
   await expect.poll(async () => (await rect(page, '.tab-sidebar')).width).toBe(200);
   expect((await rect(page, '.scroll')).left).toBe(52);
+  await expect(sidebar).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.locator('.tab-sidebar [role="tab"] .label').first()).toHaveCSS('opacity', '1');
   await page.mouse.move(700, 400);
   await expect.poll(async () => (await rect(page, '.tab-sidebar')).width).toBe(52);
@@ -137,19 +166,18 @@ test('right-click a tab: Close others and Close tabs to the right', async ({ pag
   expect(await page.evaluate(() => (window as any).__E2E_REVEALED__)).toEqual([B]);
 });
 
-test('reader mode hides the band and the sidebar and gives the page the whole window', async ({ page }) => {
+test('reader mode hides the sidebar and gives the page the whole window', async ({ page }) => {
   await setSettings(page, { tabPosition: 'left' });
   await openViaLaunch(page, [A, B]);
   await expect(page.locator('.tab-sidebar')).toBeVisible();
   await page.locator('.reader-mode-toggle').click();
   await expect(page.locator('.tab-sidebar')).toBeHidden();
-  await expect(page.locator('.tab-band')).toBeHidden();
   expect(await rect(page, '.scroll')).toMatchObject({ top: 0, left: 0 });
 });
 
 // The coordinator's 0.7.0 bug: in edit mode the formatting toolbar sat under
-// the tab bar. Nothing in edit mode may start above the band or under the
-// sidebar — before or after scrolling (the toolbar is sticky).
+// the tab bar. Nothing in edit mode may sit under the tabs, the sidebar or
+// the menu button — before or after scrolling (the toolbar is sticky).
 for (const position of ['top', 'left'] as const) {
   test(`edit mode toolbar is fully visible below the tabs (${position})`, async ({ page }) => {
     await setSettings(page, { tabPosition: position });
@@ -159,6 +187,9 @@ for (const position of ['top', 'left'] as const) {
     await page.locator('.edit-mode-toggle').click();
     const toolbar = page.locator('.editor-toolbar');
     await expect(toolbar).toBeVisible();
+    // While the page fades in after the tab switch it is briefly a layer of
+    // its own, under the window-drag strip; measure once it has settled.
+    await expect.poll(() => page.locator('.content').evaluate((el) => el.getAnimations().length)).toBe(0);
 
     for (const scrolled of [false, true]) {
       if (scrolled) {
@@ -166,7 +197,7 @@ for (const position of ['top', 'left'] as const) {
         await page.waitForTimeout(100);
       }
       const bar = await rect(page, '.editor-toolbar');
-      const chrome = position === 'top' ? ['.tab-band', '.tabbar'] : ['.tab-band', '.tab-sidebar'];
+      const chrome = position === 'top' ? ['.tabbar', '.menu-root'] : ['.tab-sidebar', '.menu-root'];
       for (const sel of chrome) {
         const c = await rect(page, sel);
         const overlaps = bar.left < c.right && bar.right > c.left && bar.top < c.bottom && bar.bottom > c.top;
@@ -243,7 +274,7 @@ for (const { position, zoom, articleWidth } of MINIMAP_CASES) {
         };
       });
       const at = `(${position}, zoom ${zoom}, ${Math.round(f * 100)}%)`;
-      expect(m.visibleTop, `page starts below the band ${at}`).toBe(40);
+      expect(m.visibleTop, `page has the whole height ${at}`).toBe(0);
       expect(Math.abs(m.cloneHeight - m.articleHeightScaled), `clone height ${at}`).toBeLessThanOrEqual(1);
       expect(Math.abs(m.pClone - m.pArticle), `line position ${at}`).toBeLessThanOrEqual(1);
       expect(Math.abs(m.boxTop - m.wantTop), `box top ${at}`).toBeLessThanOrEqual(1);

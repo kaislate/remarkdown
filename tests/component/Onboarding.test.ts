@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 
 vi.mock('../../src/lib/tauri-api', () => ({
@@ -45,7 +45,7 @@ describe('Onboarding', () => {
   it('offers three profiles with screenshots; Annotator is preselected', () => {
     show();
     expect(screen.getByRole('dialog', { name: /How do you want to use remarkdown/ })).toBeInTheDocument();
-    const cards = screen.getAllByRole('radio');
+    const cards = within(screen.getByRole('radiogroup', { name: /How do you want/ })).getAllByRole('radio');
     expect(cards.map((c) => c.querySelector('h3')?.textContent)).toEqual(['Reader', 'Annotator', 'Writer']);
     for (const c of cards) expect(c.querySelector('img')?.getAttribute('alt')).toMatch(/remarkdown set up for/);
     expect(cards[1]).toHaveAttribute('aria-checked', 'true');
@@ -69,7 +69,7 @@ describe('Onboarding', () => {
     const shown = Array.from(document.querySelectorAll('[data-option]')).map((n) => n.getAttribute('data-option'));
     expect(shown).toEqual(profile('reader').customize);
     expect(get(settings).openInFocusMode).toBe(true);
-    await fireEvent.click(screen.getByRole('switch', { name: /reader mode/i }));
+    await fireEvent.click(screen.getByRole('switch', { name: 'Always open documents in reader mode' }));
     expect(get(settings).openInFocusMode).toBe(false);
     await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(get(settings).onboardingCompleted).toBe(true);
@@ -84,7 +84,7 @@ describe('Onboarding', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(get(settings).openInFocusMode).toBe(false);
     expect(get(settings).marginaliaEnabled).toBe(true);
-    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(within(screen.getByRole('radiogroup', { name: /How do you want/ })).getAllByRole('radio')).toHaveLength(3);
   });
 
   it('Skip keeps the current settings and does not ask again', async () => {
@@ -103,5 +103,47 @@ describe('Onboarding', () => {
     await fireEvent.keyDown(cards[1], { key: 'ArrowRight' });
     expect(cards[2]).toHaveAttribute('aria-checked', 'true');
     expect(document.activeElement).toBe(cards[2]);
+  });
+
+  describe('reader mode, right on the first screen', () => {
+    const colours = () => screen.getByRole('radiogroup', { name: 'Reader mode colours' });
+    const minimap = () => screen.getByRole('switch', { name: 'Show the minimap in reader mode' });
+
+    it('offers every reader style with a moving picture of it, and the minimap switch (on)', () => {
+      show();
+      const opts = within(colours()).getAllByRole('radio');
+      expect(opts.map((o) => o.textContent?.trim())).toEqual(['Default', 'Paper', 'Sepia', 'Night', 'E-ink']);
+      for (const o of opts) expect(o.querySelector('svg.reader-style-preview.playing')).not.toBeNull();
+      expect(minimap()).toBeChecked();
+      expect(document.querySelector('.minimap-pick svg.reader-style-preview.with-map')).not.toBeNull();
+    });
+
+    it("follows the chosen layout's style until you pick one yourself", async () => {
+      show();
+      const checked = () => within(colours()).getAllByRole('radio').find((o) => o.getAttribute('aria-checked') === 'true')?.textContent?.trim();
+      expect(checked()).toBe('Default');
+      await fireEvent.click(screen.getByRole('radio', { name: /Reader/ }));
+      expect(checked()).toBe('Paper');
+      await fireEvent.click(within(colours()).getByRole('radio', { name: 'Night' }));
+      await fireEvent.click(screen.getByRole('radio', { name: /Writer/ }));
+      expect(checked()).toBe('Night');
+    });
+
+    it('Continue saves the picks with the layout', async () => {
+      show();
+      await fireEvent.click(screen.getByRole('radio', { name: /Reader/ }));
+      await fireEvent.click(within(colours()).getByRole('radio', { name: 'Sepia' }));
+      await fireEvent.click(minimap());
+      expect(document.querySelector('.minimap-pick svg.reader-style-preview.with-map')).toBeNull();
+      await fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      expect(get(settings)).toMatchObject({ readerTheme: 'sepia', readerMinimap: false, openInFocusMode: true });
+    });
+
+    it('Skip changes nothing', async () => {
+      show();
+      await fireEvent.click(within(colours()).getByRole('radio', { name: 'Night' }));
+      await fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
+      expect(get(settings)).toMatchObject({ readerTheme: 'default', readerMinimap: true });
+    });
   });
 });

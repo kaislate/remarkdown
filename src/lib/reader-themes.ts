@@ -16,6 +16,17 @@ export const READER_THEME_LABELS: Record<ReaderTheme, string> = {
   eink: 'E-ink',
 };
 
+// Page and ink colours for the small pictures of each theme (Settings and
+// the first-run layout picker) — the same values as reader-mode.css.
+// 'default' follows the app's own tokens.
+export const READER_THEME_SWATCHES: Record<ReaderTheme, { page: string; ink: string; accent: string }> = {
+  default: { page: 'var(--bg-0)', ink: 'var(--fg-1)', accent: 'var(--accent)' },
+  paper: { page: '#fbf9f4', ink: '#3d3a33', accent: '#5b51c8' },
+  sepia: { page: '#f3e7cf', ink: '#4f4130', accent: '#8a5524' },
+  night: { page: '#121417', ink: '#a9a59c', accent: '#c9a25e' },
+  eink: { page: '#f2f2f0', ink: '#222222', accent: '#111111' },
+};
+
 // 'default' keeps the app's own colours, so it is whatever the app is.
 export function readerThemeTone(theme: ReaderTheme, app: AppTheme): AppTheme {
   if (theme === 'default') return app;

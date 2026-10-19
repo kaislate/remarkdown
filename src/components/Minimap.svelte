@@ -3,7 +3,7 @@
   import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { currentViewerRoot } from '../stores/annots';
-  import { viewerScroll } from '../stores/viewport';
+  import { viewerScroll, currentEditorRoot } from '../stores/viewport';
   import { minimapShown, toggleMinimap } from '../stores/ui';
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
   import { prefixIds } from '../lib/prefix-ids';
@@ -19,13 +19,23 @@
   const VIEWER_OUTER_WIDTH = VIEWER_CONTENT_WIDTH + 2 * VIEWER_PADDING_H;
   const MINIMAP_WIDTH = 140;
 
-  // The live article being mirrored, and its border-box width.
+  // What's being mirrored: the reading article, or — while editing — the
+  // editor's content element, which lays out a little differently (diagrams
+  // carry their editing controls) and is what's actually on screen.
   let articleEl: HTMLElement | null = null;
+  let editorEl: HTMLElement | null = null;
+  let sourceEl: HTMLElement | null = null;
   let cloneWidth = $state(VIEWER_OUTER_WIDTH);
 
   let minimapEl = $state<HTMLElement | null>(null);
+  let cloneEl = $state<HTMLElement | null>(null);
 
   let scale = $state(1);
+  // The article's own padding and type size, copied onto the clone: reader
+  // mode changes both (a taller top margin, larger text), and the clone
+  // has to lay out exactly like the page for the box to be exact.
+  let pad = $state({ t: VIEWER_PADDING_T, h: VIEWER_PADDING_H, b: VIEWER_PADDING_B });
+  let fontSize = $state('');
   let translateY = $state(0);
   let indicatorTop = $state(0);
   let indicatorHeight = $state(20);
@@ -52,15 +62,40 @@
     // Where the article sits in the scroll content. The scroll container is
     // exactly the visible page (it starts below the title band / right of
     // the tab sidebar), so the box is [scrollTop, scrollTop + clientHeight]
-    // in these coordinates. In edit mode the article is hidden (no layout):
-    // fall back to treating the whole scroll content as the page.
+    // in these coordinates. If the source has no layout (yet), treat the
+    // whole scroll content as the page.
     let articleTop = 0;
     let articleHeight = scroll.scrollHeight;
     let width = VIEWER_OUTER_WIDTH;
-    if (articleEl && articleEl.offsetWidth > 0) {
-      articleTop = articleEl.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
-      articleHeight = articleEl.offsetHeight;
-      width = articleEl.offsetWidth;
+    if (sourceEl && sourceEl.offsetWidth > 0) {
+      const top = sourceEl.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+      if (sourceEl === editorEl) {
+        // The editor's element is the text itself, without the article's
+        // padding (and the first block's top margin collapses out of it),
+        // so line the clone up by its first block instead.
+        width = sourceEl.offsetWidth + 2 * VIEWER_PADDING_H;
+        articleTop = top - VIEWER_PADDING_T;
+        articleHeight = sourceEl.offsetHeight + VIEWER_PADDING_T + VIEWER_PADDING_B;
+        const first = sourceEl.firstElementChild;
+        const cloneFirst = cloneEl?.firstElementChild;
+        if (first && cloneFirst && cloneEl!.offsetHeight > 0) {
+          const firstTop = first.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+          const cloneScale = cloneEl!.getBoundingClientRect().width / cloneEl!.offsetWidth;
+          const inClone = (cloneFirst.getBoundingClientRect().top - cloneEl!.getBoundingClientRect().top) / cloneScale;
+          articleTop = firstTop - inClone;
+          articleHeight = cloneEl!.offsetHeight;
+        }
+      } else {
+        articleTop = top;
+        articleHeight = sourceEl.offsetHeight;
+        width = sourceEl.offsetWidth;
+        const cs = getComputedStyle(sourceEl);
+        const t = parseFloat(cs.paddingTop);
+        const h = parseFloat(cs.paddingLeft);
+        const b = parseFloat(cs.paddingBottom);
+        if (t !== pad.t || h !== pad.h || b !== pad.b) pad = { t, h, b };
+        fontSize = cs.fontSize;
+      }
     }
     cloneWidth = width;
     lastArticleTop = articleTop;
@@ -129,12 +164,12 @@
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
     function snapshotArticle(): void {
-      if (!articleEl) return;
+      if (!sourceEl) return;
       // Mirror a clone whose ids are prefixed (references rewritten to
       // match) — the clone shares the document with the article, and
       // each diagram svg alone carries dozens of ids its own markers,
       // gradients and inline styles point at. See prefix-ids.ts.
-      const clone = articleEl.cloneNode(true) as HTMLElement;
+      const clone = sourceEl.cloneNode(true) as HTMLElement;
       prefixIds(clone, 'minimap-');
       mirroredHtml = clone.innerHTML;
       // Recompute the indicator after the new HTML lays out in the clone.
@@ -169,28 +204,40 @@
       }
     });
 
-    const unsubArticle = currentViewerRoot.subscribe((el) => {
+    // Mirror the editor while there is one, else the article. Initial
+    // snapshot, then keep it in sync with later mutations (diagrams drawn,
+    // typing).
+    function setSource(): void {
+      const next = editorEl ?? articleEl;
+      if (next === sourceEl) return;
       if (mutationObserver) {
         mutationObserver.disconnect();
         mutationObserver = null;
       }
-      if (articleEl) resizeObserver?.unobserve(articleEl);
-      articleEl = el;
-      if (el) resizeObserver?.observe(el);
-      if (!el) {
+      if (sourceEl) resizeObserver?.unobserve(sourceEl);
+      sourceEl = next;
+      if (!next) {
         mirroredHtml = '';
         return;
       }
-      // Initial snapshot, then keep it in sync with subsequent mutations
-      // (mermaid swap, future transforms).
+      resizeObserver?.observe(next);
       snapshotArticle();
       mutationObserver = new MutationObserver(scheduleSnapshot);
-      mutationObserver.observe(el, {
+      mutationObserver.observe(next, {
         childList: true,
         subtree: true,
         attributes: true,
         characterData: true,
       });
+    }
+
+    const unsubArticle = currentViewerRoot.subscribe((el) => {
+      articleEl = el;
+      setSource();
+    });
+    const unsubEditor = currentEditorRoot.subscribe((el) => {
+      editorEl = el;
+      setSource();
     });
 
     const unsubDoc = doc.subscribe(() => {
@@ -202,13 +249,10 @@
       setTimeout(updateLayout, 300);
     });
 
-    // Reader mode hides the minimap via display:none, which makes
-    // clientWidth/Height collapse to 0 and freezes our layout state.
-    // When reader mode exits, the element has dimensions again — fire
-    // updateLayout() across two animation frames so the recompute lands
-    // after the browser has finished re-applying display:block.
-    const unsubReader = readerMode.subscribe((on) => {
-      if (on) return;
+    // Entering or leaving reader mode changes the page's layout (column,
+    // type size) and the minimap's own size, or shows / hides it; recompute
+    // across two frames so it lands after the browser has re-laid out.
+    const unsubReader = readerMode.subscribe(() => {
       requestAnimationFrame(() => requestAnimationFrame(updateLayout));
     });
 
@@ -225,6 +269,7 @@
       unsubScroll();
       unsubReader();
       unsubArticle();
+      unsubEditor();
     };
   });
 </script>
@@ -246,7 +291,8 @@
     <div class="minimap-inner">
       <div
         class="minimap-content md-rendered"
-        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {cloneWidth}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: border-box;"
+        bind:this={cloneEl}
+        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {cloneWidth}px; padding: {pad.t}px {pad.h}px {pad.b}px; box-sizing: border-box; font-size: {fontSize};"
       >
         {@html mirroredHtml}
       </div>

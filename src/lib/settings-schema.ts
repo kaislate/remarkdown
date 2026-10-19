@@ -38,12 +38,15 @@ export const SettingsSchema = z.object({
   openInFocusMode: z.boolean(),
   // Open documents straight into edit mode (the "Writer" starting layout).
   openInEditMode: z.boolean(),
-  // Retired: reader mode has no minimap at all now. Kept so settings files
-  // that carry it still load; nothing reads it.
+  // Retired: an old reader-mode minimap option (see readerMinimap). Kept so
+  // settings files that carry it still load; nothing reads it.
   minimapPopoutInFocusMode: z.boolean(),
   // Reader mode's page colours (styles/reader-mode.css). 'default' keeps the
   // app's own colours.
   readerTheme: z.enum(READER_THEMES),
+  // Show the minimap in reader mode too (beside the column, in the reader
+  // theme's colours).
+  readerMinimap: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -103,6 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openInEditMode: false,
   minimapPopoutInFocusMode: false,
   readerTheme: 'default',
+  readerMinimap: true,
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,

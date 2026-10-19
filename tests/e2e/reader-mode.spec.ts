@@ -1,6 +1,7 @@
-// Reader mode: nothing but the page. Every chrome element is hidden (the
-// window can still be dragged by an invisible top band), annotations stay
-// visible but read-only, Esc is the only way out, and the reader theme
+// Reader mode: nothing but the page. Every chrome element is hidden except
+// a quiet way back and the window buttons along the top (the window can
+// still be dragged by an invisible top band) and, unless turned off, the
+// minimap. Annotations stay visible but read-only, and the reader theme
 // recolours the page — diagrams included. Set READER_SHOTS_DIR to also
 // write a screenshot per reader theme for manual review.
 import { test, expect, type Page } from '@playwright/test';
@@ -51,14 +52,12 @@ ${LONG}
 const CHROME = [
   '.menu-root',
   '.titlebar-drag',
-  '.titlebar-controls',
   '.controls-aura',
   '.tabbar',
   '.left-title',
   '.rail',
   '.strip',
   '.notes-pill-wrap',
-  '.minimap',
   '.minimap-toggle',
   '.zoom-rail',
   '.toc-button',
@@ -234,7 +233,7 @@ test('annotations stay visible but read-only', async ({ page }) => {
   await expect(page.getByRole('radio', { name: /highlight/i })).toHaveAttribute('aria-checked', 'true');
 });
 
-test('Esc is the only way out: clicks and tool keys do nothing', async ({ page }) => {
+test('clicks on the page and tool keys do not leave; Esc does', async ({ page }) => {
   await open(page, [A]);
   await enterReader(page);
   await page.mouse.click(550, 400);
@@ -290,6 +289,16 @@ test('reading typography and the minutes-left line', async ({ page }) => {
   const meta = page.locator('.reader-meta');
   await expect(meta).toHaveText(/^\d+ min left$/);
   const first = Number((await meta.textContent())!.match(/\d+/)![0]);
+  // The section is named as soon as its heading comes up to the top third
+  // of the page, while its text is on screen — not once it has gone by.
+  await page.locator('.scroll').evaluate((el) => {
+    const h = Array.from(document.querySelectorAll('.viewer h2')).find((x) => x.textContent === 'Chapter 3')!;
+    el.scrollTop += h.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight * 0.4;
+  });
+  await page.waitForTimeout(100);
+  await expect(meta).not.toContainText('Chapter 3');
+  await page.locator('.scroll').evaluate((el) => { el.scrollTop += el.clientHeight * 0.15; });
+  await expect(meta).toContainText('Chapter 3 · ');
   await page.locator('.scroll').evaluate((el) => { el.scrollTop = el.scrollHeight / 2; });
   await expect(meta).toContainText('Chapter 3 · ');
   await expect.poll(async () => Number((await meta.textContent())!.match(/(\d+) min/)![1])).toBeLessThan(first);
@@ -462,3 +471,90 @@ test.describe('screenshots', () => {
     });
   }
 });
+
+test('a quiet back arrow top-left leaves reader mode', async ({ page }) => {
+  await open(page, [A]);
+  await enterReader(page);
+  const back = page.getByRole('button', { name: 'Leave reader mode' });
+  await expect(back).toBeVisible();
+  const r = (await back.boundingBox())!;
+  expect(r.x).toBeLessThan(24);
+  expect(r.y).toBeLessThan(12);
+  // Subtle at rest.
+  expect(Number(await back.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.8);
+  await back.click();
+  await expect(page.locator('body')).not.toHaveClass(/reader-mode/);
+  await expect(page.locator('.menu-root')).toBeVisible();
+});
+
+test('the window buttons stay, in line with the back arrow and the meta line', async ({ page }) => {
+  await open(page, [A]);
+  await enterReader(page);
+  const mid = async (sel: string) => {
+    const b = (await page.locator(sel).first().boundingBox())!;
+    return b.y + b.height / 2;
+  };
+  for (const name of ['Minimize', 'Maximize', 'Close']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  const arrow = await mid('.reader-back');
+  expect(Math.abs((await mid('.titlebar-controls .ctrl.close')) - arrow)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs((await mid('.reader-meta .left')) - arrow)).toBeLessThanOrEqual(2);
+  // They work from reader mode and don't take it away.
+  await page.getByRole('button', { name: 'Maximize', exact: true }).click();
+  await expect(page.locator('body')).toHaveClass(/reader-mode/);
+});
+
+// The reader minimap's box stands for exactly the visible part of the page:
+// its copy of the page lays out in the reader column and type too.
+test('the minimap shows in reader mode and its box matches the page', async ({ page }) => {
+  await open(page, [A]);
+  await enterReader(page);
+  const map = page.locator('.minimap');
+  await expect(map).toBeVisible();
+  await page.waitForTimeout(500);
+  const scroller = page.locator('.scroll');
+  const max = await scroller.evaluate((el) => el.scrollHeight - el.clientHeight);
+  for (const f of [0, 0.4, 1]) {
+    await scroller.evaluate((el, top) => { el.scrollTop = top; }, Math.round(max * f));
+    await page.waitForTimeout(80);
+    const m = await page.evaluate(() => {
+      const scroll = document.querySelector('.scroll') as HTMLElement;
+      const article = document.querySelector('.viewer') as HTMLElement;
+      const clone = document.querySelector('.minimap-content') as HTMLElement;
+      const box = (document.querySelector('.viewport-indicator') as HTMLElement).getBoundingClientRect();
+      const sr = scroll.getBoundingClientRect();
+      const ar = article.getBoundingClientRect();
+      const cr = clone.getBoundingClientRect();
+      const scale = cr.width / ar.width;
+      const visTop = sr.top - ar.top;
+      const p = article.querySelectorAll('p')[30];
+      const cp = clone.querySelectorAll('p')[30];
+      return {
+        boxTop: box.top, wantTop: cr.top + visTop * scale,
+        boxBottom: box.bottom, wantBottom: cr.top + (visTop + scroll.clientHeight) * scale,
+        pArticle: (p.getBoundingClientRect().top - ar.top) * scale, pClone: cp.getBoundingClientRect().top - cr.top,
+      };
+    });
+    expect(Math.abs(m.pClone - m.pArticle), `line position at ${f}`).toBeLessThanOrEqual(1);
+    expect(Math.abs(m.boxTop - m.wantTop), `box top at ${f}`).toBeLessThanOrEqual(1);
+    expect(Math.abs(m.boxBottom - m.wantBottom), `box bottom at ${f}`).toBeLessThanOrEqual(1);
+  }
+  // The column still clears it.
+  const col = (await page.locator('.viewer p').first().boundingBox())!;
+  const mm = (await map.boundingBox())!;
+  expect(col.x + col.width).toBeLessThan(mm.x);
+});
+
+test('"Show the minimap in reader mode" off: no minimap while reading', async ({ page }) => {
+  await settingsDo(page, async () => {
+    const win = page.getByRole('dialog', { name: 'Settings' });
+    await win.getByRole('button', { name: 'Reading', exact: true }).click();
+    await win.getByLabel('Show the minimap in reader mode').uncheck();
+  });
+  await open(page, [A]);
+  await expect(page.locator('.minimap')).toBeVisible();
+  await enterReader(page);
+  await expect(page.locator('.minimap')).toBeHidden();
+});
+

@@ -158,7 +158,6 @@
          exposed via the Settings/Update modal). -->
     <span class="pre-tag" aria-hidden="true">
       <span class="pre-tag-text">{preTagLabel}</span>
-      <span class="pre-tag-shine" aria-hidden="true"></span>
     </span>
   {/if}
 
@@ -378,14 +377,9 @@
     opacity: 1;
     clip-path: inset(0 0 0 0);
   }
-  /* Animated pre-release tag (BETA / ALPHA / RC / DEV) shown to the
-     right of the wordmark. Three layers of animation:
-       1. A slow accent-coloured glow pulse on the box-shadow so the
-          tag always reads as "alive" without being distracting.
-       2. A diagonal shine that sweeps across the tag every ~3.5s,
-          like a glint on a metal pin.
-       3. A subtle hue-shift on the gradient stops via animated
-          background-position so the gradient itself drifts. */
+  /* Pre-release tag (BETA / ALPHA / RC / DEV) pinned under the wordmark.
+     Still: it used to pulse, drift and sweep a shine across itself, which
+     drew the eye to the top of the window all the time. */
   .pre-tag {
     /* Sits as an absolutely-positioned pin under the wordmark so the
        hamburger:hover ~ .wordmark sibling-combinator selectors stay
@@ -422,61 +416,9 @@
     box-shadow:
       0 1px 5px rgba(139, 127, 255, 0.4),
       inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    animation:
-      pre-tag-pulse 2.6s ease-in-out infinite,
-      pre-tag-drift 7s linear infinite;
   }
   .pre-tag-text {
     position: relative;
-    z-index: 2;
-  }
-  /* Diagonal shine that sweeps across the tag periodically. The 80%
-     blank tail of the keyframe is what gives the impression of "wait
-     a beat, then sweep" instead of a continuous loop. */
-  .pre-tag-shine {
-    position: absolute;
-    top: 0;
-    left: -60%;
-    width: 50%;
-    height: 100%;
-    background: linear-gradient(
-      105deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.45) 50%,
-      rgba(255, 255, 255, 0) 100%
-    );
-    transform: skewX(-18deg);
-    z-index: 1;
-    animation: pre-tag-shine 3.4s ease-in-out infinite;
-  }
-  @keyframes pre-tag-pulse {
-    0%, 100% {
-      box-shadow:
-        0 1px 5px rgba(139, 127, 255, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    }
-    50% {
-      box-shadow:
-        0 2px 12px rgba(139, 127, 255, 0.7),
-        inset 0 1px 0 rgba(255, 255, 255, 0.25);
-    }
-  }
-  @keyframes pre-tag-drift {
-    0%   { background-position: 0%   50%; }
-    100% { background-position: 200% 50%; }
-  }
-  @keyframes pre-tag-shine {
-    0%   { left: -60%; }
-    35%  { left: 130%; }
-    100% { left: 130%; }
-  }
-  /* Respect reduced-motion preferences — kill the pulse + shine but
-     keep the gradient + shadow so the tag is still recognisable. */
-  @media (prefers-reduced-motion: reduce) {
-    .pre-tag,
-    .pre-tag-shine {
-      animation: none;
-    }
   }
 
   .bar {
@@ -486,37 +428,6 @@
     border-radius: 1px;
   }
 
-  /* Inside the solid title band (tabs shown, see TabBar): a smaller,
-     flat button and wordmark centred in the 40px band, the pre-release
-     tag in line after the wordmark instead of hanging below it. The
-     popover still lands at (60, 60). */
-  :global(body.has-tab-band) .menu-root {
-    top: 5px;
-    left: 10px;
-    gap: 10px;
-  }
-  :global(body.has-tab-band) .hamburger {
-    width: 30px;
-    height: 30px;
-    gap: 4px;
-    border-radius: 8px;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-  :global(body.has-tab-band) .bar {
-    width: 13px;
-  }
-  :global(body.has-tab-band) .wordmark {
-    font-size: 15px;
-  }
-  :global(body.has-tab-band) .pre-tag {
-    position: static;
-  }
-  :global(body.has-tab-band) .popover {
-    top: 55px;
-    left: 50px;
-  }
   .popover {
     position: absolute;
     /* Offset diagonally from the hamburger so the popover clears the

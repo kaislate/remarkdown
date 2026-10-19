@@ -82,6 +82,7 @@ export function installReaderMode(): () => void {
 
   const unsubTheme = settings.subscribe((s) => {
     document.body.dataset.readerTheme = s.readerTheme;
+    document.body.classList.toggle('reader-minimap', s.readerMinimap);
   });
 
   window.addEventListener('keydown', onEscape, true);

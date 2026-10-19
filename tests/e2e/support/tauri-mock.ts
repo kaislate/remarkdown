@@ -117,6 +117,10 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       (window as any).__E2E_REVEALED__ = revealed;
       return;
     }
+    case 'plugin:app|version':
+      // Off by default (no pre-release tag in specs); screenshot specs set
+      // __E2E_APP_VERSION__ to show the window exactly as a build does.
+      return (window as any).__E2E_APP_VERSION__ ?? null;
     case 'default_app_status':
       return { supported: false, md: false, markdown: false };
     case 'load_settings':

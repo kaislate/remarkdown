@@ -1,8 +1,11 @@
 /* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts,
    with the chosen palette in `body[data-reader-theme]`.
    1. Every chrome element is hidden. Only the page is left, plus the
-      invisible window-drag band and the entry hint (ReaderModeLayer.svelte)
-      and the "min left" line (ReaderMeta.svelte).
+      way back and the window buttons along the top (ReaderModeLayer.svelte),
+      the "min left" line (ReaderMeta.svelte) and, unless turned off, the
+      minimap.
+   Typography and theme rules also style the minimap's copy of the page
+   (.minimap-content), so it lays out exactly like the page it maps.
    2. Reading typography: a centred ~62ch column, larger text, looser lines.
    3. Reader themes: tokens per palette. 'default' keeps the app's colours. */
 
@@ -10,8 +13,7 @@
 
 body.reader-mode .menu-root,
 body.reader-mode .titlebar-drag,
-body.reader-mode .titlebar-controls,
-body.reader-mode .tab-band,
+body.reader-mode .tab-haze,
 body.reader-mode .tab-sidebar,
 body.reader-mode .controls-aura,
 body.reader-mode .tabbar,
@@ -21,7 +23,7 @@ body.reader-mode .strip,
 body.reader-mode .notes-pill-wrap,
 body.reader-mode .notes-popup-wrap,
 body.reader-mode .dismiss,
-body.reader-mode .minimap,
+body.reader-mode:not(.reader-minimap) .minimap,
 body.reader-mode .minimap-toggle,
 body.reader-mode .zoom-rail,
 body.reader-mode .toc-button,
@@ -37,6 +39,39 @@ body.reader-mode .editor-toolbar,
 body.reader-mode .backdrop,
 body.reader-mode .overlay[aria-label='Welcome tutorial'] {
   display: none !important;
+}
+
+/* The minimap, if shown: quieter than usual, in the theme's own colours,
+   and always open (its collapse tab is chrome). Nothing below it in reader
+   mode, so it runs the height of the window. */
+body.reader-mode.reader-minimap .minimap,
+body.reader-mode.reader-minimap .minimap.hidden,
+body.reader-mode.reader-minimap .minimap:hover {
+  transform: none;
+  bottom: 52px;
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  border-color: var(--glass-border);
+  box-shadow: none;
+}
+body.reader-mode.reader-minimap .viewport-indicator {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* In a narrow window the centred column would run under it: keep its
+   gutter clear instead. */
+@media (max-width: 1000px) {
+  body.reader-mode.reader-minimap .scroll {
+    padding-right: 172px;
+  }
+}
+
+/* The window buttons stay, muted to the page's ink, on one line with the
+   back arrow and the meta line. Their hover glow still says what they do. */
+body.reader-mode .titlebar-controls .ctrl {
+  color: var(--fg-2);
+}
+body.reader-mode .titlebar-controls .ctrl:hover {
+  color: #fff;
 }
 
 /* Resize-grip stays grabbable but visually invisible so the user can
@@ -72,25 +107,25 @@ body.reader-mode .text-frame {
 }
 /* border-box so the side padding sits inside the frame and the text is
    truly centred (normally the article overhangs the frame on the right). */
-body.reader-mode .viewer {
+body.reader-mode :is(.viewer, .minimap-content) {
   box-sizing: border-box;
   padding-top: 68px;
 }
-body.reader-mode .viewer.md-rendered {
+body.reader-mode :is(.viewer, .minimap-content).md-rendered {
   color: var(--reader-body);
   line-height: 1.75;
 }
-body.reader-mode .viewer > :first-child {
+body.reader-mode :is(.viewer, .minimap-content) > :first-child {
   margin-top: 0;
 }
-body.reader-mode .viewer p {
+body.reader-mode :is(.viewer, .minimap-content) p {
   margin: 0 0 1.15em;
 }
-body.reader-mode .viewer li {
+body.reader-mode :is(.viewer, .minimap-content) li {
   margin: 0.35em 0;
 }
 /* Headings in the reading face, a little tighter than the body. */
-body.reader-mode .viewer :is(h1, h2, h3, h4, h5, h6) {
+body.reader-mode :is(.viewer, .minimap-content) :is(h1, h2, h3, h4, h5, h6) {
   font-family: var(--font-serif);
   font-weight: 600;
   line-height: 1.25;
@@ -99,22 +134,22 @@ body.reader-mode .viewer :is(h1, h2, h3, h4, h5, h6) {
   text-wrap: balance;
   margin-bottom: 0.55em;
 }
-body.reader-mode .viewer h1 { font-size: 2.15rem; margin-top: 1.4em; }
-body.reader-mode .viewer h2 { font-size: 1.6rem; margin-top: 1.6em; }
-body.reader-mode .viewer h3 { font-size: 1.3rem; margin-top: 1.5em; }
+body.reader-mode :is(.viewer, .minimap-content) h1 { font-size: 2.15rem; margin-top: 1.4em; }
+body.reader-mode :is(.viewer, .minimap-content) h2 { font-size: 1.6rem; margin-top: 1.6em; }
+body.reader-mode :is(.viewer, .minimap-content) h3 { font-size: 1.3rem; margin-top: 1.5em; }
 /* Code and tables keep a denser rhythm than prose. */
-body.reader-mode .viewer pre {
+body.reader-mode :is(.viewer, .minimap-content) pre {
   font-size: 0.86em;
   line-height: 1.55;
 }
-body.reader-mode .viewer table {
+body.reader-mode :is(.viewer, .minimap-content) table {
   font-size: 0.92em;
   line-height: 1.5;
 }
-body.reader-mode .viewer .callout-body {
+body.reader-mode :is(.viewer, .minimap-content) .callout-body {
   color: var(--reader-body);
 }
-body.reader-mode .viewer .callout-body > :last-child {
+body.reader-mode :is(.viewer, .minimap-content) .callout-body > :last-child {
   margin-bottom: 0;
 }
 
@@ -219,7 +254,7 @@ body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-4) {
 
 /* Links: underlined in the theme's accent so they read as links on
    paper-like pages too. */
-body.reader-mode:not([data-reader-theme='default']) .viewer a {
+body.reader-mode:not([data-reader-theme='default']) :is(.viewer, .minimap-content) a {
   border-bottom-color: var(--accent-soft);
 }
 
@@ -261,13 +296,13 @@ body.reader-mode[data-reader-theme='eink'] .callout {
 
 /* E-ink: ink on grey, nothing in colour — code without syntax colours,
    diagrams in greys. */
-body.reader-mode[data-reader-theme='eink'] .viewer pre.shiki {
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) pre.shiki {
   background-color: var(--bg-2) !important;
 }
-body.reader-mode[data-reader-theme='eink'] .viewer pre.shiki span {
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) pre.shiki span {
   color: #111111 !important;
 }
-body.reader-mode[data-reader-theme='eink'] .viewer .mermaid-block svg {
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) .mermaid-block svg {
   filter: grayscale(1);
 }
 
