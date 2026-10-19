@@ -57,11 +57,11 @@ test('with tabs on top the title band is solid and the page starts below it', as
   // The active tab sits on the band's bottom edge, opening into the page.
   const active = await rect(page, '[role="tab"][aria-selected="true"]');
   expect(active.bottom).toBe(40);
-  // Its accent line runs along its top edge.
-  const line = await rect(page, '.tabbar .indicator');
-  expect(Math.abs(line.top - active.top)).toBeLessThanOrEqual(0.5);
-  expect(line.left).toBeGreaterThan(active.left);
-  expect(line.right).toBeLessThan(active.right);
+  // Its accent line runs along its top edge (once it has slid there).
+  await expect.poll(async () => {
+    const line = await rect(page, '.tabbar .indicator');
+    return Math.abs(line.top - active.top) <= 0.5 && line.left > active.left && line.right < active.right;
+  }).toBe(true);
 });
 
 test('the band goes see-through again when tabs are not shown', async ({ page }) => {
@@ -251,5 +251,101 @@ for (const { position, zoom, articleWidth } of MINIMAP_CASES) {
       expect(Math.abs(m.boxTop - m.wantTop), `box top ${at}`).toBeLessThanOrEqual(1);
       expect(Math.abs(m.boxBottom - m.wantBottom), `box bottom ${at}`).toBeLessThanOrEqual(1);
     }
+  });
+}
+
+// The reading column keeps clear of everything floating on the left — the
+// round buttons, the re.marks pill and the zoom control — and of the tab
+// sidebar, whichever state it is in, and still stops short of the minimap.
+const LEFT_CHROME = ['.edit-mode-toggle', '.toc-button', '.reader-mode-toggle', '.notes-pill-wrap', '.zoom-rail'];
+const STATES = ['top', 'left-expanded', 'left-collapsed', 'left-hover-expanded'] as const;
+
+async function textColumn(page: Page) {
+  return page.locator('.viewer').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return { left: r.left + parseFloat(cs.paddingLeft), right: r.right - parseFloat(cs.paddingRight) };
+  });
+}
+
+async function enterState(page: Page, state: (typeof STATES)[number]) {
+  await setSettings(page, {
+    tabPosition: state === 'top' ? 'top' : 'left',
+    tabSidebarPinned: state === 'left-expanded',
+  });
+  if (state === 'left-hover-expanded') {
+    await page.mouse.move(26, 300);
+    await expect.poll(async () => (await rect(page, '.tab-sidebar')).width).toBe(200);
+  } else {
+    await page.mouse.move(700, 300);
+    if (state !== 'top') {
+      const w = state === 'left-expanded' ? 200 : 52;
+      await expect.poll(async () => (await rect(page, '.tab-sidebar')).width).toBe(w);
+    }
+  }
+}
+
+for (const width of [1100, 1440]) {
+  for (const state of STATES) {
+    test(`the reading column clears the left-hand controls (${state}, ${width}px)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 860 });
+      await openViaLaunch(page, [B, A]);
+      await expect(h1(page)).toHaveText('Alpha');
+      await enterState(page, state);
+      const text = await textColumn(page);
+      const boxes: Array<{ sel: string; left: number; right: number; top: number; bottom: number }> = [];
+      for (const sel of LEFT_CHROME) boxes.push({ sel, ...(await rect(page, sel)) });
+      if (state !== 'top') boxes.push({ sel: '.tab-sidebar', ...(await rect(page, '.tab-sidebar')) });
+      for (const b of boxes) {
+        expect(b.right, `${b.sel} reaches into the text (${b.right} > ${text.left})`).toBeLessThanOrEqual(text.left);
+      }
+      // ...and none of them sit on top of each other (the sidebar is meant
+      // to open over the buttons when hovered, so it is left out here).
+      const chrome = boxes.filter((b) => b.sel !== '.tab-sidebar');
+      for (let i = 0; i < chrome.length; i++) {
+        for (let j = i + 1; j < chrome.length; j++) {
+          const a = chrome[i];
+          const c = chrome[j];
+          const overlap = a.left < c.right && a.right > c.left && a.top < c.bottom && a.bottom > c.top;
+          expect(overlap, `${a.sel} overlaps ${c.sel}`).toBe(false);
+        }
+      }
+      // Pinned or collapsed (not the hover overlay), the buttons sit right of the sidebar.
+      if (state === 'left-expanded' || state === 'left-collapsed') {
+        const side = await rect(page, '.tab-sidebar');
+        for (const b of chrome) expect(b.left, `${b.sel} under the sidebar`).toBeGreaterThanOrEqual(side.right);
+      }
+      // The text never runs under the minimap.
+      expect(text.right).toBeLessThanOrEqual((await rect(page, '.minimap')).left);
+    });
+  }
+}
+
+test('the contents list opens clear of the round buttons and the sidebar', async ({ page }) => {
+  await setSettings(page, { tabPosition: 'left' });
+  await openViaLaunch(page, [B, A]);
+  await expect(h1(page)).toHaveText('Alpha');
+  await page.mouse.move(700, 300);
+  await page.locator('.toc-button').click();
+  const pop = await rect(page, '.toc-popover');
+  const side = await rect(page, '.tab-sidebar');
+  expect(pop.left).toBeGreaterThanOrEqual(side.right);
+  for (const sel of ['.edit-mode-toggle', '.toc-button', '.reader-mode-toggle']) {
+    expect(pop.left, `${sel} under the contents list`).toBeGreaterThanOrEqual((await rect(page, sel)).right);
+  }
+});
+
+for (const state of ['top', 'left-expanded', 'left-collapsed'] as const) {
+  test(`margin notes still fit between the text and the minimap at 1440px (${state})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await setSettings(page, { marginaliaEnabled: true });
+    await openViaLaunch(page, [B, A]);
+    await expect(h1(page)).toHaveText('Alpha');
+    await enterState(page, state);
+    const text = await textColumn(page);
+    const notes = await rect(page, '.marginalia');
+    const minimap = await rect(page, '.minimap');
+    expect(notes.left).toBeGreaterThanOrEqual(text.right);
+    expect(notes.right).toBeLessThanOrEqual(minimap.left);
   });
 }
