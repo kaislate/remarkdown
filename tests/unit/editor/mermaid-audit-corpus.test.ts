@@ -49,7 +49,7 @@ function collectBlocks(md: string): Block[] {
 // registry's own answer: mermaid/registry.ts.)
 const NOT_EDITABLE = new Set([
   'seq-participants-actors', 'seq-arrow-types', 'seq-activations', 'seq-blocks', 'seq-box',
-  'class-diagram', 'state-diagram', 'er-diagram', 'gantt', 'pie', 'journey', 'gitgraph', 'mindmap',
+  'state-diagram', 'gantt', 'pie', 'journey', 'gitgraph', 'mindmap',
   'timeline', 'quadrant', 'sankey', 'xychart', 'block', 'c4-context', 'requirement', 'architecture',
   'kanban', 'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
 ]);
