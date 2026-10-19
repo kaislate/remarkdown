@@ -195,6 +195,13 @@ export function lexClass(text: string, start: number): { ok: true; tokens: Tok[]
       }
       break;
     }
-    if (!matched) return { ok: false, at: pos };
+    if (!matched) {
+      // jison: no rule matched on empty input is the end.
+      if (pos >= text.length) {
+        tokens.push({ type: 'EOF', text: '', start: pos, end: pos });
+        return { ok: true, tokens };
+      }
+      return { ok: false, at: pos };
+    }
   }
 }
