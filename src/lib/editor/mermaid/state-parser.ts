@@ -13,7 +13,8 @@
 //      `#` at a token start begins a comment
 //   3. a recursive-descent parser for mermaid's grammar
 //   4. mermaid's data walk (dataFetcher.ts), which decides what is
-//      drawn: the first mention of a state picks its shape, every
+//      drawn: the first mention of a state picks its shape (any
+//      description makes it a box again — even a fork), every
 //      truthy description is a line of text (the first one is the
 //      title), a state sits in the LAST group it is mentioned in,
 //      `[*]` is one start / one end node per group or concurrency
@@ -191,6 +192,10 @@ export interface StateSourceMap {
   states: Map<string, StateSourceInfo>;
   // Top-level `direction` statements.
   directions: number[];
+  // Things mermaid parses but then fails to DRAW (an empty group, a
+  // note written before its state's first mention). Empty for a
+  // diagram that renders; the edit engine never adds to it.
+  undrawable: string[];
 }
 
 export type StateSourceParseResult =
@@ -851,6 +856,7 @@ function walk(root: Item[], statements: StateStatement[]) {
   const mentions = new Map<string, number[]>();
   const descSources = new Map<string, number[]>();
   const blocks = new Map<string, number[]>();
+  const undrawable: string[] = [];
   let counter = 0;
   let order = 0;
 
@@ -870,9 +876,14 @@ function walk(root: Item[], statements: StateStatement[]) {
       const kind: StateKind = it.type === 'fork' || it.type === 'join' || it.type === 'choice' ? it.type : 'normal';
       n = { id, order: order++, kind, descriptions: [], parent: null, composite: null, regionIds: [] };
       nodes.set(id, n);
+      // A note statement carries no shape: as a first mention mermaid
+      // fails to draw the state ("No such shape: undefined").
+      if (it.note) undrawable.push(`note before the first mention of ${id}`);
     }
     (mentions.get(id) ?? mentions.set(id, []).get(id)!).push(it.stmt);
     if (it.descriptions?.length) {
+      // Any text turns the shape into a box, fork / join / choice too.
+      n.kind = 'normal';
       n.descriptions.push(...it.descriptions);
       const src = descSources.get(id) ?? descSources.set(id, []).get(id)!;
       for (let k = 0; k < it.descriptions.length; k++) src.push(it.stmt);
@@ -914,7 +925,7 @@ function walk(root: Item[], statements: StateStatement[]) {
   };
 
   doc(root, { parent: null, region: 0 });
-  return { nodes, terminals, transitions, transitionStmts, notes, noteStmts, renderTransitions, renderNotes, mentions, descSources, blocks };
+  return { nodes, terminals, transitions, transitionStmts, notes, noteStmts, renderTransitions, renderNotes, mentions, descSources, blocks, undrawable };
 }
 
 // ── Entry points ────────────────────────────────────────────────────
@@ -958,6 +969,11 @@ export function parseStateSource(source: string): StateSourceParseResult {
       composite: n.composite,
     });
     if (n.regionIds.length) regions.set(n.id, n.regionIds);
+  }
+  const terminalsList = [...w.terminals.values()];
+  for (const s of states.values()) {
+    const members = [...states.values()].some((x) => x.parent === s.id) || terminalsList.some((t) => t.scope.parent === s.id);
+    if (s.composite && !members) w.undrawable.push(`empty group ${s.id}`);
   }
 
   let direction: StateDirection = 'TB';
@@ -1022,6 +1038,7 @@ export function parseStateSource(source: string): StateSourceParseResult {
     notes: w.noteStmts,
     states: info,
     directions,
+    undrawable: w.undrawable,
   };
   return { ok: true, model, map };
 }

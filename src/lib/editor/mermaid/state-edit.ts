@@ -83,7 +83,8 @@ export type StateEdit =
   // state back in its old group is moved to the top level; a start /
   // end connection of the old group that would do so is removed.
   | { kind: 'moveState'; id: string; into: string | null }
-  // normal ↔ fork / join / choice (not for groups).
+  // normal ↔ fork / join / choice. Refused for groups, and for states
+  // with a title or description (mermaid draws those as a box anyway).
   | { kind: 'setStateKind'; id: string; stateKind: StateKind }
   // Endpoints are states or the start (`from`) / end (`to`) of a scope.
   // A start / end of a group connects only to states in that group.
@@ -486,7 +487,16 @@ class Editor {
   }
 
   result(): string {
-    const sorted = [...this.splices].sort((a, b) => b.start - a.start || b.end - a.end);
+    // Whole-line removals of neighbouring lines can share a line break
+    // (the last line has none of its own): merge removals that overlap.
+    const asc = [...this.splices].sort((a, b) => a.start - b.start || a.end - b.end);
+    const merged: Splice[] = [];
+    for (const s of asc) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.text === '' && s.text === '' && s.start < prev.end) prev.end = Math.max(prev.end, s.end);
+      else merged.push({ ...s });
+    }
+    const sorted = merged.sort((a, b) => b.start - a.start || b.end - a.end);
     let out = this.src;
     let limit = Infinity;
     for (const s of sorted) {
@@ -725,7 +735,8 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       // At the end of the state's scope: no later mention can sit in a
       // group (else the state would be drawn there), so the one inside
       // the new group is its last — mermaid draws it inside.
-      ed.appendToScope(scope, [opener, `${DEFAULT_INDENT}${edit.id}`, '}']);
+      const mention = st.kind === 'normal' ? edit.id : `state ${edit.id} <<${st.kind}>>`;
+      ed.appendToScope(scope, [opener, `${DEFAULT_INDENT}${mention}`, '}']);
       return finish(ed, { id }, (after) => {
         const g = after.states.get(id);
         return after.states.get(edit.id)?.parent === id && !!g && g.parent === scope.parent && g.region === scope.region && statesUnchanged(model, after, (k) => k === edit.id);
@@ -740,6 +751,8 @@ function apply(ed: Editor, edit: StateEdit): StateEditResult | null {
       const info = map.states.get(edit.id);
       if (!st || !info || st.composite) return null;
       if (st.kind === edit.stateKind) return { source };
+      // mermaid draws any state with a title / description as a box.
+      if (edit.stateKind !== 'normal' && info.descriptions.length) return null;
       const first = info.mentions[0];
       const fs = ed.stmt(first);
       if (fs.t === 'special') {
@@ -965,6 +978,8 @@ function finish(
     parsed = parseStateSource(out);
     if (!parsed.ok) return null;
   }
+  // Never hand back something mermaid parses but can't draw.
+  if (parsed.map.undrawable.some((p) => !ed.map.undrawable.includes(p))) return null;
   if (!ok(parsed.model)) return null;
   return { source: out, ...extra, ...(more ? more(parsed.model) : {}) };
 }
@@ -1037,17 +1052,26 @@ function moveState(ed: Editor, id: string, into: string | null): StateEditResult
     }
   }
   ed.managed.add(id);
-  const destTexts = toDest.map((m) => ed.reindented(m, ed.scopeIndent(dest)));
+  const isNote = (m: number) => ed.stmt(m).t === 'note';
+  const ownTexts = toDest.filter((m) => !isNote(m)).map((m) => ed.reindented(m, ed.scopeIndent(dest)));
+  const noteTexts = toDest.filter(isNote).map((m) => ed.reindented(m, ed.scopeIndent(dest)));
   const rootTexts = toRoot.map((m) => ed.reindented(m, ed.scopeIndent(ROOT)));
   ed.removeStatements([...toDest, ...toRoot, ...drop]);
-  // A destination group needs a mention of the state inside it.
-  if (into !== null && !destTexts.length && !info.mentions.some((m) => ed.stmt(m).scope.parent === into)) destTexts.push(id);
-  // At the top level the state just needs to stay mentioned somewhere.
-  if (into === null && info.mentions.every((m) => toDest.includes(m) || toRoot.includes(m) || drop.includes(m)) && !destTexts.length && !rootTexts.length) destTexts.push(id);
+  // The new mention may end up being the state's first one, which picks
+  // its shape: a fork / join / choice is mentioned by its declaration.
+  // A note never goes first (mermaid can't draw a state introduced by
+  // a note).
+  const mention = st.kind === 'normal' ? id : `state ${id} <<${st.kind}>>`;
+  const left = info.mentions.filter((m) => !toDest.includes(m) && !toRoot.includes(m) && !drop.includes(m));
+  const needsMention =
+    into !== null
+      ? !ownTexts.length && (noteTexts.length > 0 || !left.some((m) => ed.stmt(m).scope.parent === into))
+      : !ownTexts.length && !rootTexts.length && (noteTexts.length > 0 || !left.length);
+  if (needsMention) ownTexts.unshift(mention);
   if (into === null) {
-    ed.appendToScope(ROOT, [...destTexts, ...rootTexts]);
+    ed.appendToScope(ROOT, [...ownTexts, ...rootTexts, ...noteTexts]);
   } else {
-    if (destTexts.length) ed.appendToScope(dest, destTexts);
+    ed.appendToScope(dest, [...ownTexts, ...noteTexts]);
     if (rootTexts.length) ed.appendToScope(ROOT, rootTexts);
   }
 

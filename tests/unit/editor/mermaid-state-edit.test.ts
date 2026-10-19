@@ -308,32 +308,42 @@ describe('state edits: typed text reaches the diagram exactly', () => {
     it(JSON.stringify(input), async () => {
       // What mermaid shows: trimmed, whitespace collapsed (HTML).
       const want = input.replace(/\s+/g, ' ').trim();
+      let added = '';
       const fields: Array<{ name: string; edit: StateEdit; read: (m: StateModel) => string; shown: (d: Document) => string }> = [
         { name: 'state label', edit: { kind: 'setStateLabel', id: 'A', label: input }, read: (m) => m.states.get('A')!.label, shown: (d) => text(d.querySelector('g.node[id*="-state-A-"]')) },
         { name: 'new state label', edit: { kind: 'setStateLabel', id: 'B', label: input }, read: (m) => m.states.get('B')!.label, shown: (d) => text(d.querySelector('g.node[id*="-state-B-"]')) },
-        { name: 'group label', edit: { kind: 'setStateLabel', id: 'G', label: input }, read: (m) => m.states.get('G')!.label, shown: (d) => text(d.querySelector('g.cluster-label, [data-id="G"] .cluster-label')) },
+        { name: 'group label', edit: { kind: 'setStateLabel', id: 'G', label: input }, read: (m) => m.states.get('G')!.label, shown: (d) => text(d.querySelector('[data-id="G"] .cluster-label')) },
         { name: 'transition label', edit: { kind: 'setTransitionLabel', index: 0, label: input }, read: (m) => m.transitions[0].label, shown: (d) => text(d.querySelector('g.label[data-id="edge0"]')) },
         { name: 'note text', edit: { kind: 'setNoteText', index: 0, text: input }, read: (m) => m.notes[0].text, shown: (d) => text(d.querySelector('g.statediagram-note')) },
-        { name: 'added state', edit: { kind: 'addState', label: input }, read: (m) => [...m.states.values()].pop()!.label, shown: (d) => text([...d.querySelectorAll('g.node.statediagram-state, g.node[id*="-state-"]')].pop()) },
+        { name: 'added state', edit: { kind: 'addState', label: input }, read: (m) => m.states.get(added)!.label, shown: (d) => text(d.querySelector(`g.node[id*="-state-${added}-"]`)) },
       ];
+      // Every field is edited in turn on the same diagram, so one drawing
+      // shows them all (drawing is the slow part).
+      let src = base;
+      const checked: typeof fields = [];
       for (const f of fields) {
-        const r = applyStateEdit(base, f.edit);
+        const r = applyStateEdit(src, f.edit);
         if (f.name === 'note text' && want === '') {
           // An empty note is refused: the popover deletes it instead.
           expect(r, f.name).toBeNull();
           continue;
         }
         expect(r, f.name).not.toBeNull();
-        const out = r!.source;
-        expect(await mermaidAccepts(out), `${f.name}:\n${out}`).toBe(true);
-        const m = model(out);
-        expect(f.read(m), `${f.name}: model\n${out}`).toBe(want);
-        const d = await rendered(out, `fz${n++}`);
-        expect(f.shown(d), `${f.name}: drawn\n${out}`).toBe(want);
-        // Nothing else changed.
-        expect(m.states.size, f.name).toBe(model(base).states.size + (f.edit.kind === 'addState' ? 1 : 0));
-        expect(m.transitions.length, f.name).toBe(2);
+        src = r!.source;
+        if (r!.id) added = r!.id;
+        expect(await mermaidAccepts(src), `${f.name}:\n${src}`).toBe(true);
+        checked.push(f);
       }
+      const m = model(src);
+      const d = await rendered(src, `fz${n++}`);
+      for (const f of checked) {
+        expect(f.read(m), `${f.name}: model\n${src}`).toBe(want);
+        expect(f.shown(d), `${f.name}: drawn\n${src}`).toBe(want);
+      }
+      // Nothing else changed.
+      expect(m.states.size).toBe(model(base).states.size + 1);
+      expect(m.transitions.length).toBe(2);
+      expect(m.notes.length).toBe(1);
     });
   }
 
