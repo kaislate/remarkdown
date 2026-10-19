@@ -28,6 +28,7 @@ import {
   type MindmapNodeSource,
   type MindmapSourceMap,
   type MindmapModel,
+  type NodeFlavor,
 } from './mindmap-parser';
 import { setFrontmatterTitle } from './source-text';
 
@@ -83,10 +84,10 @@ const CLOSE: Record<Exclude<MindmapShape, 'default'>, string> = {
 
 // ── Writing text ─────────────────────────────────────────────────────
 
-// mermaid renders every mindmap label as markdown and decodes `#…;`
-// entity codes in it. Typed characters that would mean something there
-// are written as entity codes, so the label shows exactly what was
-// typed:
+// mermaid renders every mindmap (and kanban) label as markdown and
+// decodes `#…;` entity codes in it. Typed characters that would mean
+// something there are written as entity codes, so the label shows
+// exactly what was typed:
 //   - `#` that would start an entity code → #35;
 //   - `"` (ends a string), `&` / `<` (HTML) → #quot; #amp; #lt;
 //   - `*` `_` `\` (markdown emphasis / escapes) → #42; #95; #92;
@@ -102,7 +103,7 @@ const ENTITY: Record<string, string> = {
   '`': '#96;',
 };
 
-function escapeText(text: string, markdown: boolean): string {
+export function escapeText(text: string, markdown: boolean): string {
   const out = text
     .replace(/#(?=\w+;)/g, '#35;')
     .replace(/%(?=%)/g, '#37;')
@@ -113,28 +114,29 @@ function escapeText(text: string, markdown: boolean): string {
 // Can `text` be written bare (default shape, no delimiters)? mermaid
 // reads a bare node as everything up to the end of the line, so it
 // must avoid the delimiters and anything the lexer matches first.
-function bareSafe(written: string): boolean {
+// kanban's lexer also stops a bare node at `@` (metadata).
+export function bareSafe(written: string, flavor: NodeFlavor = 'mindmap'): boolean {
   return (
     written.length > 0 &&
-    !/[()[\]{}\n\r]/.test(written) &&
+    !(flavor === 'kanban' ? /[()[\]{}@\n\r]/ : /[()[\]{}\n\r]/).test(written) &&
     !/^\s/.test(written) &&
-    !/^(mindmap\b|::icon\(|:::|-\)|%%)/i.test(written)
+    !new RegExp(`^(${flavor}\\b|::icon\\(|:::|-\\)|%%)`, 'i').test(written)
   );
 }
 
 // Can `written` sit unquoted inside delimiters (`[text]`)? mermaid
 // would keep edge spaces too, but quotes make them obvious.
-function plainSafe(written: string): boolean {
+export function plainSafe(written: string): boolean {
   return written.length > 0 && !/[()[\]{}"\n\r]/.test(written) && !/^\s|\s$/.test(written);
 }
 
 // Mermaid needs some text; an empty label is written as one space.
-function nonEmpty(text: string): string {
+export function nonEmpty(text: string): string {
   return text === '' ? ' ' : text;
 }
 
 // A body (between delimiters) for typed text, in the given form.
-function emitBody(text: string, form: 'plain' | 'quoted' | 'markdown'): string {
+export function emitBody(text: string, form: 'plain' | 'quoted' | 'markdown'): string {
   if (form === 'markdown') return `"\`${escapeText(text, true)}\`"`;
   const written = escapeText(text, false);
   if (form === 'plain' && plainSafe(written)) return written;
@@ -225,7 +227,7 @@ function siblingsOf(model: MindmapModel, i: number): number[] {
 
 // Move lines [from, to] so they start right after line `after` (which
 // lies outside the range); returns the new array.
-function moveBlock(lines: string[], from: number, to: number, after: number): string[] {
+export function moveBlock(lines: string[], from: number, to: number, after: number): string[] {
   const block = lines.slice(from, to + 1);
   const rest = [...lines.slice(0, from), ...lines.slice(to + 1)];
   const at = after > to ? after - block.length + 1 : after + 1;

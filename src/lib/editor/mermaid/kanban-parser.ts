@@ -258,7 +258,8 @@ function effectOf(meta: KanbanMeta | null): MetaEffect | string {
     }
     if (!v) continue;
     if (e.key === 'label' || e.key === 'icon' || e.key === 'assigned' || e.key === 'ticket' || e.key === 'priority') {
-      out[e.key] = String(v);
+      // mermaid decodes entity codes everywhere in the source.
+      out[e.key] = decodeMermaidEntities(String(v));
     }
   }
   return out;
@@ -306,7 +307,7 @@ export function parseKanbanSource(source: string): KanbanSourceParseResult {
     if (typeof effect === 'string') return fail(`line ${k + 1}: ${effect}`);
     const src: KanbanItemSource = { ...token, meta, rawId: id ?? raw };
     const common = {
-      text: decodeMermaidEntities(effect.label ?? raw),
+      text: effect.label ?? decodeMermaidEntities(raw),
       markdown: token.form === 'markdown',
       id: decodeMermaidEntities(id ?? raw),
       explicitId: id !== null,
