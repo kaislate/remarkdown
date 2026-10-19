@@ -163,6 +163,8 @@ export interface ClassDeclSource {
   head: Span;
   // Text between the label's quotes, when it has `["…"]`.
   label: Span | null;
+  // The whole `["…"]`.
+  labelBox: Span | null;
   // The `{ … }` body: offset of `{` and of `}`.
   body: { open: number; close: number } | null;
 }
@@ -813,7 +815,10 @@ class ClassParser {
     }
     const str = this.expect('STR');
     const stmt = this.pushStmt('note', t.start, str.end, refs);
-    this.notes.push({ text: show(this.raw(this.span(str.inner!.start, str.inner!.end))), classId, namespace: this.nsName() });
+    // A whitespace-only note (what the edit engine writes for an empty
+    // one — `note ""` is a syntax error) reads as ''.
+    const text = blankToEmpty(show(this.raw(this.span(str.inner!.start, str.inner!.end))));
+    this.notes.push({ text, classId, namespace: this.nsName() });
     this.map.notes.push({ stmt, text: this.span(str.inner!.start, str.inner!.end) });
   }
 
@@ -882,14 +887,15 @@ class ClassParser {
     const stmt = this.stmtIndex();
     this.pushStmt('class', t.start, name.end, [name.id]);
     const c = this.addClass(name, stmt);
-    const decl: ClassDeclSource = { stmt, head: this.span(t.start, name.end), label: null, body: null };
+    const decl: ClassDeclSource = { stmt, head: this.span(t.start, name.end), label: null, labelBox: null, body: null };
     let end = name.end;
     if (this.peek().type === 'SQS') {
-      this.next();
+      const sqs = this.next();
       const str = this.expect('STR');
       const sqe = this.expect('SQE');
       end = sqe.end;
       decl.label = this.span(str.inner!.start, str.inner!.end);
+      decl.labelBox = this.span(sqs.start, sqe.end);
       c.label = show(this.raw(decl.label));
       c.labelSet = true;
     }
@@ -980,7 +986,11 @@ class ClassParser {
       this.addClass(first, stmt);
       this.addClass(second, stmt);
     }
-    const strText = (t: PTok | null) => (t ? show(this.raw(this.span(t.inner!.start, t.inner!.end)).trim()) : '');
+    // relationTitle: trimmed; the word `none` means "no cardinality".
+    const strText = (t: PTok | null) => {
+      const raw = t ? this.raw(this.span(t.inner!.start, t.inner!.end)).trim() : '';
+      return raw === 'none' ? '' : show(raw);
+    };
     this.relations.push({
       from: first.id,
       to: second.id,
