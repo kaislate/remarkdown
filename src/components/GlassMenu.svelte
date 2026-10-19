@@ -12,7 +12,7 @@
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
-  import { revealInFolder } from '../lib/tauri-api';
+  import { showInFolder, copyPath } from '../lib/file-actions';
   import type { OpenMode } from '../lib/settings-schema';
 
   let open = $state(false);
@@ -104,23 +104,6 @@
         addToast({ kind: 'error', message: `Could not remove from recents: ${(err as Error).message}` });
       }) },
     ];
-  }
-
-  async function showInFolder(path: string) {
-    try {
-      await revealInFolder(path);
-    } catch (err) {
-      addToast({ kind: 'error', message: `Couldn't open the folder: ${String(err)}` });
-    }
-  }
-
-  async function copyPath(path: string) {
-    try {
-      await navigator.clipboard.writeText(path);
-      addToast({ kind: 'info', message: 'Path copied.' });
-    } catch {
-      addToast({ kind: 'error', message: "Couldn't copy the path." });
-    }
   }
 
   async function removeRecentItem(path: string, e: MouseEvent) {
