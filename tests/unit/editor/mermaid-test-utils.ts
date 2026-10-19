@@ -21,17 +21,29 @@ function init(): void {
   initialized = true;
 }
 
-const CORPUS = readFileSync(resolve(__dirname, '../../fixtures/mermaid-corpus.md'), 'utf8').replace(/\r\n/g, '\n');
+function readFixture(name: string): string {
+  return readFileSync(resolve(__dirname, '../../fixtures', name), 'utf8').replace(/\r\n/g, '\n');
+}
 
 export interface CorpusBlock {
   heading: string;
   source: string;
 }
 
-export function corpusBlocks(filter?: (b: CorpusBlock) => boolean): CorpusBlock[] {
+// Blocks of the main corpus (or of the given fixture files, same
+// format: `## heading` then a mermaid fence).
+export function corpusBlocks(
+  filter?: (b: CorpusBlock) => boolean,
+  files: string[] = ['mermaid-corpus.md'],
+): CorpusBlock[] {
   const out: CorpusBlock[] = [];
+  for (const file of files) collect(readFixture(file), out, filter);
+  return out;
+}
+
+function collect(md: string, out: CorpusBlock[], filter?: (b: CorpusBlock) => boolean): void {
   let heading = '';
-  parseMarkdown(CORPUS).descendants((node) => {
+  parseMarkdown(md).descendants((node) => {
     if (node.type.name === 'heading') heading = node.textContent;
     if (node.type.name === 'code_block' && isMermaidFence(String(node.attrs.language || ''))) {
       const b = { heading, source: node.textContent };
@@ -39,7 +51,6 @@ export function corpusBlocks(filter?: (b: CorpusBlock) => boolean): CorpusBlock[
     }
     return true;
   });
-  return out;
 }
 
 // mermaid's diagram db after parsing `source` (throws on invalid input).
