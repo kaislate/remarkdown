@@ -74,7 +74,18 @@
 
   function onKey(e: KeyboardEvent) {
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && (e.key === 'b' || e.key === 'B')) {
+    if (mod && (e.key === 'a' || e.key === 'A')) {
+      // Select this field's text — not the document it floats over.
+      e.preventDefault();
+      e.stopPropagation();
+      if (field) {
+        const range = document.createRange();
+        range.selectNodeContents(field);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    } else if (mod && (e.key === 'b' || e.key === 'B')) {
       e.preventDefault();
       format('bold');
     } else if (mod && (e.key === 'i' || e.key === 'I')) {

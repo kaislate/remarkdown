@@ -176,6 +176,11 @@ export class MermaidNodeView implements NodeView {
         // ignoreMutation treat everything in them as UI.
         const el = document.createElement('div');
         el.className = className.includes('mermaid-popover-host') ? className : `mermaid-popover-host ${className}`;
+        // The wrapper sits inside ProseMirror's editable area: without
+        // this, a click in a popover's rich-text field (itself
+        // contenteditable) leaves the caret in the document, and Ctrl+A
+        // then typing replaces the whole document.
+        el.contentEditable = 'false';
         this.dom.appendChild(el);
         return el;
       },

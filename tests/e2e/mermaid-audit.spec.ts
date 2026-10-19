@@ -648,6 +648,27 @@ test.describe('mermaid — edit mode', () => {
     expect(hit, 'edge hit area stroke').toBe('rgba(0, 0, 0, 0)');
   });
 
+  test('a popover rich-text field takes a real click and real typing (bold included)', async ({ page }) => {
+    const logs = captureConsole(page);
+    const md = '# T\n\n## rich\n\n```mermaid\nflowchart LR\n    A[Start] --> B[End]\n```\n\nAfter.\n';
+    await seedAndOpen(page, '/e2e/rich.md', md);
+    await enterEditMode(page);
+    expect(await clickInBlock(page, 'rich', 'g.node[id*="flowchart-B-"]')).toBe(true);
+    const field = page.locator('.editor-surface .mermaid-popover .mermaid-popover-label:visible').first();
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Big ');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type('finish');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1200);
+    const src = fencedBlocks((await lastWrite(page)) ?? '')['rich'];
+    expect(src).toBe('flowchart LR\n    A[Start] --> B["`Big **finish**`"]');
+    // The document around the diagram was not typed into.
+    expect(await lastWrite(page)).toContain('\nAfter.\n');
+    expect(logs.errors).toEqual([]);
+  });
+
   test('a sequence group box opens from its frame and is renamed in place', async ({ page }) => {
     const logs = captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
