@@ -527,6 +527,10 @@ test.describe('mermaid — edit mode', () => {
     const flowcharts = m.blocks.filter((b) => /^(fc-|graph-)/.test(b.heading));
     expect(flowcharts.length).toBeGreaterThanOrEqual(19);
     expect(flowcharts.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);
+    // Same for every sequence diagram (actors, activations, blocks, boxes …).
+    const sequences = m.blocks.filter((b) => /^seq-/.test(b.heading));
+    expect(sequences.length).toBeGreaterThanOrEqual(10);
+    expect(sequences.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);
     // The only code block left is the real one.
     expect(m.codeBlocks.map((c) => c.heading)).toEqual(['mixed-plain-code']);
     // Never tell people to edit markdown / source.
@@ -558,6 +562,13 @@ test.describe('mermaid — edit mode', () => {
     { heading: 'fc-frontmatter-title', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Below', touches: /\bB\b/, keeps: /title: Flowchart with frontmatter title/ },
     { heading: 'seq-comment-subset', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'Done!', touches: /B-->>A/, keeps: /Map x->y and back/ },
     { heading: 'seq-special-chars', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'OK & <done>', touches: /B-->>A/ },
+    // Past blocks, numbering and activations mermaid's own numbering
+    // shifts: i26 is "Highlighted", i4 "Hi Alice".
+    { heading: 'seq-blocks', selector: '[data-et="message"][data-id="i26"]', input: '.mermaid-message-popover-text', value: 'Lit up', touches: /Highlighted|loop Every minute/, keeps: /loop Every minute/ },
+    { heading: 'seq-activations', selector: '[data-et="message"][data-id="i4"]', input: '.mermaid-message-popover-text', value: 'Hi there', touches: /Hi Alice/, keeps: /activate Alice/ },
+    { heading: 'seq-blocks', selector: 'g[data-et="control-structure"][data-id="i3"]', input: '.mermaid-block-label', value: 'Every hour', touches: /Highlighted|loop Every minute/, keeps: /C->>S: Lit up/ },
+    { heading: 'seq-box', selector: 'g[data-et="participant"][data-id="A"]', input: '.mermaid-participant-popover-display', value: 'Web browser', touches: /participant A as Browser/, keeps: /box Purple Frontend/ },
+    { heading: 'seq-participants-actors', selector: '[data-et="message"][data-id="i0"]', input: '.mermaid-message-popover-text', value: 'Tap', touches: /U->>W: Click/, keeps: /actor U as User/ },
     { heading: 'seq-basic', selector: '[data-et="message"][data-id="i0"]', input: '.mermaid-message-popover-text', value: 'Hello again; Bob # 1', touches: /A->>B/, shows: 'Hello again; Bob # 1' },
   ];
 
@@ -637,8 +648,25 @@ test.describe('mermaid — edit mode', () => {
     expect(hit, 'edge hit area stroke').toBe('rgba(0, 0, 0, 0)');
   });
 
-  test('keyboard next to a diagram never edits its hidden source', async ({ page }) => {
-    const md = '# T\n\nBefore para.\n\n```mermaid\nsequenceDiagram\n    A->>B: one\n    B->>A: two\n```\n\nAfter para.\n';
+  test('a sequence group box opens from its frame and is renamed in place', async ({ page }) => {
+    const logs = captureConsole(page);
+    await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
+    await waitReaderDiagramsSettled(page);
+    await enterEditMode(page);
+    // Boxes are drawn last-first: the first frame in the svg is "Backend".
+    expect(await clickInBlock(page, 'seq-box', 'svg > g > rect.rect')).toBe(true);
+    const input = page.locator('.editor-surface .mermaid-form-popover .mermaid-box-label:visible').first();
+    await expect(input).toHaveValue('Backend');
+    await input.fill('Server side');
+    await input.press('Enter');
+    await page.waitForTimeout(1200);
+    const src = fencedBlocks((await lastWrite(page)) ?? '')['seq-box'];
+    const original = fencedBlocks(CORPUS_MD)['seq-box'];
+    expect(src).toBe(original.replace('box Backend', 'box Server side'));
+    expect(logs.errors).toEqual([]);
+  });
+
+  test('keyboard next to a diagram never edits its hidden source', async ({ page }) => {    const md = '# T\n\nBefore para.\n\n```mermaid\nsequenceDiagram\n    A->>B: one\n    B->>A: two\n```\n\nAfter para.\n';
     await seedAndOpen(page, '/e2e/keys.md', md);
     await enterEditMode(page);
     await page.locator('.editor-surface p', { hasText: 'Before para.' }).click();

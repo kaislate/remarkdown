@@ -46,8 +46,9 @@ describe('sequence parser — participants', () => {
     expect(r.graph.participants.get('B')?.display).toBe('Bob B');
   });
 
-  it('rejects "actor" keyword (deferred feature)', () => {
-    expect(parseSequence('sequenceDiagram\nactor A\n').ok).toBe(false);
+  it('reads actors (stick figures)', () => {
+    const r = parseSequence('sequenceDiagram\nactor A as Ann\n');
+    expect(r.ok && r.graph.participants.get('A')).toEqual({ id: 'A', display: 'Ann', kind: 'actor' });
   });
 });
 
@@ -85,16 +86,14 @@ describe('sequence parser — messages', () => {
     }
   });
 
-  it('rejects activation suffixes (deferred)', () => {
-    expect(parseSequence('sequenceDiagram\nA->>+B: hi\n').ok).toBe(false);
-    expect(parseSequence('sequenceDiagram\nA->>-B: bye\n').ok).toBe(false);
+  it('reads activation marks', () => {
+    const r = parseSequence('sequenceDiagram\nA->>+B: hi\nB-->>-A: bye\n');
+    expect(r.ok && r.graph.events.map((e) => e.kind === 'message' && e.activation)).toEqual(['activate', 'deactivate']);
   });
 
-  it('rejects unsupported arrow variants', () => {
-    expect(parseSequence('sequenceDiagram\nA-xB: hi\n').ok).toBe(false);
-    expect(parseSequence('sequenceDiagram\nA--xB: hi\n').ok).toBe(false);
-    expect(parseSequence('sequenceDiagram\nA-)B: hi\n').ok).toBe(false);
-    expect(parseSequence('sequenceDiagram\nA--)B: hi\n').ok).toBe(false);
+  it('reads every arrow kind', () => {
+    const r = parseSequence('sequenceDiagram\nA-xB: a\nA--xB: b\nA-)B: c\nA--)B: d\nA<<->>B: e\nA<<-->>B: f\n');
+    expect(r.ok && r.graph.events.map((e) => e.kind === 'message' && e.style)).toEqual(['cross', 'dottedCross', 'async', 'dottedAsync', 'both', 'dottedBoth']);
   });
 
   it('auto-creates implicit participants used in a message before declaration', () => {
@@ -152,29 +151,34 @@ describe('sequence parser — notes', () => {
 });
 
 describe('sequence parser — unsupported features bail', () => {
-  it('rejects loop / end / alt / opt / par / critical / break / rect / box', () => {
-    const cases = [
-      'sequenceDiagram\nloop forever\nA->>B: x\nend\n',
-      'sequenceDiagram\nalt success\nA->>B: ok\nelse fail\nA->>B: ng\nend\n',
-      'sequenceDiagram\nopt maybe\nA->>B: x\nend\n',
-      'sequenceDiagram\npar work\nA->>B: x\nand\nA->>C: y\nend\n',
-      'sequenceDiagram\ncritical x\nA->>B: x\nend\n',
-      'sequenceDiagram\nbreak something\nA->>B: x\nend\n',
-      'sequenceDiagram\nrect rgb(0,0,0)\nA->>B: x\nend\n',
-      'sequenceDiagram\nbox blue\nparticipant A\nend\n',
+  it('reads loop / alt / opt / par / critical / break / rect blocks and boxes', () => {
+    const cases: Array<[string, string]> = [
+      ['sequenceDiagram\nloop forever\nA->>B: x\nend\n', 'loop'],
+      ['sequenceDiagram\nalt success\nA->>B: ok\nelse fail\nA->>B: ng\nend\n', 'alt'],
+      ['sequenceDiagram\nopt maybe\nA->>B: x\nend\n', 'opt'],
+      ['sequenceDiagram\npar work\nA->>B: x\nand\nA->>C: y\nend\n', 'par'],
+      ['sequenceDiagram\ncritical x\nA->>B: x\nend\n', 'critical'],
+      ['sequenceDiagram\nbreak something\nA->>B: x\nend\n', 'break'],
+      ['sequenceDiagram\nrect rgb(0,0,0)\nA->>B: x\nend\n', 'rect'],
     ];
-    for (const src of cases) {
-      expect(parseSequence(src).ok).toBe(false);
+    for (const [src, kind] of cases) {
+      const r = parseSequence(src);
+      expect(r.ok && r.graph.blocks[0].kind, src).toBe(kind);
     }
+    const alt = parseSequence(cases[1][0]);
+    expect(alt.ok && alt.graph.blocks[0]).toEqual({ kind: 'alt', label: 'success', branches: ['fail'], parent: null, start: 0, end: 2, branchStarts: [1] });
+    const box = parseSequence('sequenceDiagram\nbox Purple Team\nparticipant A\nend\nA->>B: x\n');
+    expect(box.ok && box.graph.boxes).toEqual([{ label: 'Team', color: 'Purple', participants: ['A'] }]);
   });
 
-  it('rejects activate/deactivate', () => {
-    expect(parseSequence('sequenceDiagram\nA->>B: x\nactivate B\n').ok).toBe(false);
-    expect(parseSequence('sequenceDiagram\ndeactivate A\n').ok).toBe(false);
+  it('a block keyword in the wrong block, or a block left open, is not read', () => {
+    expect(parseSequence('sequenceDiagram\nloop x\nA->>B: y\nelse z\nend\n').ok).toBe(false);
+    expect(parseSequence('sequenceDiagram\nloop x\nA->>B: y\n').ok).toBe(false);
   });
 
-  it('rejects autonumber', () => {
-    expect(parseSequence('sequenceDiagram\nautonumber\nA->>B: x\n').ok).toBe(false);
+  it('reads activate / deactivate, autonumber and title', () => {
+    const r = parseSequence('sequenceDiagram\ntitle Hello\nautonumber\nA->>B: x\nactivate B\ndeactivate B\n');
+    expect(r.ok && [r.graph.title, r.graph.autonumber, r.graph.events.length]).toEqual(['Hello', true, 1]);
   });
 });
 

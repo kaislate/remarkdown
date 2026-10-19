@@ -622,6 +622,26 @@ body.reattach-mode .reader-mode-toggle {
   filter: drop-shadow(0 0 8px var(--accent));
 }
 
+/* Blocks (loop / alt / …) and group boxes: their frames open the block
+   / box popover. */
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"] {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"]:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"].sequence-selected line,
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"].sequence-selected polygon {
+  stroke: var(--accent) !important;
+}
+.mermaid-block-editor .mermaid-rendered svg > g > rect.rect {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg > g.sequence-selected > rect.rect {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+
 /* Add-message mode: crosshair cursor on the rendered area, pulse
    hint on participants (so the user sees they're the click targets). */
 .mermaid-block-editor.mermaid-add-message-mode .mermaid-rendered {
