@@ -669,6 +669,42 @@ test.describe('mermaid — edit mode', () => {
     expect(logs.errors).toEqual([]);
   });
 
+  test('every diagram kind in the toolbar menu arrives drawn and editable', async ({ page }) => {
+    const logs = captureConsole(page);
+    const kinds = ['pie', 'timeline', 'gantt', 'state', 'class', 'er', 'mindmap', 'kanban'];
+    // Inserting takes the place of the paragraph the caret is in.
+    await seedAndOpen(page, '/e2e/insert.md', `# Insert\n\n${kinds.map((k) => `Slot ${k}.`).join('\n\n')}\n`);
+    await page.locator('.edit-mode-toggle').click();
+    await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+    for (const kind of kinds) {
+      await page.locator('.editor-surface .ProseMirror p', { hasText: `Slot ${kind}.` }).click();
+      await page.evaluate((k) => (document.querySelector(`[data-action="diagram-${k}"]`) as HTMLElement | null)?.click(), kind);
+      await page.waitForTimeout(150);
+    }
+    await page.waitForFunction(
+      (n) => {
+        const blocks = Array.from(document.querySelectorAll('.editor-surface .mermaid-block-editor'));
+        return blocks.length === n && blocks.every((b) => b.querySelector('.mermaid-rendered > svg'));
+      },
+      kinds.length,
+      { timeout: 60_000 },
+    );
+    const state = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.editor-surface .mermaid-block-editor')).map((b) => ({
+        fallback: b.classList.contains('mermaid-fallback'),
+        bar: !!b.querySelector('.mermaid-actions-bar:not([hidden])'),
+      })),
+    );
+    expect(state.every((s) => !s.fallback), JSON.stringify(state)).toBe(true);
+    expect(state.every((s) => s.bar), JSON.stringify(state)).toBe(true);
+    await page.waitForTimeout(1200);
+    const saved = (await lastWrite(page)) ?? '';
+    for (const header of ['pie', 'timeline', 'gantt', 'stateDiagram-v2', 'classDiagram', 'erDiagram', 'mindmap', 'kanban']) {
+      expect(saved, header).toContain(`\`\`\`mermaid\n${header}`);
+    }
+    expect(logs.errors).toEqual([]);
+  });
+
   test('a sequence group box opens from its frame and is renamed in place', async ({ page }) => {
     const logs = captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
