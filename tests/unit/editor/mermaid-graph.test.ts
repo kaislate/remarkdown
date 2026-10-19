@@ -11,7 +11,7 @@ import {
   edgeDataIds,
   setDirection,
 } from '../../../src/lib/editor/mermaid-graph';
-import { setEdgeStyle } from '../../../src/lib/editor/mermaid-graph';
+import { setEdgeStroke, setEdgeEnds } from '../../../src/lib/editor/mermaid-graph';
 
 describe('mermaid graph', () => {
   it('emptyGraph yields TD direction with no nodes or edges', () => {
@@ -103,14 +103,20 @@ describe('mermaid graph', () => {
     expect(shapes).toEqual(['hexagon', 'cylinder', 'stadium', 'parallelogram']);
   });
 
-  it('setEdgeStyle changes the style attribute (default is undefined → arrow)', () => {
+  it('setEdgeStroke / setEdgeEnds change the link (defaults solid + arrow are left out)', () => {
     let g = emptyGraph();
     const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
     const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
     g = addEdge(g, { from: a.id, to: b.id });
-    expect(g.edges[0].style).toBeUndefined();
-    g = setEdgeStyle(g, 0, 'dotted');
-    expect(g.edges[0].style).toBe('dotted');
+    expect(g.edges[0]).toEqual({ from: a.id, to: b.id });
+    g = setEdgeStroke(g, 0, 'dotted');
+    expect(g.edges[0].stroke).toBe('dotted');
+    g = setEdgeEnds(g, 0, 'circle');
+    expect(g.edges[0].ends).toBe('circle');
+    g = setEdgeEnds(setEdgeStroke(g, 0, 'solid'), 0, 'arrow');
+    expect(g.edges[0]).toEqual({ from: a.id, to: b.id });
+    // An invisible link has no ends.
+    expect(setEdgeStroke(g, 0, 'invisible').edges[0]).toEqual({ from: a.id, to: b.id, stroke: 'invisible', ends: 'none' });
   });
 
   it('setDirection returns a new graph with the direction changed', () => {

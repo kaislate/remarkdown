@@ -373,7 +373,8 @@ test.describe('edit mode — mermaid', () => {
     // Popover should be visible with the label "Start" pre-filled.
     const popover = page.locator('.mermaid-popover').first();
     await expect(popover).toBeVisible();
-    await expect(popover.locator('.mermaid-popover-label')).toHaveValue('Start');
+    // The label is a rich-text field (bold / italic), not a plain input.
+    await expect(popover.locator('.mermaid-popover-label')).toHaveText('Start');
   });
 
   test('clicking an edge LABEL (not the path line) opens the edge popover', async ({ page }) => {
