@@ -3,6 +3,10 @@
 import { registerController } from './controller';
 import { FlowchartController } from './flowchart-controller';
 import { SequenceController } from './sequence-controller';
+import { ClassController } from './class-controller';
+import { parseClass } from './class-parser';
+import { ErController } from './er-controller';
+import { parseEr } from './er-parser';
 import { parseMermaid } from '../mermaid-parser';
 import { parseSequence } from '../mermaid-sequence-parser';
 import { PieController } from './pie-controller';
@@ -21,3 +25,5 @@ import { StateController } from './state-controller';
 import { parseState } from './state-parser';
 
 registerController('state', (host) => new StateController(host), (src) => parseState(src).ok);
+registerController('class', (host) => new ClassController(host), (src) => parseClass(src).ok);
+registerController('er', (host) => new ErController(host), (src) => parseEr(src).ok);

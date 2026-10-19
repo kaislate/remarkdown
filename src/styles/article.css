@@ -832,3 +832,62 @@ body.reattach-mode .reader-mode-toggle {
   animation: mermaidConnectPulse 1.4s ease-in-out infinite;
 }
 /* ── end state diagrams ─────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────
+   Mermaid class diagram editor
+   ──────────────────────────────────────────────────────
+   Class boxes and notes are g.node (hover / selected glow from the
+   generic rules above). Member rows, relationship lines and labels
+   are clickable too; namespaces have nothing to edit on their own. */
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.cluster {
+  cursor: default;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.cluster:hover > rect {
+  filter: none;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label:hover {
+  filter: drop-shadow(0 0 3px rgba(139, 127, 255, 0.6));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label.mermaid-selected {
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation,
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.edgeLabel {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+
+/* ──────────────────────────────────────────────────────
+   Mermaid ER diagram editor
+   ──────────────────────────────────────────────────────
+   Entities are g.node (generic hover / selected glow); each attribute
+   row's background is clickable, as are relationship lines and labels. */
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even) {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even):hover {
+  filter: drop-shadow(0 0 3px rgba(139, 127, 255, 0.6));
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even).mermaid-selected path {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine,
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.edgeLabel {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}

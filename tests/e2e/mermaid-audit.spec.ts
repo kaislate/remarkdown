@@ -520,7 +520,7 @@ test.describe('mermaid — edit mode', () => {
       if (b.note !== null) expect(b.note).toBe(FALLBACK_NOTE);
       if (b.status === 'error') expect(b.note, `${b.heading}: broken, not "coming soon"`).toBeNull();
     }
-    expect(m.blocks.find((b) => b.heading === 'class-diagram')?.note).toBe(FALLBACK_NOTE);
+    expect(m.blocks.find((b) => b.heading === 'gitgraph')?.note).toBe(FALLBACK_NOTE);
     expect(m.blocks.find((b) => b.heading === 'fc-td-basic')?.note).toBeNull();
     // Every flowchart (legacy `graph`, subgraphs, styling, every shape
     // and link) is editable: none says "coming soon".

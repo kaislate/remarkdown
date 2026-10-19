@@ -25,11 +25,10 @@ describe('MermaidNodeView', () => {
   it('falls back to render-only when source is unparseable', () => {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
-    // classDiagram is an unsupported diagram type — neither the
-    // flowchart nor the sequence parser handle it, so the NodeView
-    // marks the wrapper as fallback (render-only).
+    // gitGraph is a diagram type nobody edits visually yet, so the
+    // NodeView marks the wrapper as fallback (render-only).
     const doc = parseMarkdownToDoc(
-      '```mermaid\nclassDiagram\nclass Animal\n```\n',
+      '```mermaid\ngitGraph\n  commit\n```\n',
     );
     const view = new EditorView(parent, {
       state: EditorState.create({ doc, schema: editorSchema }),
