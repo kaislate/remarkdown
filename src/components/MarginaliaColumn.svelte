@@ -18,6 +18,7 @@
   import { resolvedAnnots, currentViewerRoot, updateAnnotation } from '../stores/annots';
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
+  import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { contextFor } from '../lib/note-context';
   import type { Note } from '../lib/schema';
@@ -37,6 +38,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     if (typeof requestAnimationFrame === 'undefined') {
       resizeTick += 1;
       return;

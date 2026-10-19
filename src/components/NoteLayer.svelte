@@ -113,6 +113,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     if (typeof requestAnimationFrame === 'undefined') {
       resizeTick += 1;
       return;

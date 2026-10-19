@@ -14,6 +14,7 @@
   import { resolveAnchor } from '../lib/anchoring';
   import { hitTestDrawing } from '../lib/drawing-hit-test';
   import { zoomLevel } from '../stores/ui';
+  import { readerMode } from '../stores/reader-mode';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
@@ -208,6 +209,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     void $settings.showDrawingRecognitionConfidence;
     void $settings.drawingRoughness;
     void $resolvedAnnots;
