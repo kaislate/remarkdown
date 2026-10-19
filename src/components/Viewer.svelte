@@ -263,7 +263,7 @@
   }
 </script>
 
-<div class="scroll" bind:this={scrollEl}>
+<div class="scroll" class:with-marginalia={$settings.marginaliaEnabled} bind:this={scrollEl}>
   {#if $doc === null}
     <div class="empty">
       <p>Open a markdown file to start reading.</p>
@@ -344,6 +344,20 @@
     /* Navigation happens via the minimap (and wheel/keyboard); native scrollbar is noise. */
     scrollbar-width: none;
     -ms-overflow-style: none;
+    /* Room the reading column keeps (see .text-frame). Left: the floating
+       buttons, re.marks pill and zoom control end 140px from the page's
+       left edge (the window's, or the tab sidebar's); the text starts at
+       gutter + the article's 48px padding = 152px. Right, measured from
+       the frame's edge: the article's 96px of padding overflow, or, where
+       they show, the margin notes (80px gap + 280px cards + 6px air, less
+       the 14px between this padding box and the minimap). */
+    --col-gutter: 104px;
+    --col-right: 96px;
+  }
+  @media (min-width: 1440px) {
+    .scroll.with-marginalia {
+      --col-right: 352px;
+    }
   }
   .scroll::-webkit-scrollbar {
     display: none;
@@ -371,12 +385,16 @@
      settings.articleWidth. Defaults to 720px before settings hydrate. */
   .text-frame {
     position: relative;
-    /* The article adds 96px of side padding to this width, so a narrow
-       page (small window, tab sidebar pinned open) narrows the text
-       rather than running it under the minimap. */
-    max-width: min(var(--article-width, 720px), calc(100% - 96px));
+    /* A narrow page (small window, tab sidebar pinned open) narrows the
+       text rather than running it under the left-hand buttons, the margin
+       notes or the minimap. */
+    max-width: min(var(--article-width, 720px), calc(100% - var(--col-gutter) - var(--col-right)));
     width: 100%;
-    margin-left: clamp(0px, calc((100% - var(--article-width, 720px)) / 2), 140px);
+    margin-left: clamp(
+      var(--col-gutter),
+      min((100% - var(--article-width, 720px)) / 2, 100% - var(--article-width, 720px) - var(--col-right)),
+      140px
+    );
     margin-right: auto;
   }
   /* Layout only. Content styling lives in src/styles/article.css via the
