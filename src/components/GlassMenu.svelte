@@ -9,6 +9,8 @@
   import { readingProgress } from '../stores/reading-progress';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
+  import { settings } from '../stores/settings';
+  import { toggleTabsShown, TOGGLE_TABS_SHORTCUT } from '../lib/tab-visibility';
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
@@ -171,6 +173,14 @@
         onclick={() => { open = false; openModal({ kind: 'orphans' }); }}
       >
         Orphaned Annotations{$orphanedAnnots.length > 0 ? ` (${$orphanedAnnots.length})` : ''}
+      </button>
+      <button
+        role="menuitem"
+        class="item"
+        onclick={() => { open = false; toggleTabsShown(); }}
+      >
+        {$settings.showTabs ? 'Hide tabs' : 'Show tabs'}
+        <span class="shortcut" aria-hidden="true">{TOGGLE_TABS_SHORTCUT}</span>
       </button>
       <button
         role="menuitem"
@@ -452,6 +462,13 @@
     cursor: pointer;
     font-family: var(--font-sans);
     font-size: 14px;
+  }
+  /* A keyboard shortcut, right-aligned after the item's label. */
+  .item .shortcut {
+    float: right;
+    margin-left: 18px;
+    color: var(--fg-2);
+    font-size: 12px;
   }
   .item:hover {
     background: var(--accent-soft);

@@ -34,6 +34,7 @@
   import { activeModal } from '../stores/modals';
   import { readerMode } from '../stores/reader-mode';
   import { viewerScroll } from '../stores/viewport';
+  import { isToggleTabsKey, toggleTabsShown } from '../lib/tab-visibility';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
 
   interface TabItem {
@@ -64,8 +65,13 @@
     };
   });
 
+  // Shown unless turned off (menu / Ctrl+Shift+B); with one document only
+  // in tabs mode, and not if the user hides a lone tab.
   const visible = $derived(
-    $tabItems.length > 1 || ($settings.openMode === 'tabs' && $tabItems.length === 1),
+    $settings.showTabs && (
+      $tabItems.length > 1
+      || ($settings.openMode === 'tabs' && $tabItems.length === 1 && !$settings.hideSingleTab)
+    ),
   );
   const left = $derived($settings.tabPosition === 'left');
   const pinned = $derived($settings.tabSidebarPinned);
@@ -232,6 +238,11 @@
     // A dialog owns the keyboard (e.g. "Clear all annotations?" confirms on
     // Enter — switching tabs underneath it would aim it at another doc).
     if (e.defaultPrevented || get(activeModal)) return;
+    if (isToggleTabsKey(e)) {
+      e.preventDefault();
+      if (!e.repeat) toggleTabsShown();
+      return;
+    }
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
     const key = e.key.toLowerCase();
@@ -480,16 +491,16 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 80px;
+    height: 62px;
     z-index: 49;
     pointer-events: none;
-    /* Solid enough to read the tab names over by their bottom edge (y=49),
+    /* Solid enough to read the tab names over by their bottom edge (y=34),
        then fading out over the next ~25px. */
     background: color-mix(in srgb, var(--bg-0) 92%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
-    mask-image: linear-gradient(to bottom, #000 62%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
+    mask-image: linear-gradient(to bottom, #000 58%, transparent);
     opacity: 0;
     transition: opacity 0.2s ease;
   }
@@ -498,15 +509,15 @@
   }
 
   /* ---- Top tabs ---------------------------------------------------------- */
-  /* On the same line as the menu button and wordmark (centred at y=33),
-     right of where the wordmark ends when it unfolds to "remarkdown" on
-     hover; left of the window controls. */
+  /* Up on the window buttons' line (centred at y=19), right of where the
+     wordmark ends when it unfolds to "remarkdown" on hover; left of the
+     window controls. */
   .tabbar {
     position: fixed;
-    top: 17px;
+    top: 4px;
     left: 174px;
     right: 140px;
-    height: 32px;
+    height: 30px;
     /* Above .titlebar-drag (z:50) whose job it takes over here; below the
        menu backdrop (z:125) so an open menu dims it. */
     z-index: 55;

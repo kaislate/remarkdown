@@ -34,6 +34,11 @@ export const SettingsSchema = z.object({
   // sidebar either stays open (pinned) or shrinks to initials until hovered.
   tabPosition: z.enum(['top', 'left']),
   tabSidebarPinned: z.boolean(),
+  // Show the tabs at all (menu → Hide tabs / Ctrl+Shift+B). Hidden, the
+  // documents stay open and Ctrl+Tab still switches between them.
+  showTabs: z.boolean(),
+  // Hide the tab bar while only one document is open.
+  hideSingleTab: z.boolean(),
   // "Always open documents in reader mode" (the key predates the rename).
   openInFocusMode: z.boolean(),
   // Open documents straight into edit mode (the "Writer" starting layout).
@@ -47,6 +52,9 @@ export const SettingsSchema = z.object({
   // Show the minimap in reader mode too (beside the column, in the reader
   // theme's colours).
   readerMinimap: z.boolean(),
+  // Where reader mode shows your place: the line at the top ("Chapter 3 ·
+  // 6 min left") or a contents list on the left.
+  readerNav: z.enum(['top', 'left']),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -102,11 +110,14 @@ export const DEFAULT_SETTINGS: Settings = {
   reopenTabsOnLaunch: true,
   tabPosition: 'top',
   tabSidebarPinned: true,
+  showTabs: true,
+  hideSingleTab: false,
   openInFocusMode: false,
   openInEditMode: false,
   minimapPopoutInFocusMode: false,
   readerTheme: 'default',
   readerMinimap: true,
+  readerNav: 'top',
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,

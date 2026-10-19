@@ -34,6 +34,7 @@
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
   import ReaderModeLayer from './components/ReaderModeLayer.svelte';
   import ReaderMeta from './components/ReaderMeta.svelte';
+  import ReaderContents from './components/ReaderContents.svelte';
   import { doc } from './stores/doc';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
@@ -398,6 +399,7 @@
 <ReaderModeLayer />
 {#if $readerMode && !$editMode && $doc}
   <ReaderMeta />
+  {#if $settings.readerNav === 'left'}<ReaderContents />{/if}
 {/if}
 <EditModeToggle />
 <TocButton />

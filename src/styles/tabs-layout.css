@@ -21,8 +21,9 @@ body.has-tabs.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
   --tab-side-w: 200px;
 }
 
-/* Editing under top tabs: the formatting toolbar sticks just below them
-   instead of under them. */
+/* Editing under top tabs: the formatting toolbar sticks below them and
+   below the menu button's row (it reaches 52px, and the toolbar starts
+   left of where the wordmark ends) instead of under either. */
 body.has-tabs:not(.tabs-left) .editor-toolbar {
   top: 54px;
 }

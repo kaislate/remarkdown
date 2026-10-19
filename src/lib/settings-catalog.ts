@@ -98,6 +98,15 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'reader theme paper sepia night e-ink eink',
   },
   {
+    id: 'setting-reader-nav', section: 'reading', title: 'Section and time left', depiction: 'reader-nav',
+    description: 'In reader mode: a quiet line above the page, or the contents beside it with the section you are in marked.',
+    control: {
+      type: 'segmented', key: 'readerNav',
+      options: [{ value: 'top', label: 'Line at the top' }, { value: 'left', label: 'Contents on the left' }],
+    },
+    keywords: 'reader contents table of contents toc headings sidebar minutes left section',
+  },
+  {
     id: 'setting-reader-minimap', section: 'reading', title: 'Show the minimap in reader mode', depiction: 'reader-minimap',
     description: 'A small map of the whole document beside the page, showing where you are.',
     control: { type: 'switch', key: 'readerMinimap' },
@@ -132,6 +141,21 @@ export const OPTIONS: OptionDef[] = [
     control: { type: 'segmented', key: 'tabPosition', options: [{ value: 'top', label: 'Top' }, { value: 'left', label: 'Left' }] },
     visible: (s) => s.openMode === 'tabs',
     keywords: 'tabs sidebar vertical',
+  },
+  {
+    id: 'setting-show-tabs', section: 'files', title: 'Show tabs', depiction: 'show-tabs',
+    description: 'Hidden, your documents stay open: Ctrl+Tab still switches between them. Also in the menu, or Ctrl+Shift+B.',
+    control: { type: 'switch', key: 'showTabs' },
+    visible: (s) => s.openMode === 'tabs',
+    keywords: 'tabs hide show tab bar shortcut',
+  },
+  {
+    id: 'setting-hide-single-tab', section: 'files', title: 'Hide the tab bar with only one document open', depiction: 'single-tab',
+    description: 'The tabs appear as soon as you open a second document.',
+    control: { type: 'switch', key: 'hideSingleTab' },
+    visible: (s) => s.openMode === 'tabs',
+    enabled: (s) => s.showTabs,
+    keywords: 'tabs hide single one document tab bar',
   },
   {
     id: 'setting-tab-sidebar-pinned', section: 'files', title: 'Keep the tab sidebar open', depiction: 'sidebar-pin',

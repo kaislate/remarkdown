@@ -240,11 +240,11 @@
     border: 0;
   }
   /* Title-bar window controls — bare buttons that bloom on hover.
-     Each carries a --ctrl-color custom property; ::before is a
-     glowing orb that scales up behind the icon, ::after is a ripple
-     ring that expands outward, and the icon itself does a small
-     action-specific transform. No flat squares, no harsh red
-     rectangle on close. */
+     Each carries a --ctrl-color custom property; ::before is a flat
+     circle that scales up behind the icon, ::after is a ripple ring
+     that expands outward, and the icon itself does a small
+     action-specific transform. No squares, no harsh red rectangle on
+     close. */
   .ctrl {
     position: relative;
     background: transparent;
@@ -280,7 +280,8 @@
   .ctrl.close .icon {
     shape-rendering: geometricPrecision;
   }
-  /* Glowing orb behind the icon — radial gradient + soft halo */
+  /* Flat colour circle behind the icon (no highlight, glow or blur);
+     it still grows in on hover. */
   .ctrl::before {
     content: '';
     position: absolute;
@@ -292,16 +293,7 @@
     transform: translate(-50%, -50%) scale(0);
     opacity: 0;
     pointer-events: none;
-    background: radial-gradient(
-      circle at 35% 30%,
-      rgba(255, 255, 255, 0.55) 0%,
-      var(--ctrl-color, var(--accent)) 48%,
-      rgba(0, 0, 0, 0) 100%
-    );
-    box-shadow:
-      0 0 14px var(--ctrl-color, var(--accent)),
-      0 0 28px color-mix(in srgb, var(--ctrl-color, var(--accent)) 50%, transparent);
-    filter: blur(0.4px);
+    background: var(--ctrl-color, var(--accent));
     transition:
       transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
       opacity 0.22s ease;
@@ -331,8 +323,8 @@
     color: #fff;
   }
   .ctrl:hover::before {
-    transform: translate(-50%, -50%) scale(3.4);
-    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(3.2);
+    opacity: 1;
   }
   .ctrl:hover::after {
     transform: translate(-50%, -50%) scale(1);
@@ -361,7 +353,6 @@
   }
   .ctrl.close:hover .icon {
     transform: rotate(90deg) scale(1.1);
-    filter: drop-shadow(0 0 5px rgba(255, 94, 110, 0.85));
   }
 
   @media (prefers-reduced-motion: reduce) {

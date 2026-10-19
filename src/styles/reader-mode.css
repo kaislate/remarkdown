@@ -24,7 +24,7 @@ body.reader-mode .notes-pill-wrap,
 body.reader-mode .notes-popup-wrap,
 body.reader-mode .dismiss,
 body.reader-mode:not(.reader-minimap) .minimap,
-body.reader-mode .minimap-toggle,
+body.reader-mode:not(.reader-minimap) .minimap-toggle,
 body.reader-mode .zoom-rail,
 body.reader-mode .toc-button,
 body.reader-mode .toc-popover,
@@ -41,17 +41,26 @@ body.reader-mode .overlay[aria-label='Welcome tutorial'] {
   display: none !important;
 }
 
-/* The minimap, if shown: quieter than usual, in the theme's own colours,
-   and always open (its collapse tab is chrome). Nothing below it in reader
-   mode, so it runs the height of the window. */
+/* The minimap, if shown: quieter than usual and in the theme's own
+   colours; its arrow still tucks it away and brings it back. Nothing below
+   it in reader mode, so it runs the height of the window. */
 body.reader-mode.reader-minimap .minimap,
-body.reader-mode.reader-minimap .minimap.hidden,
 body.reader-mode.reader-minimap .minimap:hover {
-  transform: none;
   bottom: 52px;
   background: color-mix(in srgb, var(--bg-1) 70%, transparent);
   border-color: var(--glass-border);
   box-shadow: none;
+}
+body.reader-mode.reader-minimap .minimap-toggle {
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  color: var(--fg-2);
+  box-shadow: none;
+  opacity: 0.7;
+}
+body.reader-mode.reader-minimap .minimap-toggle:hover {
+  background: color-mix(in srgb, var(--bg-1) 90%, transparent);
+  color: var(--fg-0);
+  opacity: 1;
 }
 body.reader-mode.reader-minimap .viewport-indicator {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -72,6 +81,20 @@ body.reader-mode .titlebar-controls .ctrl {
 }
 body.reader-mode .titlebar-controls .ctrl:hover {
   color: #fff;
+}
+
+/* "Contents on the left" replaces the line at the top — where there's
+   room beside the column. In a narrower window the contents would run
+   into the text, so the line comes back instead. */
+@media (min-width: 1040px) {
+  body.reader-mode.reader-nav-left .reader-meta-wrap {
+    display: none;
+  }
+}
+@media (max-width: 1039.98px) {
+  body.reader-mode .reader-contents {
+    display: none;
+  }
 }
 
 /* Resize-grip stays grabbable but visually invisible so the user can

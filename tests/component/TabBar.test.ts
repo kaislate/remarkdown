@@ -30,6 +30,7 @@ import { openViaDialog } from '../../src/lib/open-files';
 import { createSession, sessions, activeSession, type DocSession } from '../../src/stores/sessions';
 import { updateSettings, resetSettings } from '../../src/stores/settings';
 import { openModal, closeModal } from '../../src/stores/modals';
+import { toasts, clearToasts } from '../../src/stores/toasts';
 
 function withDoc(path: string): DocSession {
   const s = createSession();
@@ -514,3 +515,53 @@ describe('TabBar — right-click menu', () => {
     expect(openViaDialog).not.toHaveBeenCalled();
   });
 });
+
+describe('TabBar — showing and hiding the tabs', () => {
+  beforeEach(() => { resetSettings(); clearToasts(); });
+
+  it('"Show tabs" off: no tab bar at all, but Ctrl+Tab still switches documents', async () => {
+    twoTabs();
+    updateSettings({ showTabs: false });
+    render(TabBar);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(document.body.classList.contains('has-tabs')).toBe(false);
+    await fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true });
+    expect(cycleSession).toHaveBeenCalledWith(1);
+  });
+
+  it('"Hide the tab bar with only one document" hides it for one, shows it for two', async () => {
+    const { b } = twoTabs();
+    updateSettings({ openMode: 'tabs', hideSingleTab: true });
+    render(TabBar);
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    sessions.set([b]);
+    activeSession.set(b);
+    await tick();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    updateSettings({ hideSingleTab: false });
+    await tick();
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+  });
+
+  it('Ctrl+Shift+B hides the tabs (saying how to bring them back) and shows them again', async () => {
+    twoTabs();
+    render(TabBar);
+    await fireEvent.keyDown(window, { key: 'B', ctrlKey: true, shiftKey: true });
+    expect(get(settings).showTabs).toBe(false);
+    await tick();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(get(toasts).map((t) => t.message).join(' ')).toMatch(/Ctrl\+Shift\+B/);
+    await fireEvent.keyDown(window, { key: 'B', ctrlKey: true, shiftKey: true });
+    expect(get(settings).showTabs).toBe(true);
+  });
+
+  it('not behind a dialog', async () => {
+    twoTabs();
+    render(TabBar);
+    openModal({ kind: 'settings' });
+    await fireEvent.keyDown(window, { key: 'B', ctrlKey: true, shiftKey: true });
+    expect(get(settings).showTabs).toBe(true);
+    closeModal();
+  });
+});
+

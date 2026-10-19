@@ -64,10 +64,10 @@ test('with tabs on top there is no title band and the menu and wordmark are unch
   expect(await rect(page, '.wordmark')).toEqual(markBefore);
   expect(await rect(page, '.scroll')).toMatchObject({ top: 0, left: 0 });
 
-  // The tabs share the menu button's line.
+  // The tabs sit up on the window buttons' line.
   const active = await rect(page, '[role="tab"][aria-selected="true"]');
-  const menuMid = menuBefore.top + menuBefore.height / 2;
-  expect(Math.abs(active.top + active.height / 2 - menuMid)).toBeLessThanOrEqual(1.5);
+  const close = await rect(page, '.titlebar-controls .ctrl.close');
+  expect(Math.abs(active.top + active.height / 2 - (close.top + close.height / 2))).toBeLessThanOrEqual(1.5);
   // A short accent line under the active tab's name (once it has slid there).
   await expect.poll(async () => {
     const line = await rect(page, '.tabbar .indicator');

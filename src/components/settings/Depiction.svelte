@@ -110,6 +110,30 @@
     <rect x="30" y="16" width="40" height="4" rx="2" style:fill={pal[1]} />
     {#each [26, 33, 40, 47, 54] as y, i (y)}<rect x="30" y={y} width={[52, 48, 52, 44, 30][i]} height="2.5" rx="1.25" style:fill={pal[1]} opacity="0.7" />{/each}
 
+  {:else if name === 'show-tabs'}
+    <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
+    <g class="tabsrow" class:off={value === false}>
+      <rect x="40" y="11" width="18" height="6" rx="2" class="tab" /><rect x="60" y="11" width="18" height="6" rx="2" class="tab active" />
+    </g>
+    <rect x="14" y="11" width="6" height="6" rx="1.5" class="chrome" />
+    {#each [26, 33, 40, 47] as y, i (y)}<rect x="28" y={y} width={[52, 46, 50, 38][i]} height="3" rx="1.5" class="ln" />{/each}
+
+  {:else if name === 'single-tab'}
+    <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
+    <rect x="14" y="11" width="6" height="6" rx="1.5" class="chrome" />
+    <g class:lonetab={value === true}><rect x="40" y="11" width="18" height="6" rx="2" class="tab active" /></g>
+    <rect x="60" y="11" width="18" height="6" rx="2" class="tab secondtab" />
+    {#each [26, 33, 40, 47] as y, i (y)}<rect x="28" y={y} width={[52, 46, 50, 38][i]} height="3" rx="1.5" class="ln" />{/each}
+
+  {:else if name === 'reader-nav'}
+    {@const left = str(value, 'top') === 'left'}
+    <g class="navline" class:off={left}><rect x="38" y="9" width="22" height="2" rx="1" class="ln ctx" /><rect x="62" y="9" width="12" height="2" rx="1" class="ln" /></g>
+    <g class="navlist" class:off={!left}>
+      {#each [16, 23, 30, 37] as y, i (y)}<rect x="8" y={y} width={[18, 14, 16, 12][i]} height="2" rx="1" class="ln" class:ctx={i === 1} />{/each}
+      <rect x="6" y="22" width="1.5" height="4" class="caret" />
+    </g>
+    {#each [18, 25, 32, 39, 46, 53] as y, i (y)}<rect x="38" y={y} width={[44, 50, 46, 52, 40, 48][i]} height="3" rx="1.5" class="ln" />{/each}
+
   {:else if name === 'reader-minimap'}
     <g class="readpage">
       {#each [12, 19, 26, 33, 40, 47, 54] as y, i (y)}
@@ -274,6 +298,17 @@
   .theme-dark { clip-path: inset(0 0 0 50%); transition: clip-path 0.5s ease; }
   .theme-dark.right { clip-path: inset(0 0 0 100%); }
   .col { transition: width 0.3s ease, x 0.3s ease; }
+  .tabsrow { transition: opacity 0.3s ease, transform 0.3s ease; }
+  .tabsrow.off { opacity: 0; transform: translateY(-4px); }
+  /* A lone tab is hidden at rest; playing, a second document opens and
+     both tabs appear. */
+  .lonetab { opacity: 0; }
+  .secondtab { opacity: 0; }
+  .playing .lonetab, .playing .secondtab { animation: secondtab 2.4s ease-in-out infinite; }
+  @keyframes secondtab { 0%, 30% { opacity: 0; } 45%, 90% { opacity: 1; } 100% { opacity: 0; } }
+  .navline, .navlist { transition: opacity 0.3s ease, transform 0.3s ease; }
+  .navline.off { opacity: 0; transform: translateY(-4px); }
+  .navlist.off { opacity: 0; transform: translateX(-6px); }
   .mm { transition: opacity 0.3s ease, transform 0.3s ease; }
   .mm.off { opacity: 0; transform: translateX(8px); }
   .mmframe { fill: var(--glass-fill); stroke: var(--glass-border); }

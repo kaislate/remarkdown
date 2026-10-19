@@ -34,7 +34,7 @@ export const PROFILES: Profile[] = [
       marginaliaEnabled: false,
       tabPosition: 'top',
     },
-    customize: ['setting-open-focus', 'setting-reader-theme', 'setting-reader-minimap', 'setting-width', 'setting-zoom', 'setting-hide-controls'],
+    customize: ['setting-open-focus', 'setting-reader-theme', 'setting-reader-nav', 'setting-reader-minimap', 'setting-width', 'setting-zoom', 'setting-hide-controls'],
     screenshot: readerShot,
   },
   {

@@ -271,3 +271,21 @@ describe('GlassMenu — recent file actions', () => {
   });
 });
 
+describe('GlassMenu — tabs', () => {
+  it('has "Hide tabs" with its shortcut, which flips to "Show tabs"', async () => {
+    const { settings, resetSettings } = await import('../../src/stores/settings');
+    const { get } = await import('svelte/store');
+    resetSettings();
+    const user = userEvent.setup();
+    render(GlassMenu);
+    await user.click(screen.getByRole('button', { name: 'Menu' }));
+    const item = screen.getByRole('menuitem', { name: /Hide tabs/ });
+    expect(item.textContent).toContain('Ctrl+Shift+B');
+    await user.click(item);
+    expect(get(settings).showTabs).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Menu' }));
+    await user.click(screen.getByRole('menuitem', { name: /Show tabs/ }));
+    expect(get(settings).showTabs).toBe(true);
+  });
+});
+

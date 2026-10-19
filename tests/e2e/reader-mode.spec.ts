@@ -58,7 +58,6 @@ const CHROME = [
   '.rail',
   '.strip',
   '.notes-pill-wrap',
-  '.minimap-toggle',
   '.zoom-rail',
   '.toc-button',
   '.edit-mode-toggle',
@@ -556,5 +555,54 @@ test('"Show the minimap in reader mode" off: no minimap while reading', async ({
   await expect(page.locator('.minimap')).toBeVisible();
   await enterReader(page);
   await expect(page.locator('.minimap')).toBeHidden();
+});
+
+test('"Contents on the left": the headings beside the page instead of the line at the top', async ({ page }) => {
+  await settingsDo(page, async () => {
+    const win = page.getByRole('dialog', { name: 'Settings' });
+    await win.getByRole('button', { name: 'Reading', exact: true }).click();
+    await win.locator('#setting-reader-nav').getByRole('radio', { name: 'Contents on the left', exact: true }).click();
+  });
+  await open(page, [A]);
+  await enterReader(page);
+  const contents = page.getByRole('navigation', { name: 'Contents' });
+  await expect(contents).toBeVisible();
+  await expect(page.locator('.reader-meta')).toBeHidden();
+  const items = contents.getByRole('link');
+  await expect(items).toHaveText(['On reading slowly', 'Chapter 3']);
+  await expect(contents).toContainText(/\d+ min left/);
+  // Beside the column, not over it.
+  const nav = (await contents.boundingBox())!;
+  const col = (await page.locator('.viewer p').first().boundingBox())!;
+  expect(nav.x + nav.width).toBeLessThan(col.x);
+  // It follows the reading line, like the line at the top did.
+  await expect(items.nth(0)).toHaveAttribute('aria-current', 'location');
+  await page.locator('.scroll').evaluate((el) => {
+    const h = Array.from(document.querySelectorAll('.viewer h2')).find((x) => x.textContent === 'Chapter 3')!;
+    el.scrollTop += h.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight * 0.2;
+  });
+  await expect(items.nth(1)).toHaveAttribute('aria-current', 'location');
+  // And takes you there.
+  await items.nth(0).click();
+  await expect.poll(() => page.locator('.scroll').evaluate((el) => el.scrollTop)).toBeLessThan(80);
+  await expect(page.locator('body')).toHaveClass(/reader-mode/);
+});
+
+test('the minimap arrow works in reader mode too', async ({ page }) => {
+  await open(page, [A]);
+  await enterReader(page);
+  const map = page.locator('.minimap');
+  const arrow = page.getByRole('button', { name: 'Hide minimap' });
+  await expect(arrow).toBeVisible();
+  const onScreen = async () => {
+    const b = (await map.boundingBox())!;
+    return b.x < 1100;
+  };
+  expect(await onScreen()).toBe(true);
+  await arrow.click();
+  await expect.poll(onScreen).toBe(false);
+  await page.getByRole('button', { name: 'Show minimap' }).click();
+  await expect.poll(onScreen).toBe(true);
+  await expect(page.locator('body')).toHaveClass(/reader-mode/);
 });
 
