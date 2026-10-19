@@ -127,7 +127,10 @@ describe('timeline parser: oracle over the corpus', () => {
       const svg = await renderSvg(b.source);
       const drawn = Array.from(svg.querySelectorAll('g.timeline-node')).map(shownText);
       const expected = timelineDrawOrder(m).map((t) =>
-        t.kind === 'section' ? m.sections[t.index].name : t.kind === 'period' ? m.periods[t.index].label : m.periods[t.period].events[t.index],
+        t.kind === 'section' ? m.sections[t.index].name
+        : t.kind === 'period' ? m.periods[t.index].label
+        : t.kind === 'event' ? m.periods[t.period].events[t.index]
+        : m.title,
       );
       expect(drawn).toEqual(expected.map((t) => t.replace(/\s+/g, ' ').trim()));
     });

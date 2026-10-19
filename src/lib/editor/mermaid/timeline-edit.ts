@@ -219,7 +219,7 @@ export function applyTimelineEdit(source: string, edit: TimelineEdit): TimelineE
         after = layout.endOfSection(section);
       }
       lines.splice(after + 1, 0, periodLine(layout.periodIndent(section, after), edit.label, edit.events ?? []));
-      return withIndex(done(lines), (m, r) => r.map.periods.findIndex((p) => p.line === after + 1));
+      return withIndex(done(lines), (map) => map.periods.findIndex((p) => p.line === after + 1));
     }
 
     case 'setPeriodLabel': {
@@ -337,10 +337,10 @@ function continuationPrefix(lines: string[], map: TimelineSourceMap, period: num
 // Fill in `index` from a re-parse of the result.
 function withIndex(
   r: TimelineEditResult,
-  find: (m: TimelineModel, parsed: { map: TimelineSourceMap }) => number,
+  find: (map: TimelineSourceMap) => number,
 ): TimelineEditResult | null {
   const back = parseTimelineSource(r.source);
   if (!back.ok) return null;
-  const index = find(back.model, back);
+  const index = find(back.map);
   return index < 0 ? null : { ...r, index };
 }

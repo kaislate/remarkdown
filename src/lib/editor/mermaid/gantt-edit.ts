@@ -604,6 +604,8 @@ function apply(source: string, model: GanttModel, map: GanttSourceMap, edit: Gan
       const format = edit.format.trim();
       if (!ganttDateFormatSupported(format)) return null;
       if (format === model.dateFormat) return { source };
+      // Dates in a format this module can't read can't be rewritten.
+      if (model.dateFormat && !ganttDateFormatSupported(model.dateFormat)) return null;
       model.tasks.forEach((t, i) => {
         const e = doc.taskEntry[i];
         if (t.start.kind === 'date') e.t.set('start', formatGanttDate(fromGanttDate(t.start.date)!, format));

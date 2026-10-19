@@ -137,6 +137,8 @@ describe('gantt edits: targeted examples', () => {
       'gantt\n  dateFormat YYYY-MM-DD\n  excludes weekends, 2026-03-05\n  A :2026-03-02, 1d\n',
     );
     expect(applyGanttEdit(BASIC, { kind: 'setDateFormat', format: 'MMM D, YYYY' })).toBeNull();
+    // From a format whose dates can't be read, nothing could be rewritten.
+    expect(applyGanttEdit('gantt\n  dateFormat Do MMM YYYY\n  A :5th Jan 2026, 1d\n', { kind: 'setDateFormat', format: 'YYYY-MM-DD' })).toBeNull();
   });
 
   it('pins references to task1, task2 … when their numbering changes', () => {
