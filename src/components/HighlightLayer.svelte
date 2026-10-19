@@ -3,6 +3,7 @@
   import { get } from 'svelte/store';
   import { ulid } from 'ulid';
   import { tool, HIGHLIGHT_COLORS } from '../stores/tool';
+  import { readerMode } from '../stores/reader-mode';
   import {
     addAnnotation,
     removeAnnotation,
@@ -116,6 +117,8 @@
   }
 
   function onContextMenu(e: MouseEvent): void {
+    // Highlights are read-only in reader mode.
+    if (get(readerMode)) return;
     const root = get(currentViewerRoot);
     if (!root) return;
     const target = e.target as Node | null;
