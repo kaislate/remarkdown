@@ -10,6 +10,7 @@
   //
   // Drag-to-move uses getCurrentWindow().startDragging() on pointerdown — more
   // reliable in Tauri 2 than relying on the data-tauri-drag-region attribute.
+  import { onMount } from 'svelte';
   import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 
   // Default startup window size, mirrored from src-tauri/tauri.conf.json.
@@ -93,6 +94,26 @@
     );
   }
 
+  // Maximize turns into Restore (two overlapping squares) while the window
+  // is maximized — Windows' own convention. Tracked from the window itself
+  // so double-click-to-maximize, Win+Up and snapping keep it in sync.
+  let maximized = $state(false);
+  async function syncMaximized() {
+    try { maximized = await getCurrentWindow().isMaximized(); } catch { /* outside Tauri */ }
+  }
+  onMount(() => {
+    void syncMaximized();
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    void (async () => {
+      try {
+        const un = await getCurrentWindow().onResized(() => { void syncMaximized(); });
+        if (disposed) un(); else unlisten = un;
+      } catch { /* outside Tauri */ }
+    })();
+    return () => { disposed = true; unlisten?.(); };
+  });
+
   const minimize = () => safeCall(() => getCurrentWindow().minimize());
   const toggleMaximize = () => safeCall(() => getCurrentWindow().toggleMaximize());
   const close = () => safeCall(() => getCurrentWindow().close());
@@ -113,29 +134,34 @@
 <div class="controls-aura" aria-hidden="true"></div>
 
 <div class="titlebar-controls">
-  <button
-    class="ctrl min"
-    aria-label="Minimize"
-    title="Minimize"
-    onclick={minimize}
-  >
-    <span aria-hidden="true">&#x2500;</span>
+  <!-- 10x10 icons on the pixel grid (Windows' caption-button shapes),
+       centred in each button so the hover glow sits right behind them. -->
+  <button class="ctrl min" aria-label="Minimize" title="Minimize" onclick={minimize}>
+    <svg class="icon" viewBox="0 0 10 10" aria-hidden="true" data-icon="minimize">
+      <path d="M0 5.5h10" />
+    </svg>
   </button>
   <button
     class="ctrl max"
-    aria-label="Maximize"
-    title="Maximize"
+    aria-label={maximized ? 'Restore' : 'Maximize'}
+    title={maximized ? 'Restore' : 'Maximize'}
     onclick={toggleMaximize}
   >
-    <span aria-hidden="true">&#x25A1;</span>
+    {#if maximized}
+      <svg class="icon" viewBox="0 0 10 10" aria-hidden="true" data-icon="restore">
+        <path d="M2.5 2.5V.5h7v7h-2" />
+        <rect x=".5" y="2.5" width="7" height="7" />
+      </svg>
+    {:else}
+      <svg class="icon" viewBox="0 0 10 10" aria-hidden="true" data-icon="maximize">
+        <rect x=".5" y=".5" width="9" height="9" />
+      </svg>
+    {/if}
   </button>
-  <button
-    class="ctrl close"
-    aria-label="Close"
-    title="Close"
-    onclick={close}
-  >
-    <span aria-hidden="true">&#x00D7;</span>
+  <button class="ctrl close" aria-label="Close" title="Close" onclick={close}>
+    <svg class="icon" viewBox="0 0 10 10" aria-hidden="true" data-icon="close">
+      <path d="M.5.5l9 9M9.5.5l-9 9" />
+    </svg>
   </button>
 </div>
 
@@ -234,13 +260,24 @@
     padding: 0;
     transition: color 0.18s ease;
   }
-  .ctrl > :global(span) {
+  .ctrl .icon {
     position: relative;
     z-index: 2;
-    display: inline-block;
+    display: block;
+    width: 10px;
+    height: 10px;
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+    transform-origin: 50% 50%;
     transition:
       transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
-      text-shadow 0.18s ease;
+      filter 0.18s ease;
+  }
+  .ctrl.close .icon {
+    shape-rendering: geometricPrecision;
   }
   /* Glowing orb behind the icon — radial gradient + soft halo */
   .ctrl::before {
@@ -305,29 +342,31 @@
   .ctrl.min {
     --ctrl-color: #f5b54a;     /* warm amber — 'set aside' */
   }
-  .ctrl.min:hover > :global(span) {
-    transform: translateY(4px);
+  /* Hover micro-animations all transform around the icon's own centre so
+     it never drifts off the glow. */
+  .ctrl.min:hover .icon {
+    transform: scaleX(1.3);
   }
 
   .ctrl.max {
     --ctrl-color: #5dd0d6;     /* cool cyan — 'expand' */
   }
-  .ctrl.max:hover > :global(span) {
-    transform: scale(1.25);
+  .ctrl.max:hover .icon {
+    transform: scale(1.18);
   }
 
   .ctrl.close {
     --ctrl-color: #ff5e6e;     /* vivid red — 'dismiss' */
   }
-  .ctrl.close:hover > :global(span) {
-    transform: rotate(90deg) scale(1.15);
-    text-shadow: 0 0 10px rgba(255, 94, 110, 0.85);
+  .ctrl.close:hover .icon {
+    transform: rotate(90deg) scale(1.1);
+    filter: drop-shadow(0 0 5px rgba(255, 94, 110, 0.85));
   }
 
   @media (prefers-reduced-motion: reduce) {
     .ctrl::before,
     .ctrl::after,
-    .ctrl > :global(span) {
+    .ctrl .icon {
       transition-duration: 0.1s;
     }
   }
