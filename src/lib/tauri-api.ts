@@ -32,8 +32,10 @@ export async function writeSidecar(mdPath: string, json: string): Promise<void> 
   await invoke('write_sidecar', { mdPath, json });
 }
 
-export async function writeDocument(path: string, markdown: string): Promise<void> {
-  await invoke('write_document', { path, markdown });
+// Returns the sha256 of what was written. With `expectedSha`, Rust refuses
+// with { Conflict: diskSha } when the file changed on disk since then.
+export async function writeDocument(path: string, markdown: string, expectedSha: string | null = null): Promise<string> {
+  return await invoke<string>('write_document', { path, markdown, expectedSha256: expectedSha });
 }
 
 export async function pushRecent(path: string, max?: number): Promise<string[]> {

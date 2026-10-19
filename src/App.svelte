@@ -19,6 +19,7 @@
   import ClearAnnotsConfirm from './components/ClearAnnotsConfirm.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
+  import EditConflictModal from './components/EditConflictModal.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
   import Splash from './components/Splash.svelte';
@@ -400,6 +401,7 @@
 <ClearAnnotsConfirm />
 <UpdateModal />
 <CorruptSidecarModal />
+<EditConflictModal />
 <ErrorBanner />
 <Toasts />
 {#if import.meta.env.MODE !== 'e2e' && $settings.splashEnabled}

@@ -57,6 +57,9 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     case 'write_document': {
       const path = args?.path as string;
       const markdown = args?.markdown as string;
+      const expected = args?.expectedSha256 as string | null | undefined;
+      const onDisk = getDoc(path);
+      if (expected && onDisk && onDisk.sha256 !== expected) throw { Conflict: onDisk.sha256 };
       const bytes = new TextEncoder().encode(markdown);
       localStorage.setItem(docKey(path), JSON.stringify({
         markdown,
@@ -67,7 +70,7 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const writes = (window as any).__E2E_WRITES__ ?? [];
       writes.push({ path, markdown });
       (window as any).__E2E_WRITES__ = writes;
-      return;
+      return hashBytes(bytes);
     }
     case 'push_recent': {
       const path = args?.path as string;
