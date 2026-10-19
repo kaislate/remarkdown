@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import GlassMenu from '../../src/components/GlassMenu.svelte';
 
 vi.mock('../../src/lib/tauri-api', () => ({
   openFileDialog: vi.fn().mockResolvedValue('/tmp/x.md'),
+  revealInFolder: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/stores/doc', () => ({
@@ -189,3 +190,84 @@ describe('GlassMenu — Open Recent', () => {
     expect(screen.queryByText('Clear recents')).toBeNull();
   });
 });
+
+describe('GlassMenu — recent file actions', () => {
+  const PATH = 'C:/docs/Budget_Blueprint.md';
+
+  async function openRecentMenu() {
+    const { recent, recentExistence } = await import('../../src/stores/recent');
+    recent.set([PATH]);
+    recentExistence.set({ [PATH]: true });
+    render(GlassMenu);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    const row = screen.getByRole('menuitem', { name: /Budget_Blueprint\.md/ });
+    return { row, user };
+  }
+
+  it('middle-click opens the file in a new tab', async () => {
+    const { row } = await openRecentMenu();
+    await fireEvent(row, new MouseEvent('auxclick', { button: 1, bubbles: true }));
+    expect(openPaths).toHaveBeenCalledWith([PATH], { mode: 'tabs' });
+  });
+
+  it('right-click shows the file actions', async () => {
+    const { row } = await openRecentMenu();
+    await fireEvent.contextMenu(row);
+    const menu = screen.getByRole('menu', { name: /Budget_Blueprint/ });
+    const labels = Array.from(menu.querySelectorAll('[role="menuitem"] > span:first-child')).map((n) => n.textContent);
+    expect(labels).toEqual(['Open in new tab', 'Open in new window', 'Open here', 'Show in folder', 'Copy path', 'Remove from list']);
+  });
+
+  it.each([
+    ['Open in new tab', 'tabs'],
+    ['Open in new window', 'windows'],
+    ['Open here', 'replace'],
+  ])('%s opens with mode %s', async (label, mode) => {
+    const { row } = await openRecentMenu();
+    await fireEvent.contextMenu(row);
+    await fireEvent.click(screen.getByRole('menuitem', { name: new RegExp('^' + label) }));
+    expect(openPaths).toHaveBeenCalledWith([PATH], { mode });
+  });
+
+  it('Show in folder reveals the file', async () => {
+    const { revealInFolder } = await import('../../src/lib/tauri-api');
+    const { row } = await openRecentMenu();
+    await fireEvent.contextMenu(row);
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Show in folder' }));
+    expect(revealInFolder).toHaveBeenCalledWith(PATH);
+  });
+
+  it('Copy path puts the full path on the clipboard', async () => {
+    const { row } = await openRecentMenu();
+    // After userEvent.setup(), which installs its own clipboard.
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    await fireEvent.contextMenu(row);
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Copy path' }));
+    expect(writeText).toHaveBeenCalledWith(PATH);
+  });
+
+  it('Remove from list removes only that entry', async () => {
+    const { removeFromRecent } = await import('../../src/stores/recent');
+    const { row } = await openRecentMenu();
+    await fireEvent.contextMenu(row);
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from list' }));
+    expect(removeFromRecent).toHaveBeenCalledWith(PATH);
+    expect(openPaths).not.toHaveBeenCalled();
+  });
+
+  it('a missing file can still be removed or shown, but not opened', async () => {
+    const { recent, recentExistence } = await import('../../src/stores/recent');
+    recent.set([PATH]);
+    recentExistence.set({ [PATH]: false });
+    render(GlassMenu);
+    await userEvent.setup().click(screen.getByRole('button', { name: /menu/i }));
+    await fireEvent.contextMenu(screen.getByRole('menuitem', { name: /Budget_Blueprint/ }));
+    for (const label of ['Open in new tab', 'Open in new window', 'Open here']) {
+      expect(screen.getByRole('menuitem', { name: new RegExp('^' + label) })).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(screen.getByRole('menuitem', { name: 'Remove from list' })).not.toHaveAttribute('aria-disabled');
+  });
+});
+

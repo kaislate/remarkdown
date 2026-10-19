@@ -108,4 +108,28 @@ describe('openPaths', () => {
     await openViaDialog();
     expect(activePath()).toBe('/picked.md');
   });
+
+  describe('explicit mode (recents context menu, middle-click)', () => {
+    it('new tab even when the setting is replace', async () => {
+      updateSettings({ openMode: 'replace' });
+      await openPaths(['/a.md']);
+      await openPaths(['/b.md'], { mode: 'tabs' });
+      expect(paths()).toEqual(['/a.md', '/b.md']);
+      expect(activePath()).toBe('/b.md');
+    });
+
+    it('new window even when the setting is tabs', async () => {
+      await openPaths(['/a.md']);
+      await openPaths(['/b.md'], { mode: 'windows' });
+      expect(openDocumentWindow).toHaveBeenCalledWith('/b.md');
+      expect(paths()).toEqual(['/a.md']);
+    });
+
+    it('open here replaces the current tab even in tabs mode', async () => {
+      await openPaths(['/a.md', '/b.md']);
+      await openPaths(['/c.md'], { mode: 'replace' });
+      expect(paths()).toEqual(['/a.md', '/c.md']);
+      expect(activePath()).toBe('/c.md');
+    });
+  });
 });

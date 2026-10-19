@@ -7,6 +7,7 @@ mod reading_progress;
 mod recent;
 mod session_file;
 mod settings;
+mod shell;
 mod sidecar;
 mod welcome;
 
@@ -60,6 +61,7 @@ fn main() {
             launch::open_document_window,
             default_app::default_app_status,
             default_app::make_default_app,
+            shell::reveal_in_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

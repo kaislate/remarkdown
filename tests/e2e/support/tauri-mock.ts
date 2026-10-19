@@ -108,6 +108,12 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       (window as any).__E2E_WINDOWS__ = opened;
       return;
     }
+    case 'reveal_in_folder': {
+      const revealed = (window as any).__E2E_REVEALED__ ?? [];
+      revealed.push(args?.path);
+      (window as any).__E2E_REVEALED__ = revealed;
+      return;
+    }
     case 'default_app_status':
       return { supported: false, md: false, markdown: false };
     case 'load_session':

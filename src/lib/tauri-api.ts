@@ -162,3 +162,8 @@ export async function defaultAppStatus(): Promise<DefaultAppStatus> {
 export async function makeDefaultApp(): Promise<void> {
   await invoke('make_default_app');
 }
+
+// Opens the file's folder in Explorer with the file selected.
+export async function revealInFolder(path: string): Promise<void> {
+  await invoke('reveal_in_folder', { path });
+}

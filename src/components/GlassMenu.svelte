@@ -11,6 +11,9 @@
   import { openModal } from '../stores/modals';
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
+  import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
+  import { revealInFolder } from '../lib/tauri-api';
+  import type { OpenMode } from '../lib/settings-schema';
 
   let open = $state(false);
 
@@ -69,17 +72,54 @@
     return p.split(/[\\/]/).pop() ?? p;
   }
 
-  async function openRecent(path: string) {
+  // `mode` overrides the open-mode setting (context menu, middle-click).
+  async function openRecent(path: string, mode?: OpenMode) {
     open = false;
     if (get(recentExistence)[path] === false) {
       addToast({ kind: 'warning', message: `File not found: ${basename(path)}` });
       return;
     }
     try {
-      await openPaths([path]);
+      await (mode ? openPaths([path], { mode }) : openPaths([path]));
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
+    }
+  }
+
+  // Right-click on a recent file.
+  let recentMenu = $state<{ path: string; x: number; y: number } | null>(null);
+
+  function recentMenuItems(path: string): ContextMenuEntry[] {
+    const missing = get(recentExistence)[path] === false;
+    return [
+      { label: 'Open in new tab', hint: 'Middle-click', disabled: missing, onSelect: () => void openRecent(path, 'tabs') },
+      { label: 'Open in new window', disabled: missing, onSelect: () => void openRecent(path, 'windows') },
+      { label: 'Open here', disabled: missing, onSelect: () => void openRecent(path, 'replace') },
+      'separator',
+      { label: 'Show in folder', onSelect: () => void showInFolder(path) },
+      { label: 'Copy path', onSelect: () => void copyPath(path) },
+      'separator',
+      { label: 'Remove from list', danger: true, onSelect: () => void removeFromRecent(path).catch((err) => {
+        addToast({ kind: 'error', message: `Could not remove from recents: ${(err as Error).message}` });
+      }) },
+    ];
+  }
+
+  async function showInFolder(path: string) {
+    try {
+      await revealInFolder(path);
+    } catch (err) {
+      addToast({ kind: 'error', message: `Couldn't open the folder: ${String(err)}` });
+    }
+  }
+
+  async function copyPath(path: string) {
+    try {
+      await navigator.clipboard.writeText(path);
+      addToast({ kind: 'info', message: 'Path copied.' });
+    } catch {
+      addToast({ kind: 'error', message: "Couldn't copy the path." });
     }
   }
 
@@ -197,6 +237,16 @@
               if ((e.target as HTMLElement).closest?.('.recent-remove')) return;
               openRecent(path);
             }}
+            onauxclick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              void openRecent(path, 'tabs');
+            }}
+            onmousedown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              recentMenu = { path, x: e.clientX, y: e.clientY };
+            }}
           >
             <span class="recent-name">
               {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
@@ -227,6 +277,16 @@
     </div>
   {/if}
 </div>
+
+{#if recentMenu}
+  <ContextMenu
+    x={recentMenu.x}
+    y={recentMenu.y}
+    label={`${basename(recentMenu.path)} actions`}
+    items={recentMenuItems(recentMenu.path)}
+    onclose={() => (recentMenu = null)}
+  />
+{/if}
 
 <style>
   .menu-root {
