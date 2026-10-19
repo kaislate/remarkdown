@@ -7,8 +7,10 @@
 //     `#59;` into a placeholder before parsing and the placeholder into
 //     an HTML entity after drawing; the svg then collapses whitespace.
 //   - renderText: the real thing — render in jsdom and read the svg
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import mermaid from 'mermaid';
-import { mermaidDb } from './mermaid-test-utils';
+import { corpusBlocks, mermaidDb } from './mermaid-test-utils';
 import { findPreamble } from '../../../src/lib/editor/mermaid/source-text';
 
 export const EXTRA_CORPUS = 'mermaid-corpus-pie-gantt-timeline.md';
@@ -62,6 +64,19 @@ export async function renderSvg(source: string): Promise<SVGSVGElement> {
   const host = document.createElement('div');
   host.innerHTML = svg;
   return host.querySelector('svg')!;
+}
+
+// A real-browser svg (tests/fixtures/mermaid-svg/<name>.svg, captured
+// from the app) mounted in jsdom, and the corpus source it was drawn from
+// (the EXTRA_CORPUS block with the same heading).
+export function loadSvgFixture(name: string): { svg: SVGSVGElement; source: string } {
+  const text = readFileSync(resolve(__dirname, '../../fixtures/mermaid-svg', `${name}.svg`), 'utf8');
+  const host = document.createElement('div');
+  host.innerHTML = text;
+  document.body.appendChild(host);
+  const block = corpusBlocks((b) => b.heading === name, [EXTRA_CORPUS])[0];
+  if (!block) throw new Error(`no corpus block ${name}`);
+  return { svg: host.querySelector('svg')!, source: block.source };
 }
 
 // Displayed text of an svg element: wrapped lines (tspans) read as one
