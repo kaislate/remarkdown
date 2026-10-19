@@ -48,9 +48,8 @@ function collectBlocks(md: string): Block[] {
 // the corpus must be editable. (Editability is the controller
 // registry's own answer: mermaid/registry.ts.)
 const NOT_EDITABLE = new Set([
-  'journey', 'gitgraph', 'mindmap',
-  'quadrant', 'sankey', 'xychart', 'block', 'c4-context', 'requirement', 'architecture',
-  'kanban', 'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
+  'journey', 'gitgraph', 'quadrant', 'sankey', 'xychart', 'block', 'c4-context', 'requirement',
+  'architecture', 'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
 ]);
 
 describe('mermaid corpus (edit-mode pipeline)', () => {

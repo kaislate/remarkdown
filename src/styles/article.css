@@ -891,3 +891,43 @@ body.reattach-mode .reader-mode-toggle {
   filter: drop-shadow(0 0 6px var(--accent));
   stroke: var(--accent) !important;
 }
+/* ── Mindmap editing (mindmap-controller.ts) ──────────────────────────
+   Every idea is a `g.mindmap-node` (it also gets the generic `g.node`
+   hover / selection glow above); its shape is a <path>, <rect>,
+   <circle> or <polygon>. Plain ideas are drawn with only an underline,
+   so the selected one also gets an accent outline on its shape. */
+.mermaid-block-editor .mermaid-rendered g.mindmap-node {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node:hover > :is(path, rect, circle, polygon) {
+  stroke: var(--accent-soft);
+  stroke-width: 2px;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node.mermaid-selected > :is(path, rect, circle, polygon) {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+/* ── end mindmap editing ── */
+
+/* ── Kanban editing (kanban-controller.ts) ────────────────────────────
+   Columns are `g.sections > g.cluster` (they share the flowchart group
+   rules above: pointer, hover glow, accent outline when selected);
+   the header is where a click usually lands, so it gets the hover cue.
+   Cards are `g.items > g.node` with a rounded <rect>: the selected
+   card gets an accent border on top of the generic `g.node` glow. */
+.mermaid-block-editor .mermaid-rendered g.sections > g.cluster .cluster-label {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.sections > g.cluster:hover .cluster-label {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-soft);
+}
+.mermaid-block-editor .mermaid-rendered g.items > g.node:hover > rect.label-container {
+  stroke: var(--accent-soft);
+  stroke-width: 2px;
+}
+.mermaid-block-editor .mermaid-rendered g.items > g.node.mermaid-selected > rect.label-container {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+/* ── end kanban editing ── */
