@@ -63,7 +63,9 @@ for (const [id, overrides] of Object.entries(PROFILE_SETTINGS)) {
     }, [PATH, DOC, ANNOTATIONS, overrides]);
     await page.goto('/');
     await expect(page.locator('h1:visible').first()).toBeVisible();
-    await page.waitForTimeout(1200); // highlights, notes and the minimap settle
+    // Highlights, notes and the minimap settle; reader mode's "Press Esc"
+    // hint has faded (it shows for 2.5s on entry).
+    await page.waitForTimeout(id === 'reader' ? 3400 : 1200);
     await page.screenshot({ path: `${OUT}/${id}.jpg`, type: 'jpeg', quality: 82 });
   });
 }

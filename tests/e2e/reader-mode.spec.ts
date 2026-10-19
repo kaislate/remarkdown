@@ -344,6 +344,7 @@ test('reader mode is per tab', async ({ page }) => {
 
 test('"Always open documents in reader mode" opens straight into it', async ({ page }) => {
   await settingsDo(page, async () => {
+    await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Reading', exact: true }).click();
     await page.getByLabel('Always open documents in reader mode').check();
   });
   await open(page, [A]);
