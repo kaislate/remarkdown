@@ -154,6 +154,13 @@
                 </div>
                 <div class="about-row">
                   <div>
+                    <div class="about-title">Starting layouts</div>
+                    <p class="about-desc">Reader, Annotator or Writer: pick the setup that fits how you use remarkdown.</p>
+                  </div>
+                  <button class="action" onclick={() => openModal({ kind: 'onboarding' })}>Choose a starting layout…</button>
+                </div>
+                <div class="about-row">
+                  <div>
                     <div class="about-title">Start over</div>
                     <p class="about-desc">Put every setting back the way it was when you installed remarkdown.</p>
                   </div>

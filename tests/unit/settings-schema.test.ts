@@ -88,3 +88,11 @@ describe('open-mode settings', () => {
     expect(parseSettings(JSON.stringify({ openMode: 'bogus' })).openMode).toBe('tabs');
   });
 });
+
+describe('onboarding settings', () => {
+  it('defaults: onboarding not completed, documents open in read mode', () => {
+    const s = parseSettings(null);
+    expect(s.onboardingCompleted).toBe(false);
+    expect(s.openInEditMode).toBe(false);
+  });
+});

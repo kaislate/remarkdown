@@ -88,6 +88,12 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'article column line length',
   },
   {
+    id: 'setting-open-edit', section: 'reading', title: 'Always open documents ready to edit', depiction: 'edit-mode',
+    description: 'Every file opens in edit mode, as if you had pressed Ctrl+E.',
+    control: { type: 'switch', key: 'openInEditMode' },
+    keywords: 'writer edit mode editor',
+  },
+  {
     id: 'setting-open-focus', section: 'reading', title: 'Always open documents in reader mode', depiction: 'reader',
     description: 'Every file opens with nothing but the page. Press Esc to leave.',
     control: { type: 'switch', key: 'openInFocusMode' },

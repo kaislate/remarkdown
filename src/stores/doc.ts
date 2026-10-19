@@ -117,6 +117,13 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
   if (isNewDocOpen && get(settings).openInFocusMode) {
     session.readerMode.set(true);
   }
+  // "Open documents in edit mode": set the tab up exactly as entering edit
+  // mode would — with its watcher paused, so autosaves don't come back as
+  // "changed on disk" reloads.
+  if (isNewDocOpen && get(settings).openInEditMode && !get(session.editMode)) {
+    session.watcherPaused = true;
+    session.editMode.set(true);
+  }
 
   if (isActive && isNewDocOpen) restoreProgressScroll(path);
 

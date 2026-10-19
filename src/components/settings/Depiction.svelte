@@ -63,6 +63,12 @@
       <rect x="28" y={y} width={[56, 50, 54, 44, 52][i]} height="3" rx="1.5" class="ln" />
     {/each}
 
+  {:else if name === 'edit-mode'}
+    <rect x="22" y="12" width="68" height="9" rx="4.5" class="railbg toolbar" />
+    {#each [30, 40, 50] as x (x)}<rect x={x} y="15" width="6" height="3" rx="1" class="railbtn toolbar" />{/each}
+    <rect x="22" y="30" width="60" height="3" rx="1.5" class="ln" /><rect x="22" y="38" width="48" height="3" rx="1.5" class="ln" /><rect x="22" y="46" width="54" height="3" rx="1.5" class="ln" />
+    <rect x="71" y="36.5" width="1.5" height="6" class="caret" />
+
   {:else if name === 'open-mode'}
     {@const mode = str(value, 'tabs')}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
@@ -180,6 +186,10 @@
   .chrome { fill: var(--bg-2); }
   .chromedot { fill: var(--fg-2); opacity: 0.6; }
   .tab { fill: var(--glass-fill); stroke: var(--glass-border); }
+  .caret { fill: var(--accent); }
+  .playing .caret { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .playing .toolbar { animation: railup 2.4s ease-out infinite; }
   .tab.active { fill: var(--accent-soft); stroke: var(--accent); }
   .chip { fill: var(--accent-soft); }
   .logo { font: 700 16px var(--font-sans); fill: var(--fg-0); }

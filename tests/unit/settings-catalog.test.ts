@@ -19,7 +19,7 @@ describe('settings catalog', () => {
   });
 
   it('every user-facing setting has a card (except internal ones)', () => {
-    const internal = new Set(['schemaVersion', 'minimapPopoutInFocusMode']);
+    const internal = new Set(['schemaVersion', 'minimapPopoutInFocusMode', 'onboardingCompleted']);
     const covered = new Set(OPTIONS.flatMap((o) => (o.control.type === 'custom' ? [] : [o.control.key])));
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (internal.has(key)) continue;

@@ -30,6 +30,8 @@ export const SettingsSchema = z.object({
   // Tabs mode only: restore the previous session's tabs on launch.
   reopenTabsOnLaunch: z.boolean(),
   openInFocusMode: z.boolean(),
+  // Open documents straight into edit mode (the "Writer" starting layout).
+  openInEditMode: z.boolean(),
   minimapPopoutInFocusMode: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
@@ -63,6 +65,9 @@ export const SettingsSchema = z.object({
 
   // Right-margin marginalia column for re.marks (prototype).
   marginaliaEnabled: z.boolean(),
+
+  // First-run "How do you want to use remarkdown?" has been answered.
+  onboardingCompleted: z.boolean(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -81,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openMode: 'tabs',
   reopenTabsOnLaunch: true,
   openInFocusMode: false,
+  openInEditMode: false,
   minimapPopoutInFocusMode: false,
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
@@ -98,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   remarkContextStopAtParagraph: true,
   remarkContextStopAtListItem: true,
   marginaliaEnabled: false,
+  onboardingCompleted: false,
 };
 
 // Parse a JSON string from disk, falling back to defaults for any field that's
