@@ -92,6 +92,10 @@
     display: flex;
     padding: 22px 48px 26px;
     background: linear-gradient(var(--bg-0) 62%, transparent);
+    /* Soft side edges, so the fade never reads as a box over the app's
+       background glow. */
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
     color: var(--fg-2);
     font-family: var(--font-sans);
     font-size: 11px;

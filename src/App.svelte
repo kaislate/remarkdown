@@ -29,6 +29,7 @@
   import ZoomControls from './components/ZoomControls.svelte';
   import EditModeToggle from './components/EditModeToggle.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
+  import ReaderModeLayer from './components/ReaderModeLayer.svelte';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
@@ -367,6 +368,7 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<ReaderModeLayer />
 <EditModeToggle />
 <TocButton />
 <NotesPanel />

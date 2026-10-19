@@ -1,29 +1,39 @@
-/* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts.
-   Hides every chrome element so the article stands alone. The title-bar
-   drag region and the resize-grip stay invisible-but-functional so the
-   window can still be moved + resized without leaving reader mode. */
+/* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts,
+   with the chosen palette in `body[data-reader-theme]`.
+   1. Every chrome element is hidden. Only the page is left, plus the
+      invisible window-drag band and the entry hint (ReaderModeLayer.svelte)
+      and the "min left" line (ReaderMeta.svelte).
+   2. Reading typography: a centred ~62ch column, larger text, looser lines.
+   3. Reader themes: tokens per palette. 'default' keeps the app's colours. */
+
+/* ── 1. No chrome ─────────────────────────────────────────────────────── */
 
 body.reader-mode .menu-root,
+body.reader-mode .titlebar-drag,
 body.reader-mode .titlebar-controls,
-body.reader-mode .tabbar,
 body.reader-mode .controls-aura,
+body.reader-mode .tabbar,
 body.reader-mode .left-title,
 body.reader-mode .rail,
 body.reader-mode .strip,
 body.reader-mode .notes-pill-wrap,
+body.reader-mode .notes-popup-wrap,
 body.reader-mode .dismiss,
+body.reader-mode .minimap,
 body.reader-mode .minimap-toggle,
 body.reader-mode .zoom-rail,
 body.reader-mode .toc-button,
-body.reader-mode .toc-popover {
-  display: none !important;
-}
-
-/* Minimap is hidden by default in reader mode. The popout class
-   (set when reader-mode + the minimapPopoutInFocusMode setting are
-   both on) keeps it mounted so the peek-zone slide-in can reveal it
-   on hover — see Minimap.svelte for the popout transitions. */
-body.reader-mode:not(.minimap-popout) .minimap {
+body.reader-mode .toc-popover,
+body.reader-mode .edit-mode-toggle,
+body.reader-mode .reader-mode-toggle,
+body.reader-mode .marginalia,
+body.reader-mode .toasts,
+body.reader-mode .banner[role='alert'],
+body.reader-mode .reattach-banner,
+body.reader-mode .saved-pulse,
+body.reader-mode .editor-toolbar,
+body.reader-mode .backdrop,
+body.reader-mode .overlay[aria-label='Welcome tutorial'] {
   display: none !important;
 }
 
@@ -34,9 +44,229 @@ body.reader-mode .resize-grip .grip-glyph {
   opacity: 0;
 }
 
-/* In reader mode the toggle button slides into the spot the zoom pill
-   used to occupy — otherwise it'd be floating alone at left:144 with
-   nothing visible to its left. */
-body.reader-mode .reader-mode-toggle {
-  left: 22px !important;
+/* ── 2. Reading typography ────────────────────────────────────────────── */
+
+/* The minimap's reserved gutter goes; the column sits in the middle. */
+body.reader-mode .scroll {
+  padding-right: 0;
+}
+/* ~62 characters a line of the reading face at ~1.12× the normal size
+   (rem, so zoom still applies). Sized in em rather than `ch`: ch is the
+   width of a "0", wider than an average letter, so 62ch would set ~80
+   letters a line. The 96px is the article's side padding. */
+body.reader-mode .text-frame {
+  font-size: 1.12rem;
+  max-width: calc(30em + 96px);
+  margin-left: auto;
+  margin-right: auto;
+}
+/* border-box so the side padding sits inside the frame and the text is
+   truly centred (normally the article overhangs the frame on the right). */
+body.reader-mode .viewer {
+  box-sizing: border-box;
+  padding-top: 68px;
+}
+body.reader-mode .viewer.md-rendered {
+  color: var(--reader-body);
+  line-height: 1.75;
+}
+body.reader-mode .viewer > :first-child {
+  margin-top: 0;
+}
+body.reader-mode .viewer p {
+  margin: 0 0 1.15em;
+}
+body.reader-mode .viewer li {
+  margin: 0.35em 0;
+}
+/* Headings in the reading face, a little tighter than the body. */
+body.reader-mode .viewer :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  color: var(--fg-0);
+  text-wrap: balance;
+  margin-bottom: 0.55em;
+}
+body.reader-mode .viewer h1 { font-size: 2.15rem; margin-top: 1.4em; }
+body.reader-mode .viewer h2 { font-size: 1.6rem; margin-top: 1.6em; }
+body.reader-mode .viewer h3 { font-size: 1.3rem; margin-top: 1.5em; }
+/* Code and tables keep a denser rhythm than prose. */
+body.reader-mode .viewer pre {
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+body.reader-mode .viewer table {
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+body.reader-mode .viewer .callout-body {
+  color: var(--reader-body);
+}
+body.reader-mode .viewer .callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── 3. Reader themes ─────────────────────────────────────────────────── */
+
+/* Default: the app's own palette, body copy one step softer than ink. */
+body.reader-mode {
+  --reader-body: var(--fg-1);
+}
+
+body.reader-mode[data-reader-theme='paper'] {
+  color-scheme: light;
+  --bg-0: #fbf9f4;
+  --bg-1: #f3efe6;
+  --bg-2: #ece7db;
+  --fg-0: #22201c;
+  --reader-body: #3d3a33;
+  --fg-1: #3d3a33;
+  --fg-2: #8b8574;
+  --accent: #5b51c8;
+  --accent-soft: rgba(91, 81, 200, 0.22);
+  --glass-border: rgba(34, 32, 28, 0.12);
+  --glass-fill: rgba(34, 32, 28, 0.03);
+  --danger: #b42318;
+}
+body.reader-mode[data-reader-theme='sepia'] {
+  color-scheme: light;
+  --bg-0: #f3e7cf;
+  --bg-1: #ecdec2;
+  --bg-2: #e5d4b3;
+  --fg-0: #3b2f1e;
+  --reader-body: #4f4130;
+  --fg-1: #4f4130;
+  --fg-2: #8f7a5b;
+  --accent: #8a5524;
+  --accent-soft: rgba(138, 85, 36, 0.25);
+  --glass-border: rgba(59, 47, 30, 0.16);
+  --glass-fill: rgba(59, 47, 30, 0.04);
+  --danger: #a3271b;
+}
+body.reader-mode[data-reader-theme='night'] {
+  color-scheme: dark;
+  --bg-0: #121417;
+  --bg-1: #181b1f;
+  --bg-2: #1f2328;
+  --fg-0: #d6d3cc;
+  --reader-body: #a9a59c;
+  --fg-1: #a9a59c;
+  --fg-2: #6e6a62;
+  --accent: #c9a25e;
+  --accent-soft: rgba(201, 162, 94, 0.25);
+  --glass-border: rgba(214, 211, 204, 0.10);
+  --glass-fill: rgba(214, 211, 204, 0.03);
+  --danger: #e8836f;
+}
+body.reader-mode[data-reader-theme='eink'] {
+  color-scheme: light;
+  --bg-0: #f2f2f0;
+  --bg-1: #e9e9e6;
+  --bg-2: #e3e3e0;
+  --fg-0: #111111;
+  --reader-body: #222222;
+  --fg-1: #222222;
+  --fg-2: #666666;
+  --accent: #111111;
+  --accent-soft: rgba(0, 0, 0, 0.35);
+  --glass-border: rgba(0, 0, 0, 0.2);
+  --glass-fill: rgba(0, 0, 0, 0.03);
+  --danger: #111111;
+}
+/* A flat page — the app's glow gradients belong to the default look. */
+body.reader-mode:not([data-reader-theme='default']) {
+  background: var(--bg-0);
+}
+
+/* The theme's highlighter ink replaces the default yellow (the other
+   pens keep their colours). E-ink has no colour: every pen is grey. */
+body.reader-mode[data-reader-theme='paper'] ::highlight(rmd-hl-0) {
+  background-color: rgba(255, 214, 102, 0.45);
+  text-decoration-color: rgba(214, 160, 40, 0.65);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='sepia'] ::highlight(rmd-hl-0) {
+  background-color: rgba(214, 160, 70, 0.35);
+  text-decoration-color: rgba(176, 120, 40, 0.6);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='night'] ::highlight(rmd-hl-0) {
+  background-color: rgba(201, 162, 94, 0.28);
+  text-decoration-color: rgba(201, 162, 94, 0.6);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-0),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-1),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-2),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-3),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-4) {
+  background-color: rgba(0, 0, 0, 0.12);
+  text-decoration-color: rgba(0, 0, 0, 0.45);
+  text-shadow: none;
+}
+
+/* Links: underlined in the theme's accent so they read as links on
+   paper-like pages too. */
+body.reader-mode:not([data-reader-theme='default']) .viewer a {
+  border-bottom-color: var(--accent-soft);
+}
+
+/* Callouts: the stock colours are pastel, made for a dark page. Light
+   reader pages (including Default over the light app theme) get the same
+   hues, deep enough to read on paper. */
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-note, .callout-info) {
+  border-left-color: #2f6fb5;
+  color: #2f6fb5;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-tip, .callout-hint, .callout-success, .callout-done) {
+  border-left-color: #2e7d4f;
+  color: #2e7d4f;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-question, .callout-help, .callout-faq) {
+  border-left-color: #946b00;
+  color: #946b00;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-warning, .callout-caution, .callout-attention) {
+  border-left-color: #b0551a;
+  color: #b0551a;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-failure, .callout-fail, .callout-missing, .callout-danger, .callout-error, .callout-bug) {
+  border-left-color: #b42318;
+  color: #b42318;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) .callout-example {
+  border-left-color: #6f45b8;
+  color: #6f45b8;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-quote, .callout-cite, .callout-abstract, .callout-summary, .callout-tldr) {
+  border-left-color: #6b665c;
+  color: #6b665c;
+}
+body.reader-mode[data-reader-theme='eink'] .callout {
+  border-left-color: #111111;
+  color: #111111;
+}
+
+/* E-ink: ink on grey, nothing in colour — code without syntax colours,
+   diagrams in greys. */
+body.reader-mode[data-reader-theme='eink'] .viewer pre.shiki {
+  background-color: var(--bg-2) !important;
+}
+body.reader-mode[data-reader-theme='eink'] .viewer pre.shiki span {
+  color: #111111 !important;
+}
+body.reader-mode[data-reader-theme='eink'] .viewer .mermaid-block svg {
+  filter: grayscale(1);
+}
+
+/* E-ink screens smear motion: no animation or transition at all. */
+body.reader-mode[data-reader-theme='eink'],
+body.reader-mode[data-reader-theme='eink'] *,
+body.reader-mode[data-reader-theme='eink'] *::before,
+body.reader-mode[data-reader-theme='eink'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
 }
