@@ -40,9 +40,9 @@ import {
   type ClassRelation,
   type ClassSourceMap,
   type ClassVisibility,
-  type Span,
 } from './class-parser';
-import { breakDirection, entity, flatten, encodePlaceholders, decodePlaceholders } from './entity-text';
+import { breakDirection, encodeChars, encodeText, entity, flatten, encodePlaceholders, decodePlaceholders } from './entity-text';
+import { Splicer } from './splice';
 import { DEFAULT_INDENT, indentOf, joinLines, nextFreeId, splitLines } from './source-text';
 
 // The relationship kinds a user picks from. Each is a marker + line:
@@ -168,33 +168,6 @@ export function relationMarkers(type: ClassRelationType, rel?: ClassRelation): P
 
 // ── Writing text ─────────────────────────────────────────────────────
 
-// Characters encoded in every piece of user text:
-//   # ;      entity syntax / LABEL ends at `;`
-//   : %      `:` ends a LABEL (and with `style…` triggers mermaid's
-//            entity pre-pass); `%%` starts a comment
-//   " \      quotes end strings; `\` is a markdown escape
-//   & < >    HTML in labels
-//   * ~      markdown emphasis / generics
-// plus `_` where it could start or end markdown emphasis (not inside
-// a word: `user_id` stays as is).
-const ALWAYS = /[#;:%"\\&<>*~]/;
-
-// Encode, in one pass, the ALWAYS characters, `extra` ones, and `_`
-// at a word boundary.
-function encodeChars(s: string, extra?: RegExp): string {
-  let out = '';
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    const boundaryUnderscore = c === '_' && !(/[A-Za-z0-9]/.test(s[i - 1] ?? '') && /[A-Za-z0-9]/.test(s[i + 1] ?? ''));
-    out += ALWAYS.test(c) || extra?.test(c) || boundaryUnderscore ? entity(c) : c;
-  }
-  return out;
-}
-
-// Label / note / relation-label / cardinality text.
-export function encodeText(text: string): string {
-  return breakDirection(encodeChars(flatten(text)));
-}
 
 // One part of a member (name, type, parameters). Member text also
 // can't hold `{ }` (body delimiters), `( )` (method syntax) or `$`
@@ -336,79 +309,6 @@ export function deriveClassId(label: string, taken: (id: string) => boolean): st
   return taken(base) ? nextFreeId(taken, base) : base;
 }
 
-// ── Splicing ─────────────────────────────────────────────────────────
-
-interface Rep {
-  start: number;
-  end: number;
-  text: string;
-}
-
-class Splicer {
-  reps: Rep[] = [];
-  constructor(private map: ClassSourceMap) {}
-  get text(): string {
-    return this.map.text;
-  }
-  replace(span: Span, text: string): void {
-    this.reps.push({ start: span.start, end: span.end, text });
-  }
-  insert(at: number, text: string): void {
-    this.reps.push({ start: at, end: at, text });
-  }
-  lineOf(off: number): number {
-    return this.text.slice(0, off).split('\n').length - 1;
-  }
-  lineStart(off: number): number {
-    return this.text.lastIndexOf('\n', off - 1) + 1;
-  }
-  lineEnd(off: number): number {
-    const e = this.text.indexOf('\n', off);
-    return e < 0 ? this.text.length : e;
-  }
-  indentAt(off: number): string {
-    return indentOf(this.text.slice(this.lineStart(off), this.lineEnd(off)));
-  }
-  // Remove `span`; when nothing else is on its lines, the lines go.
-  remove(span: Span): void {
-    const ls = this.lineStart(span.start);
-    const le = this.lineEnd(span.end);
-    const before = this.text.slice(ls, span.start);
-    const after = this.text.slice(span.end, le);
-    if (!before.trim() && !after.trim()) {
-      if (le < this.text.length) this.replace({ start: ls, end: le + 1 }, '');
-      else this.replace({ start: Math.max(0, ls - 1), end: le }, '');
-    } else {
-      // Take the whitespace before it along (`a +x }` → `a }`).
-      const ws = /\s*$/.exec(before)![0].length;
-      this.replace({ start: span.start - (before.trim() ? ws : 0), end: span.end }, '');
-    }
-  }
-  // Insert a new line `text` after the line holding offset `at`.
-  lineAfter(at: number, indent: string, text: string): void {
-    this.insert(this.lineEnd(at), `\n${indent}${text}`);
-  }
-  // Insert a new line `text` before the line holding offset `at`.
-  lineBefore(at: number, indent: string, text: string): void {
-    this.insert(this.lineStart(at), `${indent}${text}\n`);
-  }
-  apply(): string {
-    // Drop edits inside a larger replaced range (insertions only when
-    // strictly inside), then apply from the end (equal starts: the
-    // earlier-queued text ends up first).
-    const reps = this.reps.map((r, i) => ({ ...r, i }));
-    const ranges = reps.filter((r) => r.end > r.start);
-    const inside = (r: (typeof reps)[number], o: (typeof reps)[number]) =>
-      r.end > r.start
-        ? o.start <= r.start && r.end <= o.end && (o.end - o.start > r.end - r.start || o.i < r.i)
-        : o.start < r.start && r.start < o.end;
-    const kept = reps.filter((r) => !ranges.some((o) => o !== r && inside(r, o)));
-    kept.sort((a, b) => b.start - a.start || b.i - a.i);
-    let t = this.text;
-    for (const r of kept) t = t.slice(0, r.start) + r.text + t.slice(r.end);
-    return t;
-  }
-}
 
 // ── The engine ───────────────────────────────────────────────────────
 
@@ -420,7 +320,7 @@ export function applyClassEdit(source: string, edit: ClassEdit): ClassEditResult
   const parsed = parseClassSource(source);
   if (!parsed.ok) return null;
   const { model, map } = parsed;
-  const sp = new Splicer(map);
+  const sp = new Splicer(map.text);
   const extra: Pick<ClassEditResult, 'id' | 'index'> = {};
   const ok = run(model, map, sp, edit, extra);
   if (!ok) return null;
