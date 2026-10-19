@@ -92,20 +92,23 @@ describe('mermaid serializer', () => {
     );
   });
 
-  it('emits each edge style correctly', () => {
+  it('emits each link kind correctly', () => {
     let g = emptyGraph();
     const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
     const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
     // edge 0: default (arrow)
     g = addEdge(g, { from: a.id, to: b.id });
-    // edge 1: line
-    g = addEdge(g, { from: a.id, to: b.id, style: 'line' });
-    // edge 2: dotted
-    g = addEdge(g, { from: a.id, to: b.id, style: 'dotted' });
-    // edge 3: thick
-    g = addEdge(g, { from: a.id, to: b.id, style: 'thick' });
+    g = addEdge(g, { from: a.id, to: b.id, ends: 'none' });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'dotted' });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'thick' });
+    g = addEdge(g, { from: a.id, to: b.id, ends: 'circle' });
+    g = addEdge(g, { from: a.id, to: b.id, ends: 'both-cross' });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'dotted', ends: 'none' });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'thick', ends: 'none', length: 2 });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'invisible', ends: 'none' });
+    g = addEdge(g, { from: a.id, to: b.id, ends: 'both-arrow', length: 3 });
     expect(serializeMermaid(g)).toBe(
-      'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\n',
+      'flowchart TD\nA[A]\nB[B]\nA --> B\nA --- B\nA -.-> B\nA ==> B\nA --o B\nA x--x B\nA -.- B\nA ==== B\nA ~~~ B\nA <----> B\n',
     );
   });
 
@@ -113,7 +116,7 @@ describe('mermaid serializer', () => {
     let g = emptyGraph();
     const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
     const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
-    g = addEdge(g, { from: a.id, to: b.id, label: 'maybe', style: 'dotted' });
+    g = addEdge(g, { from: a.id, to: b.id, label: 'maybe', stroke: 'dotted' });
     expect(serializeMermaid(g)).toBe(
       'flowchart TD\nA[A]\nB[B]\nA -.->|maybe| B\n',
     );
@@ -143,11 +146,11 @@ describe('mermaid serializer', () => {
     );
   });
 
-  it('does not emit explicit "arrow" style — it is the default', () => {
+  it('a plain arrow is the default link', () => {
     let g = emptyGraph();
     const a = addNode(g, { shape: 'rect', label: 'A' }); g = a.graph;
     const b = addNode(g, { shape: 'rect', label: 'B' }); g = b.graph;
-    g = addEdge(g, { from: a.id, to: b.id, style: 'arrow' });
+    g = addEdge(g, { from: a.id, to: b.id, stroke: 'solid' as never, ends: 'arrow' as never });
     expect(serializeMermaid(g)).toBe(
       'flowchart TD\nA[A]\nB[B]\nA --> B\n',
     );

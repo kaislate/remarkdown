@@ -1,13 +1,14 @@
 <script lang="ts">
   import Trash from 'phosphor-svelte/lib/Trash';
-  import ArrowRight from 'phosphor-svelte/lib/ArrowRight';
-  import Minus from 'phosphor-svelte/lib/Minus';
-  import DotsThree from 'phosphor-svelte/lib/DotsThree';
-  import ArrowFatRight from 'phosphor-svelte/lib/ArrowFatRight';
   import type { Readable } from 'svelte/store';
-  import type { EdgeStyle } from '../lib/editor/mermaid-graph';
+  import type { EdgeEnds, EdgeStroke } from '../lib/editor/mermaid-graph';
+  import { parseRich, serializeRich, hasFormatting, richToPlain } from '../lib/editor/mermaid/rich-text';
+  import { LINE_PALETTE } from '../lib/editor/mermaid/form';
+  import MermaidRichText from './MermaidRichText.svelte';
+  import MermaidLinkIcon from './MermaidLinkIcon.svelte';
+  import MermaidSwatches from './MermaidSwatches.svelte';
 
-  // Props are sourced from a Svelte store so the NodeView (plain TS,
+  // Props are sourced from a Svelte store so the controller (plain TS,
   // outside any Svelte component context) can update them imperatively
   // by calling store.set(...). Same pattern as MermaidNodePopover.
   interface PopoverState {
@@ -15,9 +16,14 @@
     x: number;
     y: number;
     label: string;
-    style: EdgeStyle;
-    onLabelChange: (label: string) => void;
-    onStyleChange: (style: EdgeStyle) => void;
+    markdown?: boolean;
+    stroke: EdgeStroke;
+    ends: EdgeEnds;
+    color?: string | null;
+    onLabelChange: (label: string, markdown: boolean) => void;
+    onStrokeChange: (stroke: EdgeStroke) => void;
+    onEndsChange: (ends: EdgeEnds) => void;
+    onColorChange?: (value: string | null) => void;
     onDelete: () => void;
     onClose: () => void;
   }
@@ -42,37 +48,36 @@
     return unsub;
   });
 
-  // Local draft for the label input — kept separate so typing doesn't
-  // round-trip through the graph on every keystroke. Commit on blur or
-  // Enter; reset on Escape.
-  let labelDraft: string = $state('');
-  let lastSeed = '';
-  $effect(() => {
-    if (!current) return;
-    const seed = `${current.visible ? 'v' : 'h'}::${current.label}`;
-    if (seed !== lastSeed) {
-      labelDraft = current.label;
-      lastSeed = seed;
-    }
-  });
+  function seedValue(c: PopoverState | null): string {
+    if (!c) return '';
+    return c.markdown ? c.label : serializeRich([{ text: c.label, bold: false, italic: false }]);
+  }
+  const fieldValue = $derived(seedValue(current));
 
-  function commitLabel() {
+  function commitLabel(md: string) {
     if (!current) return;
-    if (labelDraft !== current.label) current.onLabelChange(labelDraft);
+    const runs = parseRich(md);
+    const markdown = hasFormatting(runs);
+    const label = markdown ? md : richToPlain(runs);
+    if (label !== current.label || markdown !== !!current.markdown) current.onLabelChange(label, markdown);
   }
 
-  function onKey(e: KeyboardEvent) {
-    if (!current) return;
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitLabel();
-      current.onClose();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      labelDraft = current.label;
-      current.onClose();
-    }
-  }
+  const STROKES: Array<{ stroke: EdgeStroke; label: string }> = [
+    { stroke: 'solid', label: 'Solid line' },
+    { stroke: 'dotted', label: 'Dotted line' },
+    { stroke: 'thick', label: 'Thick line' },
+    { stroke: 'invisible', label: 'Invisible (keeps the layout, draws nothing)' },
+  ];
+
+  const ENDS: Array<{ ends: EdgeEnds; label: string }> = [
+    { ends: 'arrow', label: 'Arrow' },
+    { ends: 'none', label: 'No arrow' },
+    { ends: 'circle', label: 'Circle end' },
+    { ends: 'cross', label: 'Cross end' },
+    { ends: 'both-arrow', label: 'Arrows both ways' },
+    { ends: 'both-circle', label: 'Circles at both ends' },
+    { ends: 'both-cross', label: 'Crosses at both ends' },
+  ];
 </script>
 
 {#if current}
@@ -83,46 +88,54 @@
     role="dialog"
     aria-label="Edit edge"
   >
-    <input
-      class="mermaid-edge-popover-label"
-      type="text"
-      bind:value={labelDraft}
-      onblur={commitLabel}
-      onkeydown={onKey}
-      placeholder="Label (optional)"
-    />
-    <div class="mermaid-edge-style-row">
-      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'arrow'}
-        title="Solid arrow" aria-label="Solid arrow"
-        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('arrow')}>
-        <ArrowRight size={14} />
-      </button>
-      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'line'}
-        title="Solid line, no arrow" aria-label="Solid line"
-        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('line')}>
-        <Minus size={14} />
-      </button>
-      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'dotted'}
-        title="Dotted arrow (optional)" aria-label="Dotted arrow"
-        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('dotted')}>
-        <DotsThree size={14} />
-      </button>
-      <button type="button" class="mermaid-edge-style-btn" class:active={current.style === 'thick'}
-        title="Thick arrow (emphasis)" aria-label="Thick arrow"
-        onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStyleChange('thick')}>
-        <ArrowFatRight size={14} />
+    <div class="mermaid-edge-row">
+      <MermaidRichText
+        value={fieldValue}
+        className="mermaid-edge-popover-label"
+        ariaLabel="Label"
+        placeholder="Label (optional)"
+        onCommit={commitLabel}
+        onEnter={() => current!.onClose()}
+        onEscape={() => current!.onClose()}
+      />
+      <button
+        type="button"
+        class="mermaid-edge-popover-delete"
+        title="Delete connection"
+        aria-label="Delete connection"
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => current!.onDelete()}
+      >
+        <Trash size={14} />
       </button>
     </div>
-    <button
-      type="button"
-      class="mermaid-edge-popover-delete"
-      title="Delete connection"
-      aria-label="Delete connection"
-      onmousedown={(e) => e.preventDefault()}
-      onclick={() => current!.onDelete()}
-    >
-      <Trash size={14} />
-    </button>
+    <div class="mermaid-edge-style-row" role="radiogroup" aria-label="Line">
+      {#each STROKES as s (s.stroke)}
+        <button type="button" class="mermaid-edge-style-btn" class:active={current.stroke === s.stroke}
+          role="radio" aria-checked={current.stroke === s.stroke} title={s.label} aria-label={s.label}
+          onmousedown={(e) => e.preventDefault()} onclick={() => current!.onStrokeChange(s.stroke)}>
+          <MermaidLinkIcon stroke={s.stroke} ends="none" />
+        </button>
+      {/each}
+    </div>
+    {#if current.stroke !== 'invisible'}
+      <div class="mermaid-edge-style-row" role="radiogroup" aria-label="Ends">
+        {#each ENDS as e (e.ends)}
+          <button type="button" class="mermaid-edge-style-btn" class:active={current.ends === e.ends}
+            role="radio" aria-checked={current.ends === e.ends} title={e.label} aria-label={e.label}
+            onmousedown={(ev) => ev.preventDefault()} onclick={() => current!.onEndsChange(e.ends)}>
+            <MermaidLinkIcon ends={e.ends} />
+          </button>
+        {/each}
+      </div>
+      {#if current.onColorChange}
+        <div class="mermaid-edge-row">
+          <span class="mermaid-edge-row-label">Colour</span>
+          <MermaidSwatches value={current.color ?? null} palette={LINE_PALETTE} label="Line colour"
+            onChange={(v) => current!.onColorChange!(v)} />
+        </div>
+      {/if}
+    {/if}
   </div>
 {/if}
 
@@ -130,8 +143,8 @@
   .mermaid-edge-popover {
     position: absolute;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 5px;
     padding: 6px;
     background: var(--bg-1);
     border: 1px solid var(--glass-border);
@@ -139,23 +152,16 @@
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
     z-index: 60;
     pointer-events: auto;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--fg-1);
   }
   /* Re-assert display:none for the [hidden] attribute — same trick as
      MermaidNodePopover, since .mermaid-edge-popover's display:flex
      would otherwise win on specificity. */
   .mermaid-edge-popover[hidden] { display: none; }
-  .mermaid-edge-popover-label {
-    background: var(--bg-2);
-    color: var(--fg-0);
-    border: 1px solid var(--glass-border);
-    border-radius: 4px;
-    padding: 3px 6px;
-    font-size: 12px;
-    font-family: var(--font-sans);
-    width: 160px;
-    outline: none;
-  }
-  .mermaid-edge-popover-label:focus { border-color: var(--accent); }
+  .mermaid-edge-row { display: flex; align-items: center; gap: 6px; }
+  .mermaid-edge-row-label { color: var(--fg-2); min-width: 40px; }
   .mermaid-edge-popover-delete {
     display: inline-flex;
     align-items: center;
@@ -173,6 +179,7 @@
   .mermaid-edge-style-row {
     display: flex;
     gap: 2px;
+    flex-wrap: wrap;
   }
   .mermaid-edge-style-btn {
     display: inline-flex;
@@ -180,7 +187,7 @@
     background: transparent;
     border: 0;
     color: var(--fg-1);
-    padding: 4px 6px;
+    padding: 4px 5px;
     border-radius: 4px;
     cursor: pointer;
   }
