@@ -6,8 +6,13 @@
   // user clicks "+ connect" on a node popover). It's a thin Svelte
   // surface — all state lives in the NodeView and is pushed in via a
   // store, just like the node + edge popovers (Tasks 5, 6).
+  // `hint` / `addLabel` let every pick mode (connect two shapes, pick a
+  // message's sender and receiver, …) reuse the banner; the add button
+  // is left out when addLabel is null.
   interface BannerState {
     visible: boolean;
+    hint?: string;
+    addLabel?: string | null;
     onAddNewNode: () => void;
     onCancel: () => void;
   }
@@ -36,16 +41,18 @@
     role="status"
     aria-label="Connect mode active"
   >
-    <span class="mermaid-connect-hint">Click a node to connect</span>
-    <button
-      type="button"
-      class="mermaid-connect-add-new"
-      onmousedown={(e) => e.preventDefault()}
-      onclick={() => current!.onAddNewNode()}
-    >
-      <Plus size={14} />
-      <span>Add new node</span>
-    </button>
+    <span class="mermaid-connect-hint">{current.hint ?? 'Click a node to connect'}</span>
+    {#if current.addLabel !== null}
+      <button
+        type="button"
+        class="mermaid-connect-add-new"
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => current!.onAddNewNode()}
+      >
+        <Plus size={14} />
+        <span>{current.addLabel ?? 'Add new node'}</span>
+      </button>
+    {/if}
     <button
       type="button"
       class="mermaid-connect-cancel"
