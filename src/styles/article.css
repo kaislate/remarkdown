@@ -807,14 +807,28 @@ body.reattach-mode .reader-mode-toggle {
 .mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster,
 .mermaid-block-editor .mermaid-rendered svg.statediagram g.note-cluster,
 .mermaid-block-editor .mermaid-rendered svg.statediagram g.edgeLabel {
+  cursor: pointer;
+}
 .mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster:hover rect.outer {
   filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.35));
+}
 .mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster.mermaid-selected rect.outer {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
 .mermaid-block-editor .mermaid-rendered svg.statediagram path.transition {
+  cursor: pointer;
   transition: stroke 0.12s ease, filter 0.12s ease;
+}
 .mermaid-block-editor .mermaid-rendered svg.statediagram path.transition:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
 .mermaid-block-editor .mermaid-rendered svg.statediagram path.transition.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
 /* Connect mode: groups invite a click too. */
 .mermaid-block-editor.mermaid-connect-mode .mermaid-rendered svg.statediagram g.statediagram-cluster rect.outer {
   animation: mermaidConnectPulse 1.4s ease-in-out infinite;
+}
 /* ── end state diagrams ─────────────────────────────────────────────── */
