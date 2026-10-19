@@ -88,3 +88,29 @@ describe('open-mode settings', () => {
     expect(parseSettings(JSON.stringify({ openMode: 'bogus' })).openMode).toBe('tabs');
   });
 });
+
+describe('reader-mode settings', () => {
+  it('defaults readerTheme to default (the app colours)', () => {
+    expect(parseSettings(null).readerTheme).toBe('default');
+  });
+
+  it('older settings files without readerTheme pick up the default', () => {
+    expect(parseSettings(JSON.stringify({ schemaVersion: 1, theme: 'light' })).readerTheme).toBe('default');
+  });
+
+  it('accepts each reader theme', () => {
+    for (const t of ['default', 'paper', 'sepia', 'night', 'eink'] as const) {
+      expect(parseSettings(JSON.stringify({ readerTheme: t })).readerTheme).toBe(t);
+    }
+  });
+
+  it('an unknown readerTheme falls back to defaults', () => {
+    expect(parseSettings(JSON.stringify({ readerTheme: 'neon' })).readerTheme).toBe('default');
+  });
+
+  it('keeps the retired minimap-popout key loadable', () => {
+    const s = parseSettings(JSON.stringify({ minimapPopoutInFocusMode: true, openInFocusMode: true }));
+    expect(s.minimapPopoutInFocusMode).toBe(true);
+    expect(s.openInFocusMode).toBe(true);
+  });
+});
