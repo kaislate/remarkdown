@@ -64,6 +64,12 @@ describe('mindmap parser: targeted examples', () => {
     ]);
   });
 
+  it('richText is the label as markdown: entity-coded markers stay literal', () => {
+    const m = model('mindmap\n  root[**bold** 2#42;3 a#92;b #59;]\n');
+    expect(m.nodes[0].text).toBe('**bold** 2*3 a\\b ;');
+    expect(m.nodes[0].richText).toBe('**bold** 2\\*3 a\\\\b ;');
+  });
+
   it('maps each node to its line and its parts', () => {
     const src = 'mindmap\n  root((Top))\n    %% c\n    id1[Box]\n    ::icon(fa)\n';
     const r = parseMindmapSource(src);

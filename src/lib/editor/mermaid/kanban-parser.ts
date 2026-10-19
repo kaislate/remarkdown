@@ -32,7 +32,7 @@
 // uppercase or snake_case `shape` is an error.
 import { decodeMermaidEntities } from '../mermaid-parser';
 import { findPreamble, isBlankOrComment, splitLines } from './source-text';
-import { scanStatement, type NodeToken, type Pos } from './mindmap-parser';
+import { richTextOf, scanStatement, type NodeToken, type Pos } from './mindmap-parser';
 
 export type KanbanPriority = 'Very High' | 'High' | 'Low' | 'Very Low';
 export const KANBAN_PRIORITIES: readonly KanbanPriority[] = ['Very High', 'High', 'Low', 'Very Low'];
@@ -46,6 +46,8 @@ export interface KanbanCard {
   // The label as mermaid shows it (entity codes decoded; a metadata
   // `label` wins over the text).
   text: string;
+  // The label as the markdown mermaid renders (see MindmapNode.richText).
+  richText: string;
   markdown: boolean;
   // mermaid's id: the explicit id, else the text as written.
   id: string;
@@ -61,6 +63,7 @@ export interface KanbanCard {
 export interface KanbanColumn {
   index: number;
   text: string;
+  richText: string;
   markdown: boolean;
   id: string;
   explicitId: boolean;
@@ -258,11 +261,16 @@ function effectOf(meta: KanbanMeta | null): MetaEffect | string {
     }
     if (!v) continue;
     if (e.key === 'label' || e.key === 'icon' || e.key === 'assigned' || e.key === 'ticket' || e.key === 'priority') {
-      // mermaid decodes entity codes everywhere in the source.
-      out[e.key] = decodeMermaidEntities(String(v));
+      // As written: mermaid decodes entity codes in it when it draws.
+      out[e.key] = String(v);
     }
   }
   return out;
+}
+
+// mermaid decodes entity codes everywhere in the source.
+function decoded(v: string | undefined): string | null {
+  return v === undefined ? null : decodeMermaidEntities(v);
 }
 
 // ── Board ────────────────────────────────────────────────────────────
@@ -307,11 +315,12 @@ export function parseKanbanSource(source: string): KanbanSourceParseResult {
     if (typeof effect === 'string') return fail(`line ${k + 1}: ${effect}`);
     const src: KanbanItemSource = { ...token, meta, rawId: id ?? raw };
     const common = {
-      text: effect.label ?? decodeMermaidEntities(raw),
+      text: decodeMermaidEntities(effect.label ?? raw),
+      richText: richTextOf(effect.label ?? raw),
       markdown: token.form === 'markdown',
       id: decodeMermaidEntities(id ?? raw),
       explicitId: id !== null,
-      icon: effect.icon ?? null,
+      icon: decoded(effect.icon),
       classes: [] as string[],
     };
 
@@ -331,9 +340,9 @@ export function parseKanbanSource(source: string): KanbanSourceParseResult {
         column: col.index,
         position: col.cards.length,
         ...common,
-        assigned: effect.assigned ?? null,
-        ticket: effect.ticket ?? null,
-        priority: effect.priority ?? null,
+        assigned: decoded(effect.assigned),
+        ticket: decoded(effect.ticket),
+        priority: decoded(effect.priority),
       };
       col.cards.push(card);
       srcs[srcs.length - 1].cards.push(src);

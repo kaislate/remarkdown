@@ -33,14 +33,16 @@ import { moveItem, nextFreeId, setFrontmatterTitle } from './source-text';
 export type KanbanEdit =
   // New column after column `after` (default: at the end).
   | { kind: 'addColumn'; text: string; after?: number }
-  | { kind: 'renameColumn'; column: number; text: string }
+  // `markdown`: as for MindmapEdit's rename — `text` is markdown whose
+  // bold / italic mermaid renders.
+  | { kind: 'renameColumn'; column: number; text: string; markdown?: boolean }
   // Removes the column and its cards.
   | { kind: 'deleteColumn'; column: number }
   // Column `column` ends up at position `to`.
   | { kind: 'moveColumn'; column: number; to: number }
   // New card at `position` in the column (default: last).
   | { kind: 'addCard'; column: number; text: string; position?: number }
-  | { kind: 'renameCard'; column: number; card: number; text: string }
+  | { kind: 'renameCard'; column: number; card: number; text: string; markdown?: boolean }
   | { kind: 'deleteCard'; column: number; card: number }
   // The card ends up at `toPosition` in column `toColumn` (positions
   // counted without the moved card).
@@ -65,8 +67,8 @@ const RESERVED_YAML = /^(~|null|true|false|yes|no|on|off|y|n)$/i;
 // then a plain YAML scalar when that's unambiguous, else a double-
 // quoted one. The escaping leaves no `"` or `\` inside, which keeps
 // mermaid's own `@{…}` lexer (it tracks quotes, not escapes) happy.
-function emitMetaValue(value: string): string {
-  const w = escapeText(value.replace(/[\r\n]+/g, ' '), false);
+function emitMetaValue(value: string, formatted = false): string {
+  const w = escapeText(value.replace(/[\r\n]+/g, ' '), false, formatted);
   if (/^[A-Za-z]([A-Za-z0-9 .-]*[A-Za-z0-9.])?$/.test(w) && !RESERVED_YAML.test(w)) return w;
   return JSON.stringify(w);
 }
@@ -156,10 +158,10 @@ function emitColumn(b: Board, text: string): string {
 
 // Rename column / card `s`; `column` is the column's index when `s` is
 // a column (its id must stay unique), else -1.
-function rename(lines: string[], b: Board, s: KanbanItemSource, text: string, column: number): void {
+function rename(lines: string[], b: Board, s: KanbanItemSource, text: string, column: number, formatted: boolean): void {
   const t = nonEmpty(text);
   if (s.meta?.entries.some((e) => e.key === 'label' && e.value)) {
-    setMeta(lines, s, [['label', emitMetaValue(t)]], b.map.unit);
+    setMeta(lines, s, [['label', emitMetaValue(t, formatted)]], b.map.unit);
     return;
   }
   const id = s.id ? lines[s.line].slice(s.id.start, s.id.end) : '';
@@ -167,22 +169,22 @@ function rename(lines: string[], b: Board, s: KanbanItemSource, text: string, co
   let close = s.closeText;
   let inner: string;
   if (s.form === 'bare') {
-    inner = escapeText(t, false);
+    inner = escapeText(t, false, formatted);
     if (!bareSafe(inner, 'kanban')) {
       // Shapes don't show on a board: brackets are as good as bare.
       open = '[';
       close = ']';
-      inner = emitBody(t, 'plain');
+      inner = emitBody(t, 'plain', formatted);
     }
   } else {
     // `(-…-)` needs a quoted text: unquoted, mermaid would swallow the
     // `-` of `-)`.
     const dashed = open === '(-' || open === '-)';
-    inner = emitBody(t, s.form === 'markdown' ? 'markdown' : s.form === 'plain' && !dashed ? 'plain' : 'quoted');
+    inner = emitBody(t, s.form === 'markdown' ? 'markdown' : s.form === 'plain' && !dashed ? 'plain' : 'quoted', formatted);
   }
   let token = id + open + inner + close;
   if (column >= 0 && !id && columnIdTaken(b, rawIdOf(inner), column)) {
-    token = `${freshColumnId(b)}${open || '['}${open ? inner : emitBody(t, 'plain')}${close || ']'}`;
+    token = `${freshColumnId(b)}${open || '['}${open ? inner : emitBody(t, 'plain', formatted)}${close || ']'}`;
   }
   splice(lines, { line: s.line, col: s.indent.end }, textEnd(s), token);
 }
@@ -227,7 +229,7 @@ export function applyKanbanEdit(source: string, edit: KanbanEdit): KanbanEditRes
   switch (edit.kind) {
     case 'renameColumn': {
       const lines = [...map.lines];
-      rename(lines, b, col, edit.text, ci);
+      rename(lines, b, col, edit.text, ci, edit.markdown === true);
       return { source: join(lines), column: ci };
     }
     case 'deleteColumn': {
@@ -266,7 +268,7 @@ export function applyKanbanEdit(source: string, edit: KanbanEdit): KanbanEditRes
   switch (edit.kind) {
     case 'renameCard': {
       const lines = [...map.lines];
-      rename(lines, b, card, edit.text, -1);
+      rename(lines, b, card, edit.text, -1, edit.markdown === true);
       return { source: join(lines), column: ci, card: ki };
     }
     case 'deleteCard': {

@@ -63,6 +63,16 @@ describe('mindmap edits: targeted examples', () => {
     expect(edit('mindmap\n  root\n    a[x]\n', { kind: 'rename', index: 1, text: '' })).toBe('mindmap\n  root\n    a[" "]\n');
   });
 
+  it('rename with markdown writes bold / italic for mermaid to render', async () => {
+    const out = edit('mindmap\n  root\n    a[x]\n', { kind: 'rename', index: 1, text: '**Big** *idea* 2\\*3 "q"', markdown: true });
+    expect(out).toBe('mindmap\n  root\n    a[**Big** *idea* 2\\*3 #quot;q#quot;]\n');
+    const n = model(out).nodes[1];
+    expect(n.richText).toBe('**Big** *idea* 2\\*3 "q"');
+    expect(await mermaidAccepts(out)).toBe(true);
+    // A markdown string keeps its form; the backtick is still escaped.
+    expect(edit('mindmap\n  a["`x`"]\n', { kind: 'rename', index: 0, text: '**b** `c`', markdown: true })).toBe('mindmap\n  a["`**b** #96;c#96;`"]\n');
+  });
+
   it('shape changes swap only the delimiters', () => {
     expect(edit(SRC, { kind: 'setShape', index: 0, shape: 'hexagon' })).toBe(SRC.replace('root((Plan))', 'root{{Plan}}'));
     expect(edit(SRC, { kind: 'setShape', index: 1, shape: 'square' })).toBe(SRC.replace('    Research', '    [Research]'));

@@ -53,6 +53,17 @@ describe('kanban edits: targeted examples', () => {
     );
   });
 
+  it('renames with markdown keep bold / italic; richText reads it back', async () => {
+    const out = edit(SRC, { kind: 'renameCard', column: 0, card: 1, text: '**Now** 2\\*3', markdown: true });
+    expect(out).toBe(SRC.replace('b[Review]', 'b[**Now** 2\\*3]'));
+    expect(model(out).columns[0].cards[1].richText).toBe('**Now** 2\\*3');
+    const col = edit(SRC, { kind: 'renameColumn', column: 0, text: '*Soon*', markdown: true });
+    expect(col).toBe(SRC.replace('todo[To do]', 'todo[*Soon*]'));
+    expect(model(col).columns[0].richText).toBe('*Soon*');
+    expect(model('kanban\n  T\n    a[2#42;3]\n').columns[0].cards[0].richText).toBe('2\\*3');
+    expect(await mermaidAccepts(out)).toBe(true);
+  });
+
   it('never gives two columns one id (they would share their cards)', () => {
     const out = edit(SRC, { kind: 'renameColumn', column: 1, text: 'todo' });
     expect(out).toBe(SRC.replace('  Done', '  col1[todo]'));

@@ -54,6 +54,11 @@ export interface MindmapNode {
   // The label as mermaid shows it (entity codes decoded; markdown
   // syntax written by hand is kept as is).
   text: string;
+  // The label as the markdown mermaid renders (every mindmap label is
+  // markdown): like `text`, but a marker written as an entity code
+  // (`#42;`, i.e. a literal `*`) comes back backslash-escaped (`\*`).
+  // What a bold / italic field (rich-text.ts) edits.
+  richText: string;
   shape: MindmapShape;
   // Written as a markdown string ("`…`").
   markdown: boolean;
@@ -179,6 +184,16 @@ export function shapeOf(open: string, close: string): MindmapShape {
     default:
       return 'default';
   }
+}
+
+// A label as written → the markdown mermaid renders, for MindmapNode.
+// richText: entity codes decoded, except that a markdown marker written
+// as one (meant literally) becomes a backslash escape.
+export function richTextOf(raw: string): string {
+  return raw.replace(/#\w+;/g, (m) => {
+    const ch = decodeMermaidEntities(m);
+    return ch !== m && /^[*_\\`]$/.test(ch) ? `\\${ch}` : ch;
+  });
 }
 
 // What may follow a node or decoration on its line: nothing, or a
@@ -437,6 +452,7 @@ export function parseMindmapSource(source: string): MindmapSourceParseResult {
     nodes.push({
       index,
       text: decodeMermaidEntities(scanned.raw),
+      richText: richTextOf(scanned.raw),
       shape: src.form === 'bare' ? 'default' : shapeOf(src.openText, src.closeText),
       markdown: src.form === 'markdown',
       id: scanned.id,

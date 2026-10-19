@@ -35,7 +35,10 @@ import { setFrontmatterTitle } from './source-text';
 export type MindmapEdit =
   // Text as the user typed it; written so mermaid shows exactly that.
   // An empty text is written as one space (mermaid needs some text).
-  | { kind: 'rename'; index: number; text: string }
+  // With `markdown`, `text` is markdown (bold / italic, `\*` for a
+  // literal star — what a rich field commits, see MindmapNode.richText)
+  // and its markers are kept for mermaid to render.
+  | { kind: 'rename'; index: number; text: string; markdown?: boolean }
   | { kind: 'setShape'; index: number; shape: MindmapShape }
   // New node as the LAST child of `index`.
   | { kind: 'addChild'; index: number; text: string; shape?: MindmapShape }
@@ -93,6 +96,7 @@ const CLOSE: Record<Exclude<MindmapShape, 'default'>, string> = {
 //   - `*` `_` `\` (markdown emphasis / escapes) → #42; #95; #92;
 //   - `%%` (comment / directive start) → #37;%
 //   - in a markdown string also the backtick (ends it) → #96;
+// `formatted` text is markdown already: its `*` `_` `\` stay as they are.
 const ENTITY: Record<string, string> = {
   '"': '#quot;',
   '&': '#amp;',
@@ -103,12 +107,12 @@ const ENTITY: Record<string, string> = {
   '`': '#96;',
 };
 
-export function escapeText(text: string, markdown: boolean): string {
-  const out = text
+export function escapeText(text: string, markdown: boolean, formatted = false): string {
+  const special = formatted ? (markdown ? /["&<`]/g : /["&<]/g) : markdown ? /["&<*_\\`]/g : /["&<*_\\]/g;
+  return text
     .replace(/#(?=\w+;)/g, '#35;')
     .replace(/%(?=%)/g, '#37;')
-    .replace(markdown ? /["&<*_\\`]/g : /["&<*_\\]/g, (c) => ENTITY[c]);
-  return out;
+    .replace(special, (c) => ENTITY[c]);
 }
 
 // Can `text` be written bare (default shape, no delimiters)? mermaid
@@ -136,22 +140,22 @@ export function nonEmpty(text: string): string {
 }
 
 // A body (between delimiters) for typed text, in the given form.
-export function emitBody(text: string, form: 'plain' | 'quoted' | 'markdown'): string {
-  if (form === 'markdown') return `"\`${escapeText(text, true)}\`"`;
-  const written = escapeText(text, false);
+export function emitBody(text: string, form: 'plain' | 'quoted' | 'markdown', formatted = false): string {
+  if (form === 'markdown') return `"\`${escapeText(text, true, formatted)}\`"`;
+  const written = escapeText(text, false, formatted);
   if (form === 'plain' && plainSafe(written)) return written;
   return `"${written}"`;
 }
 
 // A whole node token (no id) for typed text.
-function emitNode(text: string, shape: MindmapShape): string {
+function emitNode(text: string, shape: MindmapShape, formatted = false): string {
   const t = nonEmpty(text);
   if (shape === 'default') {
-    const written = escapeText(t, false);
+    const written = escapeText(t, false, formatted);
     // The `(-"…"-)` form is mermaid's default shape with a quoted text.
     return bareSafe(written) ? written : `(-"${written}"-)`;
   }
-  return OPEN[shape] + emitBody(t, 'plain') + CLOSE[shape];
+  return OPEN[shape] + emitBody(t, 'plain', formatted) + CLOSE[shape];
 }
 
 // ── Source helpers ───────────────────────────────────────────────────
@@ -283,14 +287,15 @@ export function applyMindmapEdit(source: string, edit: MindmapEdit): MindmapEdit
       const lines = [...map.lines];
       const text = nonEmpty(edit.text);
       let token: string;
+      const formatted = edit.markdown === true;
       if (s.form === 'bare') {
-        token = emitNode(text, 'default');
+        token = emitNode(text, 'default', formatted);
       } else {
         const id = s.id ? map.lines[s.line].slice(s.id.start, s.id.end) : '';
         // `(-…-)` needs a quoted text: mermaid's unquoted text would
         // swallow the `-` of `-)`.
         const form = s.form === 'plain' && s.openText !== '(-' && s.openText !== '-)' ? 'plain' : s.form === 'markdown' ? 'markdown' : 'quoted';
-        token = id + s.openText + emitBody(text, form) + s.closeText;
+        token = id + s.openText + emitBody(text, form, formatted) + s.closeText;
       }
       replaceNodeToken(lines, s, token);
       return { source: join(lines), index: i };
