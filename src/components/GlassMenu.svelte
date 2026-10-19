@@ -485,6 +485,38 @@
     background: var(--fg-1);
     border-radius: 1px;
   }
+
+  /* Inside the solid title band (tabs shown, see TabBar): a smaller,
+     flat button and wordmark centred in the 40px band, the pre-release
+     tag in line after the wordmark instead of hanging below it. The
+     popover still lands at (60, 60). */
+  :global(body.has-tab-band) .menu-root {
+    top: 5px;
+    left: 10px;
+    gap: 10px;
+  }
+  :global(body.has-tab-band) .hamburger {
+    width: 30px;
+    height: 30px;
+    gap: 4px;
+    border-radius: 8px;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  :global(body.has-tab-band) .bar {
+    width: 13px;
+  }
+  :global(body.has-tab-band) .wordmark {
+    font-size: 15px;
+  }
+  :global(body.has-tab-band) .pre-tag {
+    position: static;
+  }
+  :global(body.has-tab-band) .popover {
+    top: 55px;
+    left: 50px;
+  }
   .popover {
     position: absolute;
     /* Offset diagonally from the hamburger so the popover clears the

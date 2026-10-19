@@ -317,9 +317,16 @@
 </div>
 
 <style>
+  /* The page's own box: below the solid title band and right of the tab
+     sidebar while tabs are shown (tabs-layout.css), the whole window
+     otherwise. Its clientHeight is exactly the part of the page you can
+     see, which the minimap's viewport box mirrors. */
   .scroll {
-    height: 100vh;
-    width: 100vw;
+    position: absolute;
+    top: var(--tab-band-h, 0px);
+    left: var(--tab-side-w, 0px);
+    right: 0;
+    bottom: 0;
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
@@ -354,7 +361,7 @@
   .content {
     position: relative;
     width: 100%;
-    min-height: 100vh;
+    min-height: calc(100vh - var(--tab-band-h, 0px));
   }
   /* Text column — centered on narrower windows, capped to a max left margin
      on wider ones so content doesn't drift away from the left edge as the
@@ -364,7 +371,10 @@
      settings.articleWidth. Defaults to 720px before settings hydrate. */
   .text-frame {
     position: relative;
-    max-width: var(--article-width, 720px);
+    /* The article adds 96px of side padding to this width, so a narrow
+       page (small window, tab sidebar pinned open) narrows the text
+       rather than running it under the minimap. */
+    max-width: min(var(--article-width, 720px), calc(100% - 96px));
     width: 100%;
     margin-left: clamp(0px, calc((100% - var(--article-width, 720px)) / 2), 140px);
     margin-right: auto;

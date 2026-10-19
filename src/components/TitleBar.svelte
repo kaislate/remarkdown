@@ -197,6 +197,15 @@
     background: transparent;
   }
 
+  /* Tabs shown: the title area is the solid 40px band (TabBar). */
+  :global(body.has-tab-band) .titlebar-drag {
+    height: 40px;
+  }
+  :global(body.has-tab-band) .titlebar-controls,
+  :global(body.has-tab-band) .ctrl {
+    height: 40px;
+  }
+
   /* The aura is a soft conical gradient that slowly sweeps across the
      top-right corner. Behind the controls (z:170) but above the minimap
      (z:60), so it reads as "here are the window controls" without being
