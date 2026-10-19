@@ -68,7 +68,7 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
   }
 
   // Detect "user opened a new doc" vs "current doc reloaded after an
-  // external edit" — only the former should auto-enter Focus mode if
+  // external edit" — only the former should auto-enter reader mode if
   // the user has that setting on. Edit-reload keeps the current chrome
   // state so the file watcher doesn't yank the UI from under the user.
   const isNewDocOpen = !current || current.path !== r.path;

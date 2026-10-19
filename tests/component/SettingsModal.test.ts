@@ -157,6 +157,42 @@ describe('SettingsModal — opening files', () => {
   });
 });
 
+describe('SettingsModal — reader mode', () => {
+  it('offers the five reader themes and saves the choice', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const select = screen.getByLabelText('Reader theme') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
+      ['default', 'Default'],
+      ['paper', 'Paper'],
+      ['sepia', 'Sepia'],
+      ['night', 'Night'],
+      ['eink', 'E-ink'],
+    ]);
+    expect(select.value).toBe('default');
+    await userEvent.setup().selectOptions(select, 'sepia');
+    expect(get(settings).readerTheme).toBe('sepia');
+  });
+
+  it('"Always open documents in reader mode" drives openInFocusMode', async () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const box = screen.getByLabelText('Always open documents in reader mode') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    await userEvent.setup().click(box);
+    expect(get(settings).openInFocusMode).toBe(true);
+  });
+
+  it('says "reader mode", never "focus mode", and has no minimap-popout row', () => {
+    openModal({ kind: 'settings' });
+    render(SettingsModal);
+    const text = document.querySelector('.settings-panel')!.textContent!.toLowerCase();
+    expect(text).not.toContain('focus mode');
+    expect(text).not.toContain('popout');
+    expect(document.querySelector('#setting-minimap-popout')).toBeNull();
+  });
+});
+
 describe('SettingsModal — default app', () => {
   beforeEach(() => {
     vi.mocked(makeDefaultApp).mockReset().mockResolvedValue(undefined);

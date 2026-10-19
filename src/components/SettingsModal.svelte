@@ -4,6 +4,7 @@
   import { ZOOM_LEVELS } from '../stores/ui';
   import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
   import type { OpenMode } from '../lib/settings-schema';
+  import { READER_THEMES, READER_THEME_LABELS, type ReaderTheme } from '../lib/reader-themes';
   import { defaultAppStatus, makeDefaultApp, type DefaultAppStatus } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
 
@@ -154,25 +155,28 @@
           </div>
 
           <div class="row">
-            <label for="setting-open-focus">Open new documents in Focus mode</label>
-            <input
-              id="setting-open-focus"
-              type="checkbox"
-              checked={$settings.openInFocusMode}
-              onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
-            />
+            <div>
+              <label for="setting-reader-theme">Reader theme</label>
+              <div class="hint">the page colours while in reader mode</div>
+            </div>
+            <select
+              id="setting-reader-theme"
+              value={$settings.readerTheme}
+              onchange={(e) => updateSettings({ readerTheme: (e.currentTarget as HTMLSelectElement).value as ReaderTheme })}
+            >
+              {#each READER_THEMES as t}
+                <option value={t}>{READER_THEME_LABELS[t]}</option>
+              {/each}
+            </select>
           </div>
 
           <div class="row">
-            <div>
-              <label for="setting-minimap-popout">Minimap popout in Focus mode</label>
-              <div class="hint">hover the right edge of the screen to reveal the minimap while reading</div>
-            </div>
+            <label for="setting-open-reader">Always open documents in reader mode</label>
             <input
-              id="setting-minimap-popout"
+              id="setting-open-reader"
               type="checkbox"
-              checked={$settings.minimapPopoutInFocusMode}
-              onchange={(e) => updateSettings({ minimapPopoutInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
+              checked={$settings.openInFocusMode}
+              onchange={(e) => updateSettings({ openInFocusMode: (e.currentTarget as HTMLInputElement).checked })}
             />
           </div>
         </section>

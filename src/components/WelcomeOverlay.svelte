@@ -198,7 +198,7 @@
     </div>
 
     <!-- Tip 8: Reader-mode button (right of the zoom controls). A sketchy
-         ring encircles the button and "Focus mode" arcs to the right
+         ring encircles the button and "Reader mode" arcs to the right
          of it on a curved baseline. SVG-only tip — no rectangular
          label. -->
     <div class="tip tip-reader">
@@ -213,7 +213,7 @@
         </defs>
         <text class="arc-text">
           <textPath href="#arc-focus-mode" startOffset="50%" text-anchor="middle">
-            Focus mode
+            Reader mode
           </textPath>
         </text>
       </svg>
@@ -493,7 +493,7 @@
 
   /* Tip 8 — reader-mode button (right of the zoom pill at left:144,
      bottom:22, 38×38 → screen centre 163, 41 from bottom). Tip is
-     SVG-only: a sketchy ring around the button + "Focus mode" arcing
+     SVG-only: a sketchy ring around the button + "Reader mode" arcing
      above it. The 140-wide tip starts at left:93 so its centre lines
      up with the button's centre (93 + 70 = 163). Bottom 0 puts the
      ring at the right vertical position. */
@@ -508,7 +508,7 @@
        beyond the path bounding box) doesn't get clipped. */
     overflow: visible;
   }
-  /* "Focus mode" arc text — same colour as the ring, in the marketing
+  /* "Reader mode" arc text — same colour as the ring, in the marketing
      italic so it reads as hand-noted commentary rather than an
      interface label. The slight letter-spacing gives the hand-drawn
      curl a touch of casualness. */

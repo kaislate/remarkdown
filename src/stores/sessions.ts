@@ -1,7 +1,7 @@
 // Document sessions — one per open tab.
 //
 // Each session owns the per-document state that used to live in module-level
-// stores (doc, annotations, edit mode, focus mode) plus the bits needed to put
+// stores (doc, annotations, edit mode, reader mode) plus the bits needed to put
 // the user back exactly where they were when they return to the tab: the
 // scroll offset and the ProseMirror EditorState (which carries undo history
 // and selection).

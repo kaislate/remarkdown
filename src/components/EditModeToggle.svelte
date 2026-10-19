@@ -16,7 +16,7 @@
 
 <style>
   /* Stacked under the hamburger (left:14, top:14, height:38). We sit at
-     top:60 = 14 + 38 + 8gap. ToC and Focus stack below this in 46-step
+     top:60 = 14 + 38 + 8gap. ToC and Reader stack below this in 46-step
      increments (38 button height + 8 gap). */
   .edit-mode-toggle {
     position: fixed;
