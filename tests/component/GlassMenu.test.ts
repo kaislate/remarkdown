@@ -25,7 +25,7 @@ vi.mock('../../src/stores/recent', async () => {
   return {
     recordRecent: vi.fn(),
     markMissing: vi.fn(),
-    removeFromRecent: vi.fn(),
+    removeFromRecent: vi.fn(async () => {}),
     clearAllRecent: vi.fn(),
     recent: writable<string[]>([]),
     recentExistence: writable<Record<string, boolean>>({}),
