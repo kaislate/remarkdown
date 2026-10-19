@@ -12,6 +12,8 @@
 //     frontmatter key goes, a `title` line is added)
 //   - no title → add a `title` line right below the header
 //   - empty title → remove every title statement and the frontmatter key
+// Timelines ignore the frontmatter title altogether (mermaid's timeline
+// db has no setDiagramTitle); for them it is never read or written.
 import {
   findPreamble,
   indentFor,
@@ -47,11 +49,15 @@ export function applyTitle(
   title: string,
   // Writes the user's text as this diagram type's title value.
   encode: (text: string) => string,
+  // Does this diagram type show the frontmatter title?
+  useFrontmatter = true,
 ): string {
   const text = normalizeUserText(title);
   const src = splitLines(source);
   const lines = [...src.lines];
-  const { frontmatter, headerLine } = findPreamble(lines);
+  const preamble = findPreamble(lines);
+  const headerLine = preamble.headerLine;
+  const frontmatter = useFrontmatter ? preamble.frontmatter : null;
   if (text === '') {
     // Bottom-up, so earlier line numbers stay valid.
     for (const t of [...titles].sort((a, b) => b.line - a.line || (b.cut?.start ?? 0) - (a.cut?.start ?? 0))) {

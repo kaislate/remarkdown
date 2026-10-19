@@ -60,6 +60,22 @@ export function encodeChars(text: string, chars: string): string {
   return /(?:style|classDef).*:\S*#/.test(out) ? encode(chars + ':') : out;
 }
 
+// Fields mermaid draws line by line (timeline boxes, gantt section
+// titles) split their text at `<br>`. Such a field's model text holds
+// a '\n' per break, each line displayed as usual.
+export function displayLines(raw: string, br: RegExp): string {
+  return raw.split(br).map(displayText).join('\n');
+}
+
+export function normalizeUserLines(text: string): string {
+  return text.split(/\r\n|\r|\n/).map(collapseSpace).join('\n');
+}
+
+// encodeChars line by line, joined with `<br>`.
+export function encodeLines(text: string, chars: string): string {
+  return text.split(/\r\n|\r|\n/).map((l) => encodeChars(l, chars)).join('<br>');
+}
+
 // A field that must not be empty (mermaid would read the next token
 // as its text): written as an encoded space, which displays as nothing.
 export const EMPTY_TEXT = '#32;';
