@@ -265,7 +265,7 @@ function opsFor(src: string, m: StateModel, map: StateSourceMap): Op[] {
       name: `transition delete ${index}`,
       edit: { kind: 'deleteTransition', index },
       expected: (v) => settle({ ...v, transitions: v.transitions.filter((_, k) => k !== index) }, v),
-      touches: (l, k) => own.has(k) || ends.some((e) => m.states.get(e)?.parent && blockLines(m.states.get(e)!.parent!).has(k)),
+      touches: (_l, k) => own.has(k) || ends.some((e) => m.states.get(e)?.parent && blockLines(m.states.get(e)!.parent!).has(k)),
     });
   });
 

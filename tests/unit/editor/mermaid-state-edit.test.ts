@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import mermaid from 'mermaid';
 import { applyStateEdit, encodeStateText, type StateEdit } from '../../../src/lib/editor/mermaid/state-edit';
-import { parseState, parseStateSource, type StateModel } from '../../../src/lib/editor/mermaid/state-parser';
+import { parseState, type StateModel } from '../../../src/lib/editor/mermaid/state-parser';
 import { FUZZ_INPUTS, mermaidAccepts } from './mermaid-test-utils';
 
 (SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({ x: 0, y: 0, width: 10, height: 10 });
@@ -267,6 +267,14 @@ describe('state edits: direction and title', () => {
     expect(edit('stateDiagram-v2\n  A\n', { kind: 'setTitle', title: 'Life' })).toBe('---\ntitle: Life\n---\nstateDiagram-v2\n  A\n');
   });
 
+  it('existing ids that are keywords elsewhere still connect (`end`, `hide`)', async () => {
+    const src = 'stateDiagram-v2\n  A --> end\n  hide --> A\n';
+    const out = edit(src, { kind: 'addTransition', from: { kind: 'state', id: 'end' }, to: { kind: 'state', id: 'hide' } });
+    expect(out).toBe('stateDiagram-v2\n  A --> end\n  hide --> A\n  end --> hide\n');
+    expect(await mermaidAccepts(out)).toBe(true);
+    expect(model(out).transitions).toHaveLength(3);
+  });
+
   it('refuses unknown ids and sources it cannot parse', () => {
     expect(applyStateEdit('stateDiagram-v2\n  A\n', { kind: 'deleteState', id: 'Nope' })).toBeNull();
     expect(applyStateEdit('flowchart TD\n  A\n', { kind: 'deleteState', id: 'A' })).toBeNull();
@@ -360,5 +368,3 @@ describe('state edits: typed text reaches the diagram exactly', () => {
     expect(encodeStateText('a: b', 'note')).toBe('a#58; b');
   });
 });
-
-export { parseStateSource };

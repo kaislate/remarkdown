@@ -177,17 +177,21 @@ const BLANK = '#32;';
 
 // ── Ids ─────────────────────────────────────────────────────────────
 
-// Words mermaid's lexer reads as keywords wherever a state id could
-// stand, and ids that collide with mermaid's own node ids.
-const RESERVED = new Set(['click', 'href', 'default', 'scale', 'state', 'note', 'class', 'classdef', 'style', 'hide', 'acctitle', 'accdescr', 'statediagram', 'root', 'end']);
+// Words mermaid's lexer reads as keywords where a transition's end
+// stands (`A --> note` lexes `note ` as a note).
+const KEYWORDS = new Set(['click', 'href', 'default', 'scale', 'state', 'note', 'class', 'classdef', 'style', 'statediagram']);
+// Also kept out of NEW ids: words that read as keywords elsewhere, and
+// mermaid's own node ids (`root`, `<scope>_start`, `divider-id-N`).
+const RESERVED = new Set([...KEYWORDS, 'hide', 'acctitle', 'accdescr', 'root', 'end']);
 
 function reservedId(id: string): boolean {
   return RESERVED.has(id.toLowerCase()) || /direction/i.test(id) || /_(start|end)$/.test(id) || /^divider/i.test(id);
 }
 
-// Can `id` be written as a transition endpoint?
+// Can an existing `id` be written as a transition end? (Any line with
+// `direction <dir>` in it is a direction statement to mermaid.)
 function writableId(id: string): boolean {
-  return /^[^\s:\-{}"#%;]+$/.test(id) && !RESERVED.has(id.toLowerCase()) && !/direction/i.test(id);
+  return /^[^\s:\-{}"#%;]+$/.test(id) && !KEYWORDS.has(id.toLowerCase()) && !/direction/i.test(id);
 }
 
 // An id for a new state: the label itself when it is a plain word,
@@ -280,19 +284,20 @@ class Editor {
   }
 
   // Insert statement lines right after statement `i`.
-  insertAfter(i: number, texts: string[]): number {
+  insertAfter(i: number, texts: string[]): void {
     const s = this.stmt(i);
     const indent = this.indentNear(i);
     const body = texts.map((t) => this.eol + indent + t).join('');
     if (this.restIsBlank(s.end)) {
+      // After the line (and a trailing comment on it).
       const at = this.lineEnd(s.end);
       this.splices.push({ start: at, end: at, text: body });
-      return at + this.eol.length + indent.length;
+    } else {
+      // Something follows on the same line (a one-line group's `}`, the
+      // next statement): give it a line of its own too — `state "…" as
+      // X` would otherwise read the rest of the line as part of the id.
+      this.splices.push({ start: s.end, end: s.end, text: body + this.eol + indent });
     }
-    // Something follows on the same line (a one-line group's `}`, the
-    // next statement): give it a line of its own too.
-    this.splices.push({ start: s.end, end: s.end, text: body + this.eol + indent });
-    return s.end + this.eol.length + indent.length;
   }
 
   // Insert a statement line right before statement `i`.
@@ -460,16 +465,14 @@ class Editor {
     }
   }
 
-  // Cut a statement's text (to paste it elsewhere), re-indented from
-  // its own line's indentation to `indent`'s.
-  textOf(i: number): string {
-    const s = this.stmt(i);
-    return this.src.slice(s.start, s.end);
-  }
-
+  // A statement's text (to paste it elsewhere), its continuation lines
+  // (a group's body, a note's) re-indented from the statement's own
+  // indentation to `toIndent`.
   reindented(i: number, toIndent: string): string {
-    const from = this.indentAt(this.stmt(i).start);
-    return this.textOf(i)
+    const s = this.stmt(i);
+    const from = this.indentAt(s.start);
+    return this.src
+      .slice(s.start, s.end)
       .split(/\r?\n/)
       .map((l, k) => (k > 0 && l.startsWith(from) ? toIndent + l.slice(from.length) : l))
       .join(this.eol);
