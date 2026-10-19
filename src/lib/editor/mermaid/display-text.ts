@@ -48,9 +48,16 @@ export const ALWAYS_ENCODED = '#&<>';
 // `text` normalised, with every character in `chars` written as an
 // entity code. `chars` is a plain list of characters ('#&<>:%').
 export function encodeChars(text: string, chars: string): string {
-  let out = '';
-  for (const c of normalizeUserText(text)) out += chars.includes(c) ? entityFor(c) : c;
-  return out;
+  const encode = (set: string) => {
+    let out = '';
+    for (const c of normalizeUserText(text)) out += set.includes(c) ? entityFor(c) : c;
+    return out;
+  };
+  const out = encode(chars);
+  // Before parsing, mermaid strips the last `;` from anything that looks
+  // like `style …:…#…;` (a css colour), which would break the entity
+  // code after the colon. Without a raw `:` the pattern can't match.
+  return /(?:style|classDef).*:\S*#/.test(out) ? encode(chars + ':') : out;
 }
 
 // A field that must not be empty (mermaid would read the next token
