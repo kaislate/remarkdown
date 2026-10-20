@@ -87,4 +87,54 @@ describe('open-mode settings', () => {
   it('an unknown openMode falls back to defaults', () => {
     expect(parseSettings(JSON.stringify({ openMode: 'bogus' })).openMode).toBe('tabs');
   });
+
+  it('tabs default to the top, with the left sidebar pinned open', () => {
+    const s = parseSettings(JSON.stringify({ schemaVersion: 1 }));
+    expect(s.tabPosition).toBe('top');
+    expect(s.tabSidebarPinned).toBe(true);
+  });
+
+  it('accepts tabs on the left and an unpinned sidebar', () => {
+    const s = parseSettings(JSON.stringify({ tabPosition: 'left', tabSidebarPinned: false }));
+    expect(s.tabPosition).toBe('left');
+    expect(s.tabSidebarPinned).toBe(false);
+  });
+
+  it('an unknown tabPosition falls back to defaults', () => {
+    expect(parseSettings(JSON.stringify({ tabPosition: 'bottom' })).tabPosition).toBe('top');
+  });
+});
+
+describe('reader-mode settings', () => {
+  it('defaults readerTheme to default (the app colours)', () => {
+    expect(parseSettings(null).readerTheme).toBe('default');
+  });
+
+  it('older settings files without readerTheme pick up the default', () => {
+    expect(parseSettings(JSON.stringify({ schemaVersion: 1, theme: 'light' })).readerTheme).toBe('default');
+  });
+
+  it('accepts each reader theme', () => {
+    for (const t of ['default', 'paper', 'textured', 'sepia', 'night', 'eink'] as const) {
+      expect(parseSettings(JSON.stringify({ readerTheme: t })).readerTheme).toBe(t);
+    }
+  });
+
+  it('an unknown readerTheme falls back to defaults', () => {
+    expect(parseSettings(JSON.stringify({ readerTheme: 'neon' })).readerTheme).toBe('default');
+  });
+
+  it('keeps the retired minimap-popout key loadable', () => {
+    const s = parseSettings(JSON.stringify({ minimapPopoutInFocusMode: true, openInFocusMode: true }));
+    expect(s.minimapPopoutInFocusMode).toBe(true);
+    expect(s.openInFocusMode).toBe(true);
+  });
+});
+
+describe('onboarding settings', () => {
+  it('defaults: onboarding not completed, documents open in read mode', () => {
+    const s = parseSettings(null);
+    expect(s.onboardingCompleted).toBe(false);
+    expect(s.openInEditMode).toBe(false);
+  });
 });

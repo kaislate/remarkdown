@@ -14,6 +14,11 @@ export async function openFileDialog(): Promise<string | null> {
   return result;
 }
 
+// A picture for the editor's Image button; starts in the document's folder.
+export async function openImageDialog(startDir?: string): Promise<string | null> {
+  return await invoke<string | null>('open_image_dialog', { startDir: startDir ?? null });
+}
+
 export async function readDocument(path: string): Promise<ReadDocumentResult> {
   // Rust returns fields with snake_case by default in tauri 2.x unless configured.
   // We remap once here so the rest of the frontend sees camelCase only.
@@ -32,8 +37,10 @@ export async function writeSidecar(mdPath: string, json: string): Promise<void> 
   await invoke('write_sidecar', { mdPath, json });
 }
 
-export async function writeDocument(path: string, markdown: string): Promise<void> {
-  await invoke('write_document', { path, markdown });
+// Returns the sha256 of what was written. With `expectedSha`, Rust refuses
+// with { Conflict: diskSha } when the file changed on disk since then.
+export async function writeDocument(path: string, markdown: string, expectedSha: string | null = null): Promise<string> {
+  return await invoke<string>('write_document', { path, markdown, expectedSha256: expectedSha });
 }
 
 export async function pushRecent(path: string, max?: number): Promise<string[]> {
@@ -161,4 +168,9 @@ export async function defaultAppStatus(): Promise<DefaultAppStatus> {
 
 export async function makeDefaultApp(): Promise<void> {
   await invoke('make_default_app');
+}
+
+// Opens the file's folder in Explorer with the file selected.
+export async function revealInFolder(path: string): Promise<void> {
+  await invoke('reveal_in_folder', { path });
 }

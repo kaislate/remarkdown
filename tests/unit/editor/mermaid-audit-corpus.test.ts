@@ -16,8 +16,8 @@ import { resolve } from 'node:path';
 import mermaid from 'mermaid';
 import { parseMarkdown, serializeToMarkdown } from '../../../src/lib/editor/markdown';
 import { detectDiagramType } from '../../../src/lib/editor/mermaid-detect';
-import { parseMermaid } from '../../../src/lib/editor/mermaid-parser';
-import { parseSequence } from '../../../src/lib/editor/mermaid-sequence-parser';
+import { canEditDiagram } from '../../../src/lib/editor/mermaid/controller';
+import '../../../src/lib/editor/mermaid/registry';
 import { isMermaidFence } from '../../../src/lib/mermaid-fence';
 
 mermaid.initialize({ startOnLoad: false });
@@ -44,14 +44,12 @@ function collectBlocks(md: string): Block[] {
   return out;
 }
 
-// The blocks the visual editor is expected to edit today.
-const EDITABLE = new Set([
-  'fc-td-basic', 'fc-lr-basic', 'fc-subset-shapes-editable', 'fc-edge-subset-editable',
-  'fc-comments-only-subset', 'fc-quoted-unicode-emoji', 'fc-markdown-string-subset',
-  'fc-long-labels', 'fc-init-directive', 'fc-special-chars', 'fc-special-chars-unquoted',
-  'fc-tb-direction', 'seq-basic', 'seq-notes', 'seq-comment-subset', 'seq-arrow-in-text',
-  'seq-special-chars', 'mixed-capital-M', 'mixed-info-string', 'mixed-tilde-fence',
-  'mixed-in-list', 'mixed-in-blockquote',
+// The blocks the visual editor can't edit (they're changed through
+// their text) — everything else in the corpus must be editable.
+// (Editability is the controller registry's own answer:
+// mermaid/registry.ts.)
+const NOT_EDITABLE = new Set([
+  'gitgraph', 'block', 'c4-context', 'requirement', 'architecture', 'invalid-diagram', 'invalid-unknown-type',
 ]);
 
 describe('mermaid corpus (edit-mode pipeline)', () => {
@@ -73,11 +71,9 @@ describe('mermaid corpus (edit-mode pipeline)', () => {
       expect.soft(a?.lang, `doc round-trip changed the fence info of ${b.heading}`).toBe(b.lang);
 
       const type = detectDiagramType(b.source);
-      const parsed =
-        type === 'flowchart' ? parseMermaid(b.source) : type === 'sequence' ? parseSequence(b.source) : null;
       entry.detected = type;
-      entry.editable = !!parsed?.ok;
-      expect.soft(entry.editable, `${b.heading}: editable`).toBe(EDITABLE.has(b.heading));
+      entry.editable = canEditDiagram(type, b.source);
+      expect.soft(entry.editable, `${b.heading}: editable`).toBe(!NOT_EDITABLE.has(b.heading));
 
       try {
         await mermaid.parse(b.source);

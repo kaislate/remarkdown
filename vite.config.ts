@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => ({
     conditions: ['browser'],
     alias: mode === 'e2e' ? {
       '@tauri-apps/api/core': resolve(__dirname, 'tests/e2e/support/tauri-mock.ts'),
+      '@tauri-apps/api/app': resolve(__dirname, 'tests/e2e/support/tauri-app-mock.ts'),
     } : undefined,
   },
 }));

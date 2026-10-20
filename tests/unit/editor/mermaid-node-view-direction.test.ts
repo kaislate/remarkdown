@@ -99,9 +99,11 @@ describe('MermaidNodeView direction picker', () => {
     parent.remove();
   });
 
-  it('stays hidden for unparseable flowcharts (render-only fallback)', async () => {
+  it('stays hidden for flowcharts the editor cannot read (render-only fallback)', async () => {
+    // A named link on a fan (`A & B e1@--> C`) names several edges at
+    // once — not something the editor reads.
     const { view, parent } = makeView(
-      '```mermaid\nflowchart TD\nsubgraph S\nA[a]\nend\n```\n',
+      '```mermaid\nflowchart TD\nA & B e1@--> C\n```\n',
     );
     await flush();
     const picker = parent.querySelector('.mermaid-direction-picker');

@@ -7,6 +7,7 @@ import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import MermaidRenderer from '../../src/components/MermaidRenderer.svelte';
 import { settings } from '../../src/stores/settings';
+import { readerMode } from '../../src/stores/reader-mode';
 import { DEFAULT_SETTINGS } from '../../src/lib/settings-schema';
 import { resetMermaidRuntimeForTests, setMermaidRenderTimeoutForTests } from '../../src/lib/mermaid-runtime';
 
@@ -83,6 +84,29 @@ describe('MermaidRenderer', () => {
     await settle();
     expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('dark');
     expect(mocked.renders.length).toBe(2);
+  });
+
+  it('in reader mode, draws diagrams for the reader theme (light pages get the light theme)', async () => {
+    const root = article(block('flowchart TD\nA-->B'));
+    render(MermaidRenderer, { props: { articleEl: root } });
+    await settle();
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'dark', readerTheme: 'paper' });
+    await settle();
+    // Not in reader mode yet: the app theme still decides.
+    expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('dark');
+    readerMode.set(true);
+    await settle();
+    expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('default');
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'light', readerTheme: 'night' });
+    await settle();
+    expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('dark');
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'light', readerTheme: 'default' });
+    await settle();
+    expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('default');
+    readerMode.set(false);
+    settings.set({ ...DEFAULT_SETTINGS, theme: 'dark', readerTheme: 'sepia' });
+    await settle();
+    expect(root.querySelector('svg')?.getAttribute('data-theme')).toBe('dark');
   });
 
   it('paints a cached diagram synchronously when the same document is re-inserted', async () => {

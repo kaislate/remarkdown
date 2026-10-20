@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { docEpoch, orphanedAnnots } from './annots';
+import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
 import { openModal } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
@@ -45,7 +45,15 @@ export async function loadDocument(path: string): Promise<boolean> {
 // loads a new tab before switching to it). Returns true when the document
 // is loaded (or was already loaded and unchanged), false on a read error —
 // which has already been reported with a toast.
-export async function loadIntoSession(session: DocSession, path: string): Promise<boolean> {
+let loadCounter = 0;
+
+// `force`: reload even when the file on disk is unchanged (resolving an edit
+// conflict with "use the other version" must start the editor over).
+export async function loadIntoSession(
+  session: DocSession,
+  path: string,
+  opts: { force?: boolean } = {},
+): Promise<boolean> {
   let r;
   try {
     r = await readDocument(path);
@@ -62,13 +70,14 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
 
   // Skip reload if content is unchanged — prevents loops when the watcher
   // fires on our own writes or no-op touches.
+  session.diskSha = r.sha256;
   const current = get(session.doc);
-  if (current && current.path === r.path && current.sha256 === r.sha256) {
+  if (!opts.force && current && current.path === r.path && current.sha256 === r.sha256) {
     return true;
   }
 
   // Detect "user opened a new doc" vs "current doc reloaded after an
-  // external edit" — only the former should auto-enter Focus mode if
+  // external edit" — only the former should auto-enter reader mode if
   // the user has that setting on. Edit-reload keeps the current chrome
   // state so the file watcher doesn't yank the UI from under the user.
   const isNewDocOpen = !current || current.path !== r.path;
@@ -89,6 +98,8 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
     }
   }
   session.annots.set(parsedAnnotations);
+  // Undo steps belonged to the content as it was.
+  resetAnnotHistory(session);
 
   // New content invalidates anything captured from the previous render —
   // unless the tab is (back) in edit mode: then this is the late reload
@@ -110,12 +121,21 @@ export async function loadIntoSession(session: DocSession, path: string): Promis
     plaintext,
     blocks,
     sidecarRaw: r.sidecarRaw,
+    loadId: ++loadCounter,
   });
   const isActive = session === get(activeSession);
   if (isActive) docEpoch.update((e) => e + 1);
 
-  if (isNewDocOpen && get(settings).openInFocusMode) {
+  // Reader mode and edit mode never go together; "ready to edit" wins.
+  const s = get(settings);
+  if (isNewDocOpen && s.openInFocusMode && !s.openInEditMode) {
     session.readerMode.set(true);
+  }
+  // "Open documents ready to edit": the tab opens in edit mode but keeps
+  // watching its file until the first keystroke (Viewer pauses it then), so
+  // outside changes to an untouched document still show up.
+  if (isNewDocOpen && s.openInEditMode && !get(session.editMode)) {
+    session.editMode.set(true);
   }
 
   if (isActive && isNewDocOpen) restoreProgressScroll(path);
@@ -189,5 +209,6 @@ export function clearDocument(): void {
   const session = get(activeSession);
   session.doc.set(null);
   session.annots.set([]);
+  resetAnnotHistory(session);
   docEpoch.update((e) => e + 1);
 }

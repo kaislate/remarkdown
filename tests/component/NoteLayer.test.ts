@@ -6,6 +6,7 @@ import { flushSync } from 'svelte';
 import NoteLayer from '../../src/components/NoteLayer.svelte';
 import { annots, currentViewerRoot, docEpoch } from '../../src/stores/annots';
 import { setMode } from '../../src/stores/tool';
+import { readerMode } from '../../src/stores/reader-mode';
 
 function mountViewer(html: string): HTMLElement {
   const article = document.createElement('article');
@@ -112,5 +113,47 @@ describe('NoteLayer — eraser tool', () => {
     const pin = document.querySelector('.note-pin') as HTMLButtonElement;
     expect(pin.classList.contains('eraser')).toBe(true);
     expect(pin.getAttribute('aria-label')).toMatch(/erase/i);
+  });
+});
+
+describe('NoteLayer — reader mode', () => {
+  const note = {
+    id: '01A', type: 'note' as const, body: 'existing',
+    anchor: { text: 'friend', prefix: 'hi ', suffix: '', blockHint: 'p:1' },
+    createdAt: 'now', updatedAt: 'now',
+  };
+
+  it('a pin opens the note read-only', async () => {
+    mountViewer('<p data-block-id="p:1">hi friend</p>');
+    render(NoteLayer);
+    flushSync(() => { annots.set([note]); readerMode.set(true); });
+    await userEvent.setup().click(document.querySelector('.note-pin') as HTMLButtonElement);
+    const dialog = screen.getByRole('dialog', { name: /re\.mark/i });
+    expect((dialog.querySelector('textarea') as HTMLTextAreaElement).readOnly).toBe(true);
+    expect(dialog.querySelector('button.danger')).toBeNull();
+  });
+
+  it('Esc closes the open note', async () => {
+    mountViewer('<p data-block-id="p:1">hi friend</p>');
+    render(NoteLayer);
+    flushSync(() => { annots.set([note]); readerMode.set(true); });
+    const user = userEvent.setup();
+    await user.click(document.querySelector('.note-pin') as HTMLButtonElement);
+    expect(screen.queryByRole('dialog')).not.toBeNull();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('a pin cannot be dragged to a new place', () => {
+    mountViewer('<p data-block-id="p:1">hi friend</p>');
+    render(NoteLayer);
+    flushSync(() => { annots.set([note]); readerMode.set(true); });
+    const pin = document.querySelector('.note-pin') as HTMLButtonElement;
+    const down = new Event('pointerdown', { bubbles: true }) as any;
+    Object.assign(down, { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+    const move = new Event('pointermove', { bubbles: true }) as any;
+    Object.assign(move, { pointerId: 1, clientX: 80, clientY: 60 });
+    flushSync(() => { pin.dispatchEvent(down); pin.dispatchEvent(move); });
+    expect(pin.classList.contains('dragging')).toBe(false);
   });
 });

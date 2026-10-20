@@ -1,7 +1,7 @@
 // Document sessions — one per open tab.
 //
 // Each session owns the per-document state that used to live in module-level
-// stores (doc, annotations, edit mode, focus mode) plus the bits needed to put
+// stores (doc, annotations, edit mode, reader mode) plus the bits needed to put
 // the user back exactly where they were when they return to the tab: the
 // scroll offset and the ProseMirror EditorState (which carries undo history
 // and selection).
@@ -16,6 +16,11 @@ import { writable, get, type Writable } from 'svelte/store';
 import type { EditorState } from 'prosemirror-state';
 import type { Annotation } from '../lib/schema';
 import type { DocState } from './doc-types';
+
+export interface EditConflict {
+  path: string;
+  markdown: string;
+}
 
 export interface DocSession {
   id: string;
@@ -41,6 +46,20 @@ export interface DocSession {
   // Set when the tab is closed, so an in-flight load doesn't install a
   // watcher (or anything else) on a tab that no longer exists.
   closed: boolean;
+  // sha256 of the file as this tab last read or wrote it. Edit-mode saves
+  // only write if the disk still matches (see lib/edit-save.ts).
+  diskSha: string | null;
+  // Another program changed the file while editing: the file and the text
+  // the refused save was about. Saving is paused until the user decides
+  // (lib/edit-save.ts); later keystrokes update `markdown`.
+  editConflict: EditConflict | null;
+  // Saves for this tab run one after another (each needs the sha the
+  // previous one returned). Resolves when all queued saves are done.
+  saveChain: Promise<void>;
+  // Leaving edit mode normally reloads the tab from disk; skip that once
+  // when the tab is about to load a different file anyway.
+  skipExitReload: boolean;
+  discardPendingEdits: boolean;
 }
 
 let counter = 0;
@@ -60,6 +79,11 @@ export function createSession(): DocSession {
     watcherPaused: false,
     disposeWatcher: null,
     closed: false,
+    diskSha: null,
+    editConflict: null,
+    saveChain: Promise.resolve(),
+    skipExitReload: false,
+    discardPendingEdits: false,
   };
 }
 

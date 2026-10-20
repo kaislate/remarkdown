@@ -7,7 +7,9 @@
   import './styles/cursors.css';
   import './styles/scrollbars.css';
   import './styles/reader-mode.css';
+  import './styles/ink-transition.css';
   import './styles/edit-mode.css';
+  import './styles/tabs-layout.css';
   import Viewer from './components/Viewer.svelte';
   import LeftMarginTitle from './components/LeftMarginTitle.svelte';
   import WelcomeOverlay from './components/WelcomeOverlay.svelte';
@@ -19,6 +21,8 @@
   import ClearAnnotsConfirm from './components/ClearAnnotsConfirm.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
   import CorruptSidecarModal from './components/CorruptSidecarModal.svelte';
+  import EditConflictModal from './components/EditConflictModal.svelte';
+  import Onboarding from './components/Onboarding.svelte';
   import ErrorBanner from './components/ErrorBanner.svelte';
   import Minimap from './components/Minimap.svelte';
   import Splash from './components/Splash.svelte';
@@ -29,28 +33,39 @@
   import ZoomControls from './components/ZoomControls.svelte';
   import EditModeToggle from './components/EditModeToggle.svelte';
   import ReaderModeToggle from './components/ReaderModeToggle.svelte';
+  import ReaderModeLayer from './components/ReaderModeLayer.svelte';
+  import ReaderMeta from './components/ReaderMeta.svelte';
+  import ReaderContents from './components/ReaderContents.svelte';
+  import ReaderCursorInk from './components/ReaderCursorInk.svelte';
+  import InkLayer from './components/InkLayer.svelte';
+  import AppContextMenu from './components/AppContextMenu.svelte';
+  import { doc } from './stores/doc';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
   import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
-  import { runBeforeSwitch } from './stores/tabs';
+  import { runBeforeSwitch, activateSession } from './stores/tabs';
   import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
+  import { undoAnnot, redoAnnot } from './stores/annots';
   import { availableUpdate } from './stores/updates';
-  import { openModal } from './stores/modals';
+  import { openModal, activeModal } from './stores/modals';
+  import { savesSettled, unresolvedConflict, askAboutConflict } from './lib/edit-save';
+  import { sessions, activeSession } from './stores/sessions';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
-  import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
+  import { zoomLevel, increaseZoom, decreaseZoom, resetZoom, minimapShown } from './stores/ui';
   import { tool, setMode } from './stores/tool';
-  import { readerMode, exitReaderMode } from './stores/reader-mode';
+  import { readerMode, installReaderMode } from './stores/reader-mode';
+  import { loadInkWorklet } from './lib/ink-transition';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import { editMode, toggleEditMode } from './stores/edit-mode';
@@ -102,14 +117,10 @@
     }
   });
 
-  // Reflect the reader-mode store on body so reader-mode.css can hide
-  // every chrome layer at once. Toggling rather than setting so we
-  // don't fight any pre-existing class set by another path.
-  const unsubReaderMode = readerMode.subscribe((on) => {
-    if (typeof document === 'undefined') return;
-    document.body.classList.toggle('reader-mode', on);
-    syncMinimapPopoutClass();
-  });
+  // Reader mode (body class + reader theme, Esc to leave, read-only
+  // annotation tools) — see stores/reader-mode.ts.
+  const disposeReaderMode = installReaderMode();
+  loadInkWorklet();
 
   // Reflect the edit-mode store on body so edit-mode.css can hide
   // annotation layers and apply edit mode styling.
@@ -118,32 +129,9 @@
     document.body.classList.toggle('edit-mode', on);
   });
 
-  // body.minimap-popout is the combined signal (reader-mode AND the
-  // setting both on). reader-mode.css uses it to keep the minimap
-  // mounted but slid offscreen, with a peek-zone trigger sliding it
-  // back in on hover. Both inputs feed this — re-sync whenever either
-  // changes.
-  function syncMinimapPopoutClass() {
-    if (typeof document === 'undefined') return;
-    const on = get(readerMode) && get(settings).minimapPopoutInFocusMode;
-    document.body.classList.toggle('minimap-popout', on);
-  }
-  const unsubMinimapPopout = settings.subscribe(syncMinimapPopoutClass);
-
-  // ESC exits reader mode. Other ESC handlers (modal close, popover
-  // close, menu close) live in their own components and run on the
-  // same keydown — that's fine; pressing ESC while a modal is open AND
-  // reader mode is on does both, which is what the user expects.
-  function onReaderModeEsc(e: KeyboardEvent) {
-    if (e.key !== 'Escape') return;
-    if (!get(readerMode)) return;
-    exitReaderMode();
-  }
-
-  // ESC cancels an in-progress re-attach operation. Runs on the same
-  // keydown as onReaderModeEsc — both fire simultaneously, which is
-  // intentional: the user can exit reader mode and cancel a re-attach
-  // in one keystroke if both are active.
+  // ESC cancels an in-progress re-attach operation. In reader mode that
+  // Esc only cancels the re-attach — leaving reader mode takes a second
+  // Esc (stores/reader-mode.ts checks for an open layer first).
   function onReattachEsc(e: KeyboardEvent) {
     if (e.key !== 'Escape') return;
     if (!get(reattachTarget)) return;
@@ -157,6 +145,8 @@
   function onTutorialKey(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key !== '?') return;
+    // The tutorial points at chrome reader mode has hidden.
+    if (get(readerMode)) return;
     const target = e.target as HTMLElement | null;
     if (target && (
       target.tagName === 'INPUT' ||
@@ -171,6 +161,10 @@
   function onEditModeKey(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key !== 'e' && e.key !== 'E') return;
+    // Reader mode is for reading; Esc first, then edit.
+    if (get(readerMode)) return;
+    // Not while a dialog is open (e.g. deciding about an edit conflict).
+    if (get(activeModal)) return;
     // Skip while a text input or contenteditable is focused — typing
     // Cmd+E inside a re.mark popover etc. shouldn't toggle the editor.
     const target = e.target as HTMLElement | null;
@@ -182,6 +176,30 @@
     )) return;
     e.preventDefault();
     toggleEditMode();
+  }
+
+  // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo annotation changes —
+  // highlights, re.marks, drawings — when nothing is being typed in: the
+  // editor and text fields have their own undo.
+  function onAnnotUndoKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const redo = key === 'y' || (key === 'z' && e.shiftKey);
+    if (key !== 'z' && !redo) return;
+    if (get(editMode) || get(readerMode) || get(activeModal)) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    e.preventDefault();
+    const what = redo ? redoAnnot() : undoAnnot();
+    addToast({
+      kind: 'info',
+      message: what ? `${redo ? 'Redone' : 'Undone'}: ${what}.` : `Nothing to ${redo ? 'redo' : 'undo'}.`,
+    });
   }
 
   function onZoomKey(e: KeyboardEvent) {
@@ -231,6 +249,9 @@
 
   function onToolShortcut(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Annotations are read-only in reader mode (the tool is parked on
+    // cursor — see stores/reader-mode.ts).
+    if (get(readerMode)) return;
     const target = e.target as HTMLElement | null;
     if (target && (
       target.tagName === 'INPUT' ||
@@ -277,8 +298,8 @@
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
+    window.addEventListener('keydown', onAnnotUndoKey);
     window.addEventListener('keydown', onToolShortcut);
-    window.addEventListener('keydown', onReaderModeEsc);
     window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
     window.addEventListener('keydown', onEditModeKey);
@@ -293,9 +314,19 @@
       // Registering this handler hands the close to JS: Tauri then calls
       // destroy() once it resolves (needs core:window:allow-destroy). Never
       // let a failed flush keep the window open.
-      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
+      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
         try {
           await runBeforeSwitch();
+          await Promise.all(get(sessions).map((s) => savesSettled(s)));
+          // Edits waiting on a "changed by another program" decision would
+          // be lost: keep the window open and ask instead.
+          const waiting = unresolvedConflict();
+          if (waiting) {
+            event.preventDefault();
+            if (get(activeSession) !== waiting) await activateSession(waiting.id);
+            askAboutConflict(waiting);
+            return;
+          }
           await flushSessionNow();
         } catch (err) {
           console.error('[remarkdown] flush on close failed:', err);
@@ -340,6 +371,17 @@
       }
     }
 
+    // "How do you want to use remarkdown?" — once, in the main window, for
+    // everyone who hasn't answered it: new installs, and everyone updating
+    // to 0.8 (fresh_start.rs sets their old settings aside). It's in
+    // Settings → About after that.
+    if (!presetPath && !get(settings).onboardingCompleted) {
+      // Starting fresh: the minimap's shown / hidden (kept in the window's
+      // storage, not settings) goes back to shown too.
+      minimapShown.set(true);
+      openModal({ kind: 'onboarding' });
+    }
+
     // Remember open tabs for next launch (main window, tabs mode). Installed
     // after the startup opens so restoring doesn't trigger a rewrite storm.
     disposeSessionAutosave = installSessionAutosave();
@@ -362,13 +404,12 @@
     unsubZoom();
     unsubTool();
     unsubTheme();
-    unsubReaderMode();
+    disposeReaderMode();
     unsubEditMode();
-    unsubMinimapPopout();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
+      window.removeEventListener('keydown', onAnnotUndoKey);
       window.removeEventListener('keydown', onToolShortcut);
-      window.removeEventListener('keydown', onReaderModeEsc);
       window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);
       window.removeEventListener('keydown', onEditModeKey);
@@ -391,8 +432,16 @@
 {/if}
 <ZoomControls />
 <ReaderModeToggle />
+<ReaderModeLayer />
+{#if $readerMode && !$editMode && $doc}
+  <ReaderMeta />
+  {#if $settings.readerNav === 'left'}<ReaderContents />{/if}
+  {#if $settings.readerCursorInk !== 'off'}<ReaderCursorInk style={$settings.readerCursorInk} />{/if}
+{/if}
 <EditModeToggle />
 <TocButton />
+<InkLayer />
+<AppContextMenu />
 <NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />
@@ -400,6 +449,8 @@
 <ClearAnnotsConfirm />
 <UpdateModal />
 <CorruptSidecarModal />
+<EditConflictModal />
+<Onboarding />
 <ErrorBanner />
 <Toasts />
 {#if import.meta.env.MODE !== 'e2e' && $settings.splashEnabled}

@@ -2,20 +2,18 @@
   <img src="assets/logo-animated.svg" alt="remarkdown" width="420">
 </div>
 
-> **A desktop reader — and, as of 0.6.0, editor — for markdown documents with PDF-style annotations.** Highlight, leave a re.mark, doodle on top of your docs, then hit `Ctrl+E` and edit the document itself, diagrams included. Annotations save as a human-readable JSON sidecar next to the source file.
+> **A desktop reader and editor for markdown, for people who don't know what markdown is.** Read with nothing on screen but the page, highlight and write in the margins as you would on paper, then press `Ctrl+E` and edit the document itself (headings, pictures, formulas, diagrams) without ever seeing a `#` or a `*`. Your annotations are saved as a readable JSON file next to the document.
 
 <div align="center">
 
-| | |
-|:---:|:---:|
-| <img src="examples/remarkdown_050beta_screenshot1.png" alt="Reading view with vertical filename watermark, syntax-highlighted article, and right-gutter minimap" width="100%"> | <img src="examples/remarkdown_050beta_screenshot2.png" alt="Long document with the minimap showing the document outline, functional task-list checkboxes, and a syntax-highlighted Rust code block" width="100%"> |
-| <sub>**Reading view** — vertical watermark, syntax-highlighted article, right-gutter minimap, animated BETA pin under the wordmark.</sub> | <sub>**Navigation, checkboxes & code** — drag in the right-gutter minimap to jump anywhere in long documents; task-list `- [ ]` items render as live checkboxes; fenced code blocks pick up real per-language Shiki theming (Rust shown here).</sub> |
-| <img src="examples/remarkdown_050beta_screenshot3.png" alt="Article with multiple highlight colors, a re.mark popover open to the right of an anchored word, and freehand drawing strokes overlaid on the text" width="100%"> | <img src="examples/remarkdown_050beta_screenshot4.png" alt="Settings panel showing the full preference list" width="100%"> |
-| <sub>**Annotate freely** — highlight passages in 5 preset colors, drop re.marks anchored to a single word with inline popovers, and doodle on top of the text with the freehand draw tool.</sub> | <sub>**Settings panel** — 18 preferences across appearance, reading, annotation, and updates.</sub> |
+| | | |
+|:---:|:---:|:---:|
+| <img src="src/assets/onboarding/reader.jpg" alt="Reader mode on Textured paper: the contents on the left with the current section marked, a centred column of text, and the minimap on the right" width="100%"> | <img src="src/assets/onboarding/annotator.jpg" alt="The normal view with highlights in the text, two re.mark pins and their margin notes beside the page, and the annotation tools at the bottom right" width="100%"> | <img src="src/assets/onboarding/writer.jpg" alt="Edit mode with tabs in a sidebar on the left and the editor toolbar above the page" width="100%"> |
+| <sub>**📖 Read.** Reader mode on Textured paper, with the contents beside the page.</sub> | <sub>**🖍 Mark it up.** Highlights, re.marks and margin notes.</sub> | <sub>**✍️ Write.** Edit mode, with tabs in a sidebar.</sub> |
 
 </div>
 
-![Status: 0.7.0](https://img.shields.io/badge/status-0.7.0-2ea44f)
+![Status: 0.8.0](https://img.shields.io/badge/status-0.8.0-2ea44f)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Testers wanted: Linux & macOS](https://img.shields.io/badge/testers%20wanted-Linux%20%26%20macOS-orange)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
@@ -24,148 +22,167 @@
 
 ---
 
-## 🎉 0.7.0 — 🗂️ Tabs, and your files open themselves
+## 🎉 New in 0.8.0: reader mode, and every diagram editable
 
-**Double-click a `.md` and remarkdown opens *that file*.** Not the welcome page, not a blank window — the file you clicked. Already running? It comes to the front and opens it there.
+- **👋 Pick how you want to use it.** First launch asks: **Reader**, **Annotator** or **Writer**. Each sets remarkdown up for you, and you can adjust it before you start. Updating to 0.8.0 starts everyone fresh: settings go back to the new defaults (your annotations and recent files stay).
+- **📖 Reader mode** has nothing on screen but the page:
+  - **Six page styles**, including the new **Textured** paper.
+  - The contents beside the page, with minutes left.
+  - **Smooth Edge-style scrolling**.
+  - An ink-drying swap in and out, and grey ink that soaks in from the pointer while you rest.
+- **✍️ Edit mode can make everything:**
+  - A **Text style** menu for headings, lists and quotes; typing `# `, `- ` or `> ` works too.
+  - Divider lines, **pictures** and **formulas**.
+  - Formulas, front matter and list markers are now saved exactly as written.
+  - Saving asks first instead of overwriting a file another program changed.
+- **🧜 Every diagram can be changed:**
+  - Click to edit flowcharts, sequence, state, class, database, pie, gantt, timeline, mind-map and board diagrams.
+  - Charts such as bar & line, journey and radar edit as **tables**.
+  - Everything else has a text panel with a live drawing beside it.
+- **🖍 Undo for annotations** (`Ctrl+Z` / `Ctrl+Y`), tidy **arrows and brackets**, and **margin notes** out of preview.
+- **🗂 Tabs on the left**, hideable tabs, right-click menus everywhere, and a new **Settings** window with a picture of what each option does.
 
-- **🗂️ Tabs that really stay open.** Open several documents and switch between them in a tab bar up in the title band. Every tab keeps its exact scroll position, its edit mode, and its **undo history** — switch away mid-edit, come back, and `Ctrl+Z` still works. Tabs grow in, shrink out, and an underline glides to the one you pick. `Ctrl+Tab`, `Ctrl+W`, `Ctrl+O`, middle-click to close; your tabs come back next time you launch.
-- **🪟 Your choice of how files open** — *Settings → Startup & files → When opening a file*: in a new tab (default), replacing the current document, or in a new window.
-- **📌 Make remarkdown your default for `.md`.** The installer now registers remarkdown for `.md` and `.markdown` (it shows up under *Open with*), and Settings has a **Make remarkdown the default…** button that takes you straight to the right Windows screen — Windows only lets *you* make that final click.
-- **🧜 Sturdier diagrams.** Diagrams follow theme switches, wide charts (gantt, timeline, C4) scroll instead of shrinking to unreadable, broken diagrams explain themselves politely, and editing a flowchart or sequence diagram now changes *only* what you touched — comments, styling directives and everything else stay exactly as written.
-- **🍔 Menu fix** — the hamburger menu unfolds out of its button and no longer hides under the round buttons beside it.
-
-Thanks to **@jaynothin** for reporting [#23](../../issues/23) and [#24](../../issues/24).
-
----
-
-## 0.6.0 — ✍️ Edit mode
-
-**This is the biggest release remarkdown has ever shipped.** 145 commits since 0.5.4-beta, and they all add up to one headline:
-
-> **remarkdown is no longer just a reader.** Hit the pencil (or `Ctrl+E`) and the article becomes a live editor — *"a markdown editor for people who don't know what markdown is."* No syntax, no split panes, no preview button. The document you read is the document you edit.
-
-What edit mode can do, all WYSIWYG and all round-tripping back to clean markdown:
-
-- **🧜 A visual mermaid diagram editor.** This one deserves its own bullet — possibly its own parade. Click any node in a **flowchart** to rename it, change its shape (8 shapes), connect it to other nodes, or delete it. Click an edge to label, restyle (arrow/line/dotted/thick), or remove it. Flip the whole layout TD/LR/BT/RL from a floating direction picker. **Sequence diagrams** are editable too: participants, messages, and notes all get click-to-edit popovers. Behind the popovers, a hardened parse→serialize round-trip is validated against mermaid's own grammar in the test suite, so a popover edit can never commit a diagram mermaid won't render.
-- **📋 GFM tables** — insert a table from the toolbar, edit cells in place, add/remove rows and columns from a floating actions menu; serialized output comes back column-aligned.
-- **💬 Callouts, 💻 code blocks, ☑️ task lists** — Obsidian-style callouts insert from the toolbar; code blocks get live Shiki highlighting with a language pill picker; task-list checkboxes toggle with a click in both read AND edit mode.
-- **🦶 Footnotes** — insert, edit label + body via popover, delete; refs and definitions stay paired.
-- **✨ Inline marks** — bold, italic, strikethrough, ~subscript~ and ^superscript^ from a floating bubble menu (`Ctrl+,` / `Ctrl+.` for sub/sup).
-- **💾 Safe by design** — autosaved atomically with a debounce, file watcher paused while editing, and your highlights/re.marks/drawings **re-anchor automatically** when you exit edit mode.
-
-**And the packaging news:** with 0.6.0 the `-beta` suffix is gone from the version — which means Windows **`.msi` installers are back** alongside the NSIS `.exe` (MSI's version field never tolerated the `-beta` tag). Both are signed and both feed the in-app updater.
-
-> ⚠️ **If you're running a pre-beta build (0.4.x or earlier):** auto-update wasn't shipped yet, so your installed copy can't pull new versions on its own. **Download the latest installer from the [Releases page](../../releases/latest) and run it once** — every release after that arrives automatically via the in-app updater.
+**[Everything in 0.8.0, and every earlier release →](CHANGELOG.md)**
 
 ---
 
-## 🐧🍎 Linux & macOS — testers wanted!
+## 🐧🍎 Linux & macOS: testers wanted
 
-The entire stack is cross-platform by construction — Tauri 2 shell, a Rust backend with zero Windows-only code paths (the atomic-write code even has dedicated Unix fsync handling already), file watching via the cross-platform `notify` crate, and platform icons (`.icns`, PNGs) already bundled. A static compatibility review found **no blockers** for Linux or macOS builds.
+The whole stack is cross-platform by construction:
+- the Tauri 2 shell;
+- a Rust backend with no Windows-only code paths (the atomic-write code already handles Unix fsync);
+- file watching through the cross-platform `notify` crate;
+- platform icons already bundled.
 
-What we can't do from here is *test* them on real machines — frameless-window behaviour across window managers, the CSS Custom Highlight API on WebKitGTK, drag-and-drop from different file managers, font fallbacks.
+A compatibility review found **no blockers** for Linux or macOS builds.
 
-**If you run Linux or macOS and want remarkdown on your platform, we want to hear from you.** [Open an issue](../../issues) with your distro/OS version and we'll get you a build to try. Once the platform builds are verified, releases ship for all three OSes.
+What we can't do from here is *test* them on real machines: frameless windows across window managers, the CSS Custom Highlight API on WebKitGTK, drag-and-drop from different file managers, font fallbacks.
+
+**If you run Linux or macOS and want remarkdown on your platform, [open an issue](../../issues)** with your distro / OS version and we'll get you a build to try.
 
 ---
 
 ## ⬇️ Download
 
-Pre-built Windows installers are published with each tagged release. Grab the latest from the **[Releases page](../../releases/latest)**:
+Windows installers are published with each release. Get the latest from the **[Releases page](../../releases/latest)**:
 
-- `remarkdown_<version>_x64-setup.exe` — NSIS installer (recommended)
-- `remarkdown_<version>_x64_en-US.msi` — MSI installer **(new in 0.6.0!)** for `msiexec` / Group Policy / silent-install workflows
+- `remarkdown_<version>_x64-setup.exe`: NSIS installer (recommended)
+- `remarkdown_<version>_x64_en-US.msi`: MSI installer for `msiexec`, Group Policy and silent installs
 
-Already installed? Open **Hamburger menu → Check for updates…** to grab the next release without leaving the app.
+Already installed? **Menu → Check for updates…** fetches the next release without leaving the app. The installer registers remarkdown for `.md` and `.markdown`, and **Settings → Tabs & files** can make it your default app for them.
 
 ---
 
 ## ✨ Why remarkdown?
 
-When you're reading a technical spec, a paper, or a book chapter in markdown, you often want to **highlight key passages**, **scribble in the margins**, and **leave re.marks** — the same mental model you'd use with a paper book or a PDF. Most markdown viewers are read-only, and most annotation tools require converting to PDF first.
+When you read a spec, a paper or a book chapter written in markdown, you want to **highlight passages**, **scribble in the margins** and **leave notes**, the same way you would with a paper book or a PDF. Most markdown viewers are read-only, and most annotation tools make you convert to PDF first.
 
-remarkdown reads plain markdown from disk, renders it in a clean dark UI, and lets you annotate on top. Your annotations save **alongside** the source file as a plain-text JSON sidecar — so they stay with your notes, survive document edits where possible, and can be read back by any tool (including LLMs) without the original document loaded.
+remarkdown opens plain markdown from disk and shows it as a calm, readable page you can mark up. When you want to change the document itself, it becomes an editor that looks exactly like what you were reading, with no syntax and no preview pane.
+
+Your annotations save **beside** the source file as plain JSON. They stay with your notes, survive edits to the document where possible, and can be read by any tool, LLMs included, without the document loaded.
 
 ---
 
 ## 🎨 Features
 
-### ✍️ Edit mode (new in 0.6.0)
-- **🖊 One-key toggle** — pencil pill or `Ctrl+E` swaps the article for a live ProseMirror editor; toggle back and your annotations re-anchor onto the edited text
-- **🧜 Visual mermaid editor** — click-to-edit flowcharts (8 node shapes, 4 edge styles, labels, connect mode, direction picker) and sequence diagrams (participants, messages, notes) with floating popovers; the round-trip serializer is validated against mermaid's real grammar so edits can't produce a broken diagram
-- **📋 Table editing** — insert 3×2 GFM tables, edit cells inline, add/remove rows + columns from a floating menu, column-aligned markdown output
-- **💬 Callout, 💻 code-block, ☑️ task-list editing** — toolbar inserts for each; code blocks highlight live via Shiki with a language pill; checkboxes toggle by click
-- **🦶 Footnote editing** — inline footnote atoms with a label + body popover, refs and definitions kept paired
-- **✨ Bubble menu** — bold / italic / strikethrough / subscript / superscript on selection (`Ctrl+,` / `Ctrl+.`)
-- **💾 Atomic autosave** — debounced writes through the same atomic-write path as sidecars; file watcher pauses while editing and resumes on exit
+### 📖 Reading
+- **Reader mode:** nothing but the page.
+  - A ~62-character column with comfortable line spacing.
+  - **Esc** leaves. If something is open, Esc closes that first.
+  - Annotations stay visible, read-only.
+- **Six page styles:** Default, Paper, **Textured** (cream paper with grain, blue-black ink), Sepia, Night and E-ink (no motion). Diagrams, code and callouts follow the page's colours.
+- **Contents beside the page** in reader mode, marking the section you're in, with the minutes left. You can switch it to a quiet line at the top.
+- **Ink:**
+  - Switching in or out of reader mode dries away like ink on paper.
+  - **Ink from the pointer:** rest the mouse and a grey spot spreads into the page. Styles are Leak, Trail, Pen or Off.
+- **Edge-style smooth scrolling.** Wheel notches and scrolling keys glide and ease to a stop, with Short, Medium or Long glide.
+- **Contents popover** (`h1`–`h4`) that **glides** to a section, with an optional ink trail to the heading.
+- **Minimap** in the right gutter, in reader mode too. Drag it to jump anywhere; its box always covers exactly what's on screen.
+- **Rendering:**
+  - **Code** in real VS Code colours (Shiki), light or dark to match the page.
+  - **KaTeX** formulas.
+  - **Mermaid** diagrams.
+  - **Obsidian-style callouts** (`> [!note]`, foldable `[!tip]-`).
+  - Task lists, GFM tables, footnotes and pictures.
+  - **Document details** (front matter), folded away.
+- **Reading progress** remembered per file, **zoom** (`Ctrl +` / `Ctrl -` / `Ctrl 0`), dark or light UI, and a faint file-name watermark down the left margin.
+- **File watcher:** edit the file in another program and remarkdown reloads within about a second, keeping annotations anchored.
 
-### Annotation
-- **🖍 Highlights** in 5 preset colors, rendered via the CSS Custom Highlight API — no DOM mutation, handles overlaps cleanly
-- **📝 re.marks** (sticky-note style) anchored to the right margin of the chosen word, with click-off-to-close popovers and punctuation-aware word boundary detection
-- **📋 re.marks side panel** — bottom-left pill (next to the Table of Contents button) opens a glass-styled list of every re.mark with **N sentences of surrounding context** (configurable 1-5 sentences, optional paragraph-stop, optional cap-to-bullet). Click an entry to jump. The wordmark's dot orbits around it on hover.
-- **📜 Marginalia column** [prototype] — right-margin liquid-glass cards, one per re.mark, vertically aligned with the anchor and showing the same sentence context. Click any card to edit in place; a stream of glowing dots flows from the in-doc pin into the card while editing. Push-down collision avoidance keeps cards readable even when re.marks cluster.
-- **✏️ Drawings anchored to text** — freehand SVG strokes that follow text reflow + zoom; opt-in **auto-transform** turns closed loops around words into ellipses, lines under text into underlines, vertical margin lines into margin bars, etc.; **drawing roughness slider** in Settings (0 = crisp, 3 = very sketchy)
-- **🧹 Eraser tool** — single-click delete for any highlight, re.mark, or drawing without confirmation
-- **🔎 Robust anchoring** — W3C-style text-quote selectors with fast path (matching block) and slow path (cross-block similarity scoring); annotations re-resolve after edits where possible
-- **👻 Orphan panel + re-attach** — when an edit moves a phrase beyond recognition, the annotation goes to an "orphaned" list. Each orphan has a **Re-attach** button — click it, then select the new location in the article and the annotation snaps to it
+### ✍️ Editing
+- **`Ctrl+E`** (or the pencil) turns the page into a live editor that looks like what you were reading. Toggle back and your annotations re-anchor onto the edited text.
+- **Text style menu:**
+  - Normal text, Heading 1–3, Bulleted list, Numbered list, Quote and Divider line.
+  - Shortcuts `Ctrl+Alt+0`–`3` and `Ctrl+Shift+7` / `8` / `9`.
+  - Typing `# `, `- `, `1. `, `> ` or `---` at the start of a line does the same.
+- **Toolbar inserts:** callouts, code blocks (live highlighting, language picker), task lists, tables, footnotes, **pictures**, **formulas** and **diagrams**.
+  - **Pictures** link relative to the document, and you can describe one for people who can't see it.
+  - **Formulas** draw as you edit and open with a live preview.
+- **Tables:** type in cells, and add or remove rows and columns from a small menu. The saved markdown is neatly aligned.
+- **Bubble menu** on a selection: bold, italic, strikethrough, ~sub~ and ^super^ (`Ctrl+B`, `Ctrl+I`, `Ctrl+,`, `Ctrl+.`).
+- **Saved exactly as written.**
+  - Formulas, front matter, list markers and every diagram line you didn't touch come back byte for byte.
+  - Autosave is atomic and debounced.
+  - If another program changed the file, saving stops and asks: keep yours, use theirs, or save yours as a copy.
 
-### Reading
-- **📂 Drag-drop** any `.md` file from Explorer onto the window to open it
-- **🕘 Open Recent** menu with missing-file detection, grey-out, and per-document **reading progress %**
-- **📑 Reading progress** — scroll position is remembered per file; reopen a doc and you land where you left off
-- **🗂 Table-of-contents popover** — pill above the Focus toggle lists every `h1`–`h4`; click an entry to jump
-- **🗺 VS Code-style minimap** in the right gutter for long-document navigation; mirrors the live article DOM so mermaid + callouts show up at the right scale
-- **🧩 Mermaid diagrams** — fenced ` ```mermaid ` blocks render as SVG; lazy-loaded so the bundle stays small
-- **💬 Obsidian-style callouts** — blockquotes prefixed with `[!type]` render as themed boxes (`note`, `info`, `tip`, `warning`, `danger`, `bug`, `quote`, `abstract`, etc.); foldable variants `[!type]+` / `[!type]-`
-- **👁 File watcher** — edit the open file in another editor and remarkdown reloads within ~1s; surviving annotations stay anchored, others go to the Orphan panel
-- **📖 Focus mode** — toggle a clean reading view that hides every chrome layer; title-bar drag + resize grip stay invisibly clickable. Optionally **open new documents straight into Focus mode** + **peek the minimap on hover** when active
-- **🔍 Zoom** with `Ctrl +` / `Ctrl -` / `Ctrl 0` — scales the entire article (and minimap) via a single CSS variable
-- **🌓 Dark or light liquid-glass UI** with a frameless custom title bar, hamburger menu, and bottom tool rail — designed to disappear while you read
-- **🪞 Vertical filename watermark** in the left margin (extreme size, low opacity, fades toward the article column)
+### 🧜 Diagrams
+- **Click a part, change it in plain words.** You never need to write diagram syntax, and an edit changes only the lines it's about.
+  - **Flowchart:** 14 shapes, groups, colours, line styles.
+  - **Sequence:** every arrow, blocks, activations, boxes, numbering.
+  - **State**, **Class** and **Database (ER)**.
+  - **Pie**, **Gantt** and **Timeline**.
+  - **Mind map** and **Board (kanban)**.
+- **Charts as tables:** bar & line, journey, quadrant, radar, flows (Sankey) and packet.
+- **Anything else** (git graphs, C4, architecture, block, requirement) opens its text beside a live drawing. A broken diagram says what's wrong and can be fixed the same way.
+- **Diagram menu** with 16 starter diagrams, shown as small drawings with plain names.
 
-### First-run experience
-- **👋 Welcome document** opens automatically the first time you launch (toggleable hint in the corner to skip future launches)
-- **📍 Hand-drawn tutorial overlay** — six arrows + a bracket point at every piece of chrome the first time you see the welcome doc; dismiss for the session or hide forever
-- **🎬 Animated splash** with a re.md → remarkdown morph and an animated BETA pin
+### 🖍 Annotation
+- **Highlights** in 5 colours, drawn with the CSS Custom Highlight API (no DOM changes, clean overlaps). They can span paragraphs.
+- **re.marks:** sticky notes pinned to a word.
+  - The **re.marks panel** lists them all with 1–5 sentences of context.
+  - **Margin notes** show them as cards beside the text, in windows from 1000 px wide.
+- **Drawing:** freehand pen strokes anchored to the text, so they follow reflow and zoom.
+  - **Tidy up shapes** (optional) turns rough circles, boxes, underlines, margin bars, **arrows** and **brackets** into clean ones.
+  - A **Hand-drawn look** slider runs from clean to sketchy.
+- **Undo / redo** for highlights, re.marks and drawings (`Ctrl+Z` / `Ctrl+Y`, or right-click). Each tab keeps its own history.
+- **Eraser:** one click removes any annotation.
+- **Robust anchoring:** W3C-style text-quote selectors re-find annotations after edits. Anything that can't be placed goes to the **orphan panel**, with a **Re-attach** button.
 
-### Window chrome
-- **🖱 Hamburger hover morph** — the wordmark animates from `re.md` → `remarkdown` whenever you hover the menu button (same choreography as the splash)
-- **🎨 Title-bar window controls** with colour-coded blooming hover orbs — amber for minimize, cyan for maximize, red for close — plus per-icon micro-animations (slide-down / scale / rotate)
-- **🔧 Bottom-right resize grip** — drag to resize, **double-click to reset to the default 1100×780**; double-click the title bar to toggle maximize
-- **🏷 Animated BETA pin** under the wordmark and on the splash, with glow-pulse + gradient drift + diagonal shine; auto-hides at 1.0+ stable
+### 🗂 Tabs and files
+- **Double-click a `.md`** and remarkdown opens that file; if it's already running, it comes to the front.
+- **Tabs** keep their scroll position, edit mode and undo history.
+  - Place them along the top or in a **sidebar on the left**.
+  - Hide them with `Ctrl+Shift+B`.
+  - They're restored on launch.
+  - Files can open in a new tab, replace the current one, or open in a new window.
+- **Right-click menus everywhere**, fitted to what you clicked (tabs, recent files, selected text, links, the page). Middle-click a recent file to open it in a new tab.
+- **Open recent** with missing-file detection and per-document reading progress; drag and drop files onto the window.
 
-### Auto-update
-- **⬆️ In-app updater** with manual "Check for updates…" in the hamburger menu and an optional auto-check on launch (Settings → off by default for paranoid users)
-- **🔐 Ed25519-signed installers** — every update verifies its signature against the public key baked into the app before installing; tampered installers are refused
-- **📦 GitHub Releases as the distribution channel** — manifest at `/releases/latest/download/latest.json` is what your installed copy polls
+### ⚙️ Settings and first run
+- **"How do you want to use remarkdown?"** offers three starting layouts with real screenshots. You can reopen it from **Settings → About**.
+- **Settings window:**
+  - 41 options in seven sections, with search.
+  - A small moving picture of what each option does.
+  - Every change applies live.
+- **Hand-drawn tutorial** whose arrows point at each control wherever your layout puts it. Press `?` to show it again.
 
-### Settings
-- **⚙️ Settings panel** (hamburger → Settings…) persists 18 user preferences to `settings.json` in the OS app-data dir
-- **Appearance** — dark/light theme, splash on/off, watermark on/off, watermark opacity
-- **Reading** — default zoom, article column width, max recent files (slider + typeable badge), reopen-last-file on launch, hide annotation chrome, show welcome on launch, show tutorial overlay
-- **Annotation** — default highlight color, default ink color, drawing idle-finalize duration, re.marks sentence-context count + paragraph-stop
-- **Save behaviour** — sidecar write debounce
-- **Updates** — auto-check on launch on/off
-- All settings apply live; "Reset to defaults" restores everything in one click
-
-### Storage & resilience
-- **💾 Atomic sidecar writes** with configurable debounced saves; retry with exponential backoff on write failures; synchronous flush on window close
-- **🛡 Error matrix** — UTF-8 toast, corrupt-sidecar backup modal, write-retry banner, 2 MB size warning
-- **🧪 Battle-tested** — 690+ Vitest unit/component tests, Rust tests, Playwright E2E scenarios, zero `svelte-check` warnings
+### ⬆️ Updates and storage
+- **In-app updater** with Ed25519-signed installers (a tampered installer is refused). It shows an aggregated changelog when you're several versions behind.
+- **Atomic writes** for documents and annotation files; annotation saves retry with backoff and flush on close.
+- **Error handling:** clear messages for a non-UTF-8 file, a damaged annotation file (backed up first), a failed write, or a very large sidecar.
 
 ---
 
 ## 🎛 Tools
 
-| Tool | Activation | Behavior |
-|------|-----------|----------|
-| 🎯 **Cursor** | Default | Normal text selection; copy works |
-| 🖍 **Highlight** | Tool rail | Drag-select text → highlight in current color. Right-click an existing highlight → Delete |
-| 📝 **re.mark** | Tool rail | Click a word → accent pin pinned to that word's end with an inline popover. Click the **re.marks** pill above the zoom controls to browse every annotation with surrounding sentence context. |
-| ✏️ **Draw** | Tool rail | Freehand stroke capture. 3s idle or tool-change finalizes. Right-click an existing drawing → Delete |
-| 🧹 **Eraser** | Tool rail | Click any annotation to delete it instantly — no confirmation |
+| Tool | Key | What it does |
+|------|-----|--------------|
+| 🎯 **Cursor** | `1` | Select and copy text as usual |
+| 🖍 **Highlight** | `2` | Drag across text to highlight it in the current colour |
+| 📝 **re.mark** | `3` | Click a word to pin a note to it |
+| ✏️ **Draw** | `4` | Draw freehand; the strokes become one drawing after a short pause |
+| 🧹 **Eraser** | `0` | Click any annotation to remove it |
 
-Color strip appears above the rail when **Highlight** or **Draw** is active (5 presets each).
+A colour strip appears above the tools while Highlight or Draw is active. Right-click a highlight or drawing for more.
 
 ---
 
@@ -173,20 +190,27 @@ Color strip appears above the rail when **Highlight** or **Draw** is active (5 p
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl +` / `Ctrl =` | Zoom in |
-| `Ctrl -` | Zoom out |
-| `Ctrl 0` | Reset zoom |
-| `Esc` | Close popover / cancel selection / exit reader mode |
-| `?` | Show or hide the welcome tutorial overlay |
-| `1` / `2` / `3` / `4` / `5` | Switch to Cursor / Highlight / re.mark / Draw / Eraser |
-| Double-click title bar | Toggle maximize |
-| Double-click bottom-right corner | Reset window to 1100×780 |
+| `Ctrl+E` | Edit the document / done editing |
+| `Esc` | Close what's open; leave reader mode |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo (annotations outside the editor, text inside it) |
+| `Ctrl+O` | Open a file |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+W` | Close the tab |
+| `Ctrl+Shift+B` | Show / hide the tabs |
+| `Ctrl +` / `Ctrl -` / `Ctrl 0` | Zoom in / out / reset |
+| `1` `2` `3` `4` `0` | Cursor / Highlight / re.mark / Draw / Eraser |
+| `?` | Show or hide the tutorial |
+| **In the editor** | |
+| `Ctrl+Alt+0`–`3` | Normal text / Heading 1–3 |
+| `Ctrl+Shift+8` / `7` / `9` | Bulleted list / Numbered list / Quote |
+| `Ctrl+B` / `Ctrl+I` | Bold / italic |
+| `Ctrl+,` / `Ctrl+.` | Subscript / superscript |
 
 ---
 
 ## 💡 How the sidecar works
 
-For every markdown file `foo.md`, remarkdown writes annotations to a sibling file `foo.md.remarkdown.json`:
+For every markdown file `foo.md`, remarkdown writes its annotations to a sibling file, `foo.md.remarkdown.json`:
 
 ```jsonc
 {
@@ -215,7 +239,7 @@ For every markdown file `foo.md`, remarkdown writes annotations to a sibling fil
 }
 ```
 
-The file is git-friendly, human-editable, and semantically rich enough for an LLM to understand every annotation without the source document loaded.
+The file is git-friendly and human-editable, and rich enough for an LLM to understand every annotation without the source document loaded.
 
 ---
 
@@ -236,7 +260,7 @@ npm install
 npm run tauri dev
 ```
 
-> ⏱ First cold build compiles the Rust toolchain + Tauri dependencies — expect **3–8 minutes**. Subsequent launches are ~5 seconds.
+> ⏱ The first build compiles Tauri and its Rust dependencies, which takes **3–8 minutes**. After that, launches take about 5 seconds.
 
 ### Build a release installer
 
@@ -244,64 +268,56 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. Cutting a release with the in-app updater enabled requires the Ed25519 signing key — see [RELEASING.md](RELEASING.md) for the full process.
+This produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. A release the in-app updater can install needs the Ed25519 signing key; see [RELEASING.md](RELEASING.md).
 
 ---
 
 ## 🗺 Roadmap
 
-### ✅ New in 0.7.0
-- **Opening files** — double-clicked / "Open with" files open themselves (single instance: a second launch hands its file to the running app); `.md`/`.markdown` file associations; Settings status + one-click route to make remarkdown the Windows default
-- **Tabs** — per-document sessions keep scroll, undo history, edit and focus mode; animated tab bar; keyboard shortcuts; tabs restored on launch; open-mode setting (tab / replace / new window)
-- **Mermaid round 1** — shared render runtime with cache and timeouts, theme-following diagrams, wide-diagram scrolling, friendly errors, and line-preserving visual edits for flowcharts and sequence diagrams
-- **Menu overlap fix** (#23)
+### ✅ Shipped
+- **0.8.0**:
+  - Starting layouts.
+  - Reader mode with six page styles, contents beside the page, smooth scrolling and ink effects.
+  - Headings, lists, quotes, dividers, pictures and formulas in edit mode, saved exactly as written.
+  - Every diagram type editable.
+  - Annotation undo, arrows and brackets, and margin notes.
+  - Tabs on the left, right-click menus and the new Settings window.
+  - Protection against overwriting another program's changes.
+- **0.7.0**:
+  - Double-clicked files open themselves, with `.md` file associations.
+  - Tabs that keep scroll, edit mode and undo.
+  - Sturdier diagrams.
+- **0.6.0**:
+  - Edit mode, including callouts, code, task lists, tables, footnotes and visual flowchart / sequence editing.
+  - MSI installers.
+- **0.4 – 0.5 betas**:
+  - The reader, highlights, re.marks, drawing, anchoring with orphan re-attach, and the file watcher.
+  - Minimap, auto-update, Settings and the tutorial.
 
-### ✅ Shipped in 0.6.0
-- **Edit mode** — full WYSIWYG ProseMirror editor behind a one-key toggle: callouts, code blocks (live Shiki), task lists, GFM tables, footnotes, strikethrough/sub/sup bubble menu, atomic autosave, annotation re-anchor on exit
-- **Visual mermaid editing** — flowcharts (shapes, edges, labels, connect mode, direction picker) and sequence diagrams (participants, messages, notes), with the serializer validated against mermaid's own grammar and hardened against render races, parallel-edge ambiguity, and special characters
-- **MSI installers** — stable semver means Windows `.msi` packages ship alongside NSIS again
-- **Security** — edit-mode mermaid rendering now uses `securityLevel: strict`, matching read mode
+See [CHANGELOG.md](CHANGELOG.md) for the details of every release.
 
-### ✅ Shipped through 0.5.4-beta
-- Reader MVP — Shiki syntax highlighting + KaTeX math + footnotes + task lists + tables + relative images
-- All four annotation types (highlight, re.mark, drawing, eraser) with save/load round-trip
-- Drawings **anchored to text** with optional auto-shape recognition + roughness slider
-- **re.marks side panel** with configurable sentence-context, animated wordmark, ToC-adjacent placement
-- **Marginalia column** [prototype] — right-margin liquid-glass cards with click-to-edit + flowing-dot connector + push-down collision avoidance
-- **Mermaid** diagrams + **Obsidian-style callouts** with foldable variants
-- Anchoring with **orphan detection + re-attach** UI
-- **File watcher** — external edits reload within ~1s; survivors stay anchored
-- **Per-document reading progress** + **Table-of-contents popover** for navigation
-- **In-app auto-update** with manual + auto-check, Ed25519-signed installers, **aggregated multi-version changelog**
-- **Focus mode** — hides every chrome layer; optional auto-enter on doc open; optional minimap-popout-on-hover
-- Minimap, zoom, frameless window, splash
-- **Hamburger backdrop + X-cursor**, blooming title-bar control orbs, hand-drawn welcome tutorial, animated BETA pin, hover wordmark morph
-- 23-setting Settings panel (six sections, hairline separators) with persistent preferences and live apply
-- Dark and light themes; full error matrix (UTF-8 toast, corrupt-sidecar backup, write-retry, 2 MB warning)
-- 390+ Vitest tests, Rust tests, Playwright E2E coverage of the spec scenarios, 0 svelte-check warnings
-
-### 🔮 Deferred
-- **Linux + macOS releases** — no code blockers found; awaiting platform testers (see [call for testers](#-linux--macos--testers-wanted) above)
-- **Marginalia polish** — measured (not estimated) card heights for tighter push-down, wide-doc / narrow-window adaptive layout, optional connector treatments
-- **Edit mode, next round** — slash-command for headings/lists, drag-and-drop inline images, mermaid subgraph/classDef support
-- **Pre-release channel** — wire up the auto-updater so opt-in users actually receive pre-release builds (currently only changelog filtering is implemented)
-- **Undo/redo** action log
-- **Per-doc asset protocol scope** tightening (security hardening)
-- **Wiki-links** — `[[link]]` syntax across vault-style folders
-- **PDF/HTML export** with baked-in annotations
-- **Cross-document commands** — *"summarize highlights across these N files"*
-- **Collaboration** — real-time sync / multi-user annotations
+### 🔮 Next
+- **Linux and macOS releases**: no code blockers; waiting for testers ([see above](#-linux--macos-testers-wanted)).
+- **Pre-release channel**: let opt-in users actually receive beta builds (today only the changelog filter exists).
+- **Pictures**: drag and drop or paste images straight into the editor.
+- **Tighter file access**: limit the asset protocol to each document's own folder.
+- **Wiki-links**: `[[link]]` across vault-style folders.
+- **PDF / HTML export** with the annotations included.
+- **Across documents**: *"summarise the highlights in these files"*.
+- **Collaboration**: shared, real-time annotations.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-npm test              # 690+ Vitest unit + component tests
-npm run check         # svelte-check (0 errors, 0 warnings)
-npm run test:e2e      # Playwright end-to-end scenarios
+npm test                     # 2,300+ Vitest unit and component tests
+npm run check                # svelte-check
+npm run test:e2e             # 160+ Playwright end-to-end tests
 cd src-tauri && cargo test   # Rust tests
 ```
+
+Diagram parsers are checked against mermaid's own reading of each diagram, and every diagram edit is property-tested: the lines it didn't touch stay byte-identical and mermaid can still draw the result.
 
 ---
 
@@ -310,13 +326,15 @@ cd src-tauri && cargo test   # Rust tests
 | Layer | Choice | Reason |
 |-------|--------|--------|
 | Shell | **Tauri 2.x** | ~5–10 MB installer, native file dialogs, Rust host, auto-updating WebView2 on Windows |
-| Updater | **tauri-plugin-updater** + minisign Ed25519 | Signed installer verification against an in-app pubkey |
+| Updater | **tauri-plugin-updater** + minisign Ed25519 | Signed installer verification against an in-app public key |
 | UI framework | **Svelte 5** (runes) + Vite | Compiled away, small runtime, clean reactive primitives |
-| Markdown | **markdown-it** + footnote + task-lists + KaTeX | Mature, plugin-rich, easy to extend |
-| Syntax highlight | **Shiki** 1.x (WASM, github-dark) | Real VS Code themes, dark-friendly |
+| Markdown | **markdown-it** + footnotes, task lists, KaTeX, callouts, front matter | Mature, plugin-rich, easy to extend |
+| Editor | **ProseMirror** + prosemirror-markdown | WYSIWYG editing that round-trips to clean markdown |
+| Diagrams | **Mermaid** 11 | Rendering; our own parsers and edit engines sit on top for visual editing |
+| Syntax highlight | **Shiki** (GitHub light + dark) | Real VS Code themes that follow the page |
 | Math | **KaTeX** via `@vscode/markdown-it-katex` | Fast, no server |
 | Anchoring | W3C-style **text-quote selector** | Robust to edits, graceful orphaning |
-| Hand-drawn UI | **rough.js** | Sketchy/jittery vector strokes for the tutorial arrows |
+| Hand-drawn UI | **rough.js** | Sketchy strokes for drawings and the tutorial arrows |
 | Validation | **Zod** | Runtime-validated loads, typed TS output |
 | Highlights rendering | **CSS Custom Highlight API** | No DOM mutation, browser-native overlap handling |
 | Tests | **Vitest** + `@testing-library/svelte` + **Playwright** | Unit / component / e2e |
@@ -329,18 +347,20 @@ cd src-tauri && cargo test   # Rust tests
 remarkdown/
 ├── src/                     # Svelte 5 frontend
 │   ├── lib/                 # Pure TS modules (anchoring, renderer, save, schema, …)
-│   ├── components/          # Svelte components (Viewer, ToolRail, layers, modals, …)
-│   ├── stores/              # Reactive state (doc, annots, tool, toasts, modals, …)
-│   └── styles/              # Theme tokens (dark + light) + glass mixins + CSS highlight rules
+│   │   └── editor/          # ProseMirror editor, and mermaid/ for diagram parsers and editors
+│   ├── components/          # Svelte components (Viewer, Editor, ToolRail, layers, modals, …)
+│   ├── stores/              # Reactive state (doc, annots, tabs, settings, …)
+│   └── styles/              # Theme tokens (dark, light, reader themes) and shared styles
 ├── src-tauri/               # Rust host
 │   ├── capabilities/        # Tauri capability allowlists
-│   └── src/                 # Invoke commands, atomic sidecar writes, recent-files persistence
+│   └── src/                 # Commands, atomic writes, file watching, recent files
 ├── scripts/                 # Build helpers (latest.json manifest generator)
 ├── tests/
 │   ├── unit/                # Vitest unit tests
 │   ├── component/           # @testing-library/svelte component tests
-│   └── e2e/                 # Playwright end-to-end + support/
-├── RELEASING.md             # End-to-end release/sign/publish process
+│   └── e2e/                 # Playwright end-to-end tests + support/
+├── CHANGELOG.md             # What changed in each release
+├── RELEASING.md             # Release, signing and publishing
 └── README.md                # This file
 ```
 
@@ -348,19 +368,19 @@ remarkdown/
 
 ## 🤝 Contributing
 
-remarkdown is a personal project right now. If you find a bug or want a feature, please open an issue **before** opening a PR so we can talk about scope.
+remarkdown is a personal project for now. If you find a bug or want a feature, please open an issue **before** opening a PR so we can talk about scope.
 
 ---
 
 ## 📜 License
 
-TBD. Will settle on a license before a stable `v1.0` tag ships.
+TBD. A license will be chosen before a stable `v1.0` tag ships.
 
 ---
 
 <div align="center">
 
-🖍 · 📝 · ✏️ · 🧹
+🖍 · 📝 · ✏️ · ✍️
 
 *Read well. Mark well. Keep your thoughts where your source lives.*
 

@@ -2,11 +2,13 @@
 
 mod commands;
 mod default_app;
+mod fresh_start;
 mod launch;
 mod reading_progress;
 mod recent;
 mod session_file;
 mod settings;
+mod shell;
 mod sidecar;
 mod welcome;
 
@@ -23,9 +25,12 @@ fn main() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
+            // Before any window reads them: 0.8.0 resets settings once.
+            fresh_start::run(app.handle());
             // Files passed on our own command line (double-click on a cold
             // start). The frontend drains these once it's mounted.
             // args_os: std::env::args() panics on arguments that aren't
@@ -40,6 +45,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
+            commands::open_image_dialog,
             commands::read_document,
             commands::write_sidecar,
             commands::write_document,
@@ -60,6 +66,7 @@ fn main() {
             launch::open_document_window,
             default_app::default_app_status,
             default_app::make_default_app,
+            shell::reveal_in_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

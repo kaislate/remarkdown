@@ -11,6 +11,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.ts'],
-    testTimeout: 15000,
+    // The first diagram test in a file loads mermaid itself; with every
+    // file running at once that can take well over 15 seconds.
+    testTimeout: 30000,
   },
 });

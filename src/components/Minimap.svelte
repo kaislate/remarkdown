@@ -3,14 +3,15 @@
   import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { currentViewerRoot } from '../stores/annots';
-  import { viewerScroll } from '../stores/viewport';
+  import { viewerScroll, currentEditorRoot } from '../stores/viewport';
   import { minimapShown, toggleMinimap } from '../stores/ui';
   import { computeMinimapLayout, minimapClickToScrollTop } from '../lib/minimap-math';
   import { prefixIds } from '../lib/prefix-ids';
 
-  // Must match Viewer.svelte's .text-frame max-width + .viewer padding.
-  // The clone is rendered at VIEWER_OUTER_WIDTH (content + horizontal padding)
-  // so its total box matches the article's, making the indicator math exact.
+  // Must match Viewer.svelte's .viewer padding. The clone is rendered at the
+  // article's measured width (its width follows the article-width setting
+  // and the room the window leaves), so the clone wraps every line exactly
+  // where the article does and the indicator math is exact.
   const VIEWER_CONTENT_WIDTH = 720;
   const VIEWER_PADDING_H = 48;
   const VIEWER_PADDING_T = 96;
@@ -18,14 +19,29 @@
   const VIEWER_OUTER_WIDTH = VIEWER_CONTENT_WIDTH + 2 * VIEWER_PADDING_H;
   const MINIMAP_WIDTH = 140;
 
+  // What's being mirrored: the reading article, or — while editing — the
+  // editor's content element, which lays out a little differently (diagrams
+  // carry their editing controls) and is what's actually on screen.
+  let articleEl: HTMLElement | null = null;
+  let editorEl: HTMLElement | null = null;
+  let sourceEl: HTMLElement | null = null;
+  let cloneWidth = $state(VIEWER_OUTER_WIDTH);
+
   let minimapEl = $state<HTMLElement | null>(null);
+  let cloneEl = $state<HTMLElement | null>(null);
 
   let scale = $state(1);
+  // The article's own padding and type size, copied onto the clone: reader
+  // mode changes both (a taller top margin, larger text), and the clone
+  // has to lay out exactly like the page for the box to be exact.
+  let pad = $state({ t: VIEWER_PADDING_T, h: VIEWER_PADDING_H, b: VIEWER_PADDING_B });
+  let fontSize = $state('');
   let translateY = $state(0);
   let indicatorTop = $state(0);
   let indicatorHeight = $state(20);
 
   let dragging = $state(false);
+  let lastArticleTop = 0;
 
   // We mirror the live article DOM (post mermaid + any other JS-driven
   // transforms) rather than re-rendering $doc.html. That way the minimap
@@ -43,13 +59,56 @@
     const innerWidth = map.clientWidth - 16; // 8px padding each side
     const innerHeight = map.clientHeight - 16;
 
+    // Where the article sits in the scroll content. The scroll container is
+    // exactly the visible page (it starts below the title band / right of
+    // the tab sidebar), so the box is [scrollTop, scrollTop + clientHeight]
+    // in these coordinates. If the source has no layout (yet), treat the
+    // whole scroll content as the page.
+    let articleTop = 0;
+    let articleHeight = scroll.scrollHeight;
+    let width = VIEWER_OUTER_WIDTH;
+    if (sourceEl && sourceEl.offsetWidth > 0) {
+      const top = sourceEl.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+      if (sourceEl === editorEl) {
+        // The editor's element is the text itself, without the article's
+        // padding (and the first block's top margin collapses out of it),
+        // so line the clone up by its first block instead.
+        width = sourceEl.offsetWidth + 2 * VIEWER_PADDING_H;
+        articleTop = top - VIEWER_PADDING_T;
+        articleHeight = sourceEl.offsetHeight + VIEWER_PADDING_T + VIEWER_PADDING_B;
+        const first = sourceEl.firstElementChild;
+        const cloneFirst = cloneEl?.firstElementChild;
+        if (first && cloneFirst && cloneEl!.offsetHeight > 0) {
+          const firstTop = first.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+          const cloneScale = cloneEl!.getBoundingClientRect().width / cloneEl!.offsetWidth;
+          const inClone = (cloneFirst.getBoundingClientRect().top - cloneEl!.getBoundingClientRect().top) / cloneScale;
+          articleTop = firstTop - inClone;
+          articleHeight = cloneEl!.offsetHeight;
+        }
+      } else {
+        articleTop = top;
+        articleHeight = sourceEl.offsetHeight;
+        width = sourceEl.offsetWidth;
+        const cs = getComputedStyle(sourceEl);
+        const t = parseFloat(cs.paddingTop);
+        const h = parseFloat(cs.paddingLeft);
+        const b = parseFloat(cs.paddingBottom);
+        if (t !== pad.t || h !== pad.h || b !== pad.b) pad = { t, h, b };
+        fontSize = cs.fontSize;
+      }
+    }
+    cloneWidth = width;
+    lastArticleTop = articleTop;
+
     const layout = computeMinimapLayout(
       scroll.scrollTop,
       scroll.scrollHeight,
       scroll.clientHeight,
-      VIEWER_OUTER_WIDTH,
+      width,
       innerWidth,
       innerHeight,
+      articleTop,
+      articleHeight,
     );
     scale = layout.scale;
     translateY = layout.translateY;
@@ -70,6 +129,7 @@
       scale,
       scroll.clientHeight,
       scroll.scrollHeight,
+      lastArticleTop,
     );
   }
 
@@ -100,17 +160,16 @@
 
   onMount(() => {
     let currentScrollEl: HTMLElement | null = null;
-    let currentArticleEl: HTMLElement | null = null;
     let mutationObserver: MutationObserver | null = null;
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
     function snapshotArticle(): void {
-      if (!currentArticleEl) return;
+      if (!sourceEl) return;
       // Mirror a clone whose ids are prefixed (references rewritten to
       // match) — the clone shares the document with the article, and
       // each diagram svg alone carries dozens of ids its own markers,
       // gradients and inline styles point at. See prefix-ids.ts.
-      const clone = currentArticleEl.cloneNode(true) as HTMLElement;
+      const clone = sourceEl.cloneNode(true) as HTMLElement;
       prefixIds(clone, 'minimap-');
       mirroredHtml = clone.innerHTML;
       // Recompute the indicator after the new HTML lays out in the clone.
@@ -124,36 +183,61 @@
       snapshotTimer = setTimeout(snapshotArticle, 120);
     }
 
+    // Layout changes that move or resize the page without a scroll event:
+    // the title band / tab sidebar appearing, zoom, window size, images or
+    // diagrams settling.
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => updateLayout());
+
     const unsubScroll = viewerScroll.subscribe((el) => {
-      if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
+      if (currentScrollEl) {
+        currentScrollEl.removeEventListener('scroll', updateLayout);
+        resizeObserver?.unobserve(currentScrollEl);
+      }
       currentScrollEl = el;
       if (el) {
+        resizeObserver?.observe(el);
         el.addEventListener('scroll', updateLayout, { passive: true });
         updateLayout();
         requestAnimationFrame(updateLayout);
       }
     });
 
-    const unsubArticle = currentViewerRoot.subscribe((el) => {
+    // Mirror the editor while there is one, else the article. Initial
+    // snapshot, then keep it in sync with later mutations (diagrams drawn,
+    // typing).
+    function setSource(): void {
+      const next = editorEl ?? articleEl;
+      if (next === sourceEl) return;
       if (mutationObserver) {
         mutationObserver.disconnect();
         mutationObserver = null;
       }
-      currentArticleEl = el;
-      if (!el) {
+      if (sourceEl) resizeObserver?.unobserve(sourceEl);
+      sourceEl = next;
+      if (!next) {
         mirroredHtml = '';
         return;
       }
-      // Initial snapshot, then keep it in sync with subsequent mutations
-      // (mermaid swap, future transforms).
+      resizeObserver?.observe(next);
       snapshotArticle();
       mutationObserver = new MutationObserver(scheduleSnapshot);
-      mutationObserver.observe(el, {
+      mutationObserver.observe(next, {
         childList: true,
         subtree: true,
         attributes: true,
         characterData: true,
       });
+    }
+
+    const unsubArticle = currentViewerRoot.subscribe((el) => {
+      articleEl = el;
+      setSource();
+    });
+    const unsubEditor = currentEditorRoot.subscribe((el) => {
+      editorEl = el;
+      setSource();
     });
 
     const unsubDoc = doc.subscribe(() => {
@@ -165,13 +249,10 @@
       setTimeout(updateLayout, 300);
     });
 
-    // Reader mode hides the minimap via display:none, which makes
-    // clientWidth/Height collapse to 0 and freezes our layout state.
-    // When reader mode exits, the element has dimensions again — fire
-    // updateLayout() across two animation frames so the recompute lands
-    // after the browser has finished re-applying display:block.
-    const unsubReader = readerMode.subscribe((on) => {
-      if (on) return;
+    // Entering or leaving reader mode changes the page's layout (column,
+    // type size) and the minimap's own size, or shows / hides it; recompute
+    // across two frames so it lands after the browser has re-laid out.
+    const unsubReader = readerMode.subscribe(() => {
       requestAnimationFrame(() => requestAnimationFrame(updateLayout));
     });
 
@@ -181,24 +262,19 @@
       if (currentScrollEl) currentScrollEl.removeEventListener('scroll', updateLayout);
       window.removeEventListener('resize', updateLayout);
       if (mutationObserver) mutationObserver.disconnect();
+      resizeObserver?.disconnect();
       if (snapshotTimer) clearTimeout(snapshotTimer);
       unsubDoc();
       unsubShown();
       unsubScroll();
       unsubReader();
       unsubArticle();
+      unsubEditor();
     };
   });
 </script>
 
 {#if $doc !== null}
-  <!-- Peek-zone for popout-in-Focus-mode. Always present; CSS only
-       activates it when body.minimap-popout is set. Sits just outside
-       the minimap's right edge with an 8px overlap so the user can
-       move their pointer from the peek strip onto the revealed
-       minimap without losing :hover. -->
-  <div class="minimap-peek-zone" aria-hidden="true"></div>
-
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="minimap glass"
@@ -215,7 +291,8 @@
     <div class="minimap-inner">
       <div
         class="minimap-content md-rendered"
-        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {VIEWER_CONTENT_WIDTH}px; padding: {VIEWER_PADDING_T}px {VIEWER_PADDING_H}px {VIEWER_PADDING_B}px; box-sizing: content-box;"
+        bind:this={cloneEl}
+        style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {cloneWidth}px; padding: {pad.t}px {pad.h}px {pad.b}px; box-sizing: border-box; font-size: {fontSize};"
       >
         {@html mirroredHtml}
       </div>
@@ -301,6 +378,9 @@
     position: absolute;
     left: 0;
     right: 0;
+    /* Borders inside the box, so its outer edges are exactly the visible
+       range (content-box made it 2px too tall). */
+    box-sizing: border-box;
     background: rgba(139, 127, 255, 0.18);
     border-top: 1px solid rgba(139, 127, 255, 0.36);
     border-bottom: 1px solid rgba(139, 127, 255, 0.36);
@@ -349,37 +429,5 @@
 
   @media (max-width: 900px) {
     .minimap, .minimap-toggle { display: none; }
-  }
-
-  /* Peek-zone — invisible by default. Activates only when the body has
-     the minimap-popout class (= reader-mode + the popout setting both
-     on). The geometry (right:0, width:24) overlaps the minimap's right
-     edge (right:16, so x-range ends at viewport-16) by 8px, giving the
-     user a hover-continuous transition from the peek strip onto the
-     revealed minimap. */
-  .minimap-peek-zone {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 24px;
-    pointer-events: none;
-    z-index: 84;
-  }
-  :global(body.minimap-popout) .minimap-peek-zone {
-    pointer-events: auto;
-  }
-
-  /* Popout state: keep the minimap mounted (reader-mode.css won't
-     display:none it when minimap-popout is also set) but slide it
-     fully off the right edge plus the gutter, then bring it back when
-     either the peek zone or the minimap itself is hovered. The CSS
-     transition on transform was already declared on .minimap above. */
-  :global(body.minimap-popout) .minimap {
-    transform: translateX(calc(100% + 24px));
-  }
-  :global(body.minimap-popout) .minimap-peek-zone:hover ~ .minimap,
-  :global(body.minimap-popout) .minimap:hover {
-    transform: translateX(0);
   }
 </style>

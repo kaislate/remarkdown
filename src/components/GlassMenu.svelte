@@ -9,8 +9,13 @@
   import { readingProgress } from '../stores/reading-progress';
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
+  import { settings } from '../stores/settings';
+  import { toggleTabsShown, TOGGLE_TABS_SHORTCUT } from '../lib/tab-visibility';
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
+  import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
+  import { showInFolder, copyPath } from '../lib/file-actions';
+  import type { OpenMode } from '../lib/settings-schema';
 
   let open = $state(false);
 
@@ -69,18 +74,38 @@
     return p.split(/[\\/]/).pop() ?? p;
   }
 
-  async function openRecent(path: string) {
+  // `mode` overrides the open-mode setting (context menu, middle-click).
+  async function openRecent(path: string, mode?: OpenMode) {
     open = false;
     if (get(recentExistence)[path] === false) {
       addToast({ kind: 'warning', message: `File not found: ${basename(path)}` });
       return;
     }
     try {
-      await openPaths([path]);
+      await (mode ? openPaths([path], { mode }) : openPaths([path]));
     } catch (e) {
       markMissing(path);
       addToast({ kind: 'error', message: `Could not open ${basename(path)}: ${(e as Error).message}` });
     }
+  }
+
+  // Right-click on a recent file.
+  let recentMenu = $state<{ path: string; x: number; y: number } | null>(null);
+
+  function recentMenuItems(path: string): ContextMenuEntry[] {
+    const missing = get(recentExistence)[path] === false;
+    return [
+      { label: 'Open in new tab', hint: 'Middle-click', disabled: missing, onSelect: () => void openRecent(path, 'tabs') },
+      { label: 'Open in new window', disabled: missing, onSelect: () => void openRecent(path, 'windows') },
+      { label: 'Open here', disabled: missing, onSelect: () => void openRecent(path, 'replace') },
+      'separator',
+      { label: 'Show in folder', onSelect: () => void showInFolder(path) },
+      { label: 'Copy path', onSelect: () => void copyPath(path) },
+      'separator',
+      { label: 'Remove from list', danger: true, onSelect: () => void removeFromRecent(path).catch((err) => {
+        addToast({ kind: 'error', message: `Could not remove from recents: ${(err as Error).message}` });
+      }) },
+    ];
   }
 
   async function removeRecentItem(path: string, e: MouseEvent) {
@@ -135,7 +160,6 @@
          exposed via the Settings/Update modal). -->
     <span class="pre-tag" aria-hidden="true">
       <span class="pre-tag-text">{preTagLabel}</span>
-      <span class="pre-tag-shine" aria-hidden="true"></span>
     </span>
   {/if}
 
@@ -149,6 +173,14 @@
         onclick={() => { open = false; openModal({ kind: 'orphans' }); }}
       >
         Orphaned Annotations{$orphanedAnnots.length > 0 ? ` (${$orphanedAnnots.length})` : ''}
+      </button>
+      <button
+        role="menuitem"
+        class="item"
+        onclick={() => { open = false; toggleTabsShown(); }}
+      >
+        {$settings.showTabs ? 'Hide tabs' : 'Show tabs'}
+        <span class="shortcut" aria-hidden="true">{TOGGLE_TABS_SHORTCUT}</span>
       </button>
       <button
         role="menuitem"
@@ -197,6 +229,16 @@
               if ((e.target as HTMLElement).closest?.('.recent-remove')) return;
               openRecent(path);
             }}
+            onauxclick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              void openRecent(path, 'tabs');
+            }}
+            onmousedown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              recentMenu = { path, x: e.clientX, y: e.clientY };
+            }}
           >
             <span class="recent-name">
               {basename(path)}{$recentExistence[path] === false ? ' (missing)' : ''}
@@ -228,6 +270,16 @@
   {/if}
 </div>
 
+{#if recentMenu}
+  <ContextMenu
+    x={recentMenu.x}
+    y={recentMenu.y}
+    label={`${basename(recentMenu.path)} actions`}
+    items={recentMenuItems(recentMenu.path)}
+    onclose={() => (recentMenu = null)}
+  />
+{/if}
+
 <style>
   .menu-root {
     position: fixed;
@@ -256,9 +308,10 @@
     flex-shrink: 0;
     transition:
       transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-      border-color 0.2s ease,
-      box-shadow 0.2s ease,
-      background 0.2s ease;
+      border-color 0.35s ease,
+      box-shadow 0.35s ease,
+      background 0.35s ease,
+      opacity 0.35s ease;
   }
   .hamburger:hover {
     transform: scale(1.05);
@@ -283,6 +336,8 @@
     /* Accommodate the wider 'remarkdown' shape on hover so the rest of
        the chrome doesn't reflow when the morph plays. */
     white-space: nowrap;
+    /* Fades out in reader mode (reader-mode.css). */
+    transition: opacity 0.35s ease;
   }
   .wordmark .seg {
     display: inline-block;
@@ -335,14 +390,9 @@
     opacity: 1;
     clip-path: inset(0 0 0 0);
   }
-  /* Animated pre-release tag (BETA / ALPHA / RC / DEV) shown to the
-     right of the wordmark. Three layers of animation:
-       1. A slow accent-coloured glow pulse on the box-shadow so the
-          tag always reads as "alive" without being distracting.
-       2. A diagonal shine that sweeps across the tag every ~3.5s,
-          like a glint on a metal pin.
-       3. A subtle hue-shift on the gradient stops via animated
-          background-position so the gradient itself drifts. */
+  /* Pre-release tag (BETA / ALPHA / RC / DEV) pinned under the wordmark.
+     Still: it used to pulse, drift and sweep a shine across itself, which
+     drew the eye to the top of the window all the time. */
   .pre-tag {
     /* Sits as an absolutely-positioned pin under the wordmark so the
        hamburger:hover ~ .wordmark sibling-combinator selectors stay
@@ -379,61 +429,9 @@
     box-shadow:
       0 1px 5px rgba(139, 127, 255, 0.4),
       inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    animation:
-      pre-tag-pulse 2.6s ease-in-out infinite,
-      pre-tag-drift 7s linear infinite;
   }
   .pre-tag-text {
     position: relative;
-    z-index: 2;
-  }
-  /* Diagonal shine that sweeps across the tag periodically. The 80%
-     blank tail of the keyframe is what gives the impression of "wait
-     a beat, then sweep" instead of a continuous loop. */
-  .pre-tag-shine {
-    position: absolute;
-    top: 0;
-    left: -60%;
-    width: 50%;
-    height: 100%;
-    background: linear-gradient(
-      105deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.45) 50%,
-      rgba(255, 255, 255, 0) 100%
-    );
-    transform: skewX(-18deg);
-    z-index: 1;
-    animation: pre-tag-shine 3.4s ease-in-out infinite;
-  }
-  @keyframes pre-tag-pulse {
-    0%, 100% {
-      box-shadow:
-        0 1px 5px rgba(139, 127, 255, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    }
-    50% {
-      box-shadow:
-        0 2px 12px rgba(139, 127, 255, 0.7),
-        inset 0 1px 0 rgba(255, 255, 255, 0.25);
-    }
-  }
-  @keyframes pre-tag-drift {
-    0%   { background-position: 0%   50%; }
-    100% { background-position: 200% 50%; }
-  }
-  @keyframes pre-tag-shine {
-    0%   { left: -60%; }
-    35%  { left: 130%; }
-    100% { left: 130%; }
-  }
-  /* Respect reduced-motion preferences — kill the pulse + shine but
-     keep the gradient + shadow so the tag is still recognisable. */
-  @media (prefers-reduced-motion: reduce) {
-    .pre-tag,
-    .pre-tag-shine {
-      animation: none;
-    }
   }
 
   .bar {
@@ -442,6 +440,7 @@
     background: var(--fg-1);
     border-radius: 1px;
   }
+
   .popover {
     position: absolute;
     /* Offset diagonally from the hamburger so the popover clears the
@@ -466,6 +465,13 @@
     cursor: pointer;
     font-family: var(--font-sans);
     font-size: 14px;
+  }
+  /* A keyboard shortcut, right-aligned after the item's label. */
+  .item .shortcut {
+    float: right;
+    margin-left: 18px;
+    color: var(--fg-2);
+    font-size: 12px;
   }
   .item:hover {
     background: var(--accent-soft);

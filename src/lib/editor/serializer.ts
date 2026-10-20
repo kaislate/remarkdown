@@ -161,10 +161,49 @@ const footnote = (state: MarkdownSerializerState, node: Node) => {
   state.write(`[^${label}]`);
 };
 
+// Maths and front matter go back out exactly as they came in: their text
+// is written raw, never escaped.
+// An empty formula (inserted, then left empty) isn't written: `$$` would
+// read back as the start of a formula block.
+const math_inline = (state: MarkdownSerializerState, node: Node) => {
+  if (!String(node.attrs.tex).trim()) return;
+  const fence = node.attrs.display ? '$$' : '$';
+  state.write(fence + String(node.attrs.tex) + fence);
+};
+
+const math_block = (state: MarkdownSerializerState, node: Node) => {
+  const tex = String(node.attrs.tex);
+  if (!tex.trim()) return;
+  if (node.attrs.oneLine && !tex.includes('\n')) {
+    state.write(`$$${tex}$$`);
+  } else {
+    // Line by line, so a formula inside a quote or a list keeps its prefix.
+    state.write('$$');
+    state.ensureNewLine();
+    state.text(tex, false);
+    state.ensureNewLine();
+    state.write('$$');
+  }
+  state.closeBlock(node);
+};
+
+const front_matter = (state: MarkdownSerializerState, node: Node) => {
+  state.write('---');
+  state.ensureNewLine();
+  // content ends with its own newline; text() would write it as a blank line.
+  state.text(String(node.attrs.content).replace(/\n$/, ''), false);
+  state.ensureNewLine();
+  state.write(String(node.attrs.close || '---'));
+  state.closeBlock(node);
+};
+
 const editorMarkdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
     callout,
+    math_inline,
+    math_block,
+    front_matter,
     code_block,
     footnote,
     list_item,

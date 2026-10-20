@@ -16,6 +16,8 @@ import {
   cycleSession,
   onBeforeSwitch,
   findSessionByPath,
+  closeOtherSessions,
+  closeSessionsAfter,
 } from '../../src/stores/tabs';
 import { reattachTarget } from '../../src/stores/reattach';
 import { activeModal, openModal, closeModal } from '../../src/stores/modals';
@@ -188,5 +190,40 @@ describe('tabs', () => {
     addSession(a);
     await closeSession(a.id);
     expect(a.closed).toBe(true);
+  });
+
+  it('closeOtherSessions keeps only that tab and makes it the active one', async () => {
+    const a = withDoc('/a.md');
+    const b = withDoc('/b.md');
+    const c = withDoc('/c.md');
+    sessions.set([a, b, c]);
+    activeSession.set(c);
+    await closeOtherSessions(b.id);
+    expect(get(sessions)).toEqual([b]);
+    expect(get(activeSession)).toBe(b);
+    expect([a.closed, b.closed, c.closed]).toEqual([true, false, true]);
+  });
+
+  it('closeSessionsAfter closes the tabs to its right and keeps the active tab when it survives', async () => {
+    const a = withDoc('/a.md');
+    const b = withDoc('/b.md');
+    const c = withDoc('/c.md');
+    const d = withDoc('/d.md');
+    sessions.set([a, b, c, d]);
+    activeSession.set(a);
+    await closeSessionsAfter(b.id);
+    expect(get(sessions)).toEqual([a, b]);
+    expect(get(activeSession)).toBe(a);
+  });
+
+  it('closeSessionsAfter moves to that tab when the active tab is among those closed', async () => {
+    const a = withDoc('/a.md');
+    const b = withDoc('/b.md');
+    const c = withDoc('/c.md');
+    sessions.set([a, b, c]);
+    activeSession.set(c);
+    await closeSessionsAfter(a.id);
+    expect(get(sessions)).toEqual([a]);
+    expect(get(activeSession)).toBe(a);
   });
 });

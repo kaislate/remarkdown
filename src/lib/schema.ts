@@ -5,6 +5,10 @@ export const AnchorSchema = z.object({
   prefix: z.string(),
   suffix: z.string(),
   blockHint: z.string(),
+  // Set when the anchored text runs across several blocks (a highlight over
+  // two paragraphs). Then text/prefix/suffix are taken from the article's
+  // full text, and resolution searches that instead of a single block.
+  endBlockHint: z.string().optional(),
 });
 
 export const HighlightSchema = z.object({
@@ -86,6 +90,11 @@ export const DrawingShapeSchema = z.discriminatedUnion('kind', [
     points: z.array(z.tuple([z.number(), z.number()])),
     color: z.string(),
     width: z.number(),
+    // What the stroke was tidied into (drawing-recognize.ts): an arrow
+    // (points: tail, tip) or a bracket (hook, spine top, spine bottom,
+    // hook). Optional, so a version that doesn't know it still reads the
+    // drawing as a line through its points.
+    drawn: z.enum(['arrow', 'bracket']).optional(),
   }),
   z.object({
     kind: z.literal('freehand-legacy'),

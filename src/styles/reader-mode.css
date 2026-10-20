@@ -1,30 +1,146 @@
-/* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts.
-   Hides every chrome element so the article stands alone. The title-bar
-   drag region and the resize-grip stay invisible-but-functional so the
-   window can still be moved + resized without leaving reader mode. */
+/* Reader mode — toggled by `body.reader-mode` from src/stores/reader-mode.ts,
+   with the chosen palette in `body[data-reader-theme]`.
+   1. Every chrome element is hidden. Only the page is left, plus the
+      way back and the window buttons along the top (ReaderModeLayer.svelte),
+      the "min left" line (ReaderMeta.svelte) and, unless turned off, the
+      minimap.
+   Typography and theme rules also style the minimap's copy of the page
+   (.minimap-content), so it lays out exactly like the page it maps.
+   2. Reading typography: a centred ~62ch column, larger text, looser lines.
+   3. Reader themes: tokens per palette. 'default' keeps the app's colours. */
 
-body.reader-mode .menu-root,
-body.reader-mode .titlebar-controls,
-body.reader-mode .tabbar,
+/* ── 1. No chrome ─────────────────────────────────────────────────────── */
+
+body.reader-mode .titlebar-drag,
+body.reader-mode .tab-haze,
+body.reader-mode .tab-sidebar,
 body.reader-mode .controls-aura,
+body.reader-mode .tabbar,
 body.reader-mode .left-title,
 body.reader-mode .rail,
 body.reader-mode .strip,
 body.reader-mode .notes-pill-wrap,
+body.reader-mode .notes-popup-wrap,
 body.reader-mode .dismiss,
-body.reader-mode .minimap-toggle,
+body.reader-mode:not(.reader-minimap) .minimap,
+body.reader-mode:not(.reader-minimap) .minimap-toggle,
 body.reader-mode .zoom-rail,
 body.reader-mode .toc-button,
-body.reader-mode .toc-popover {
+body.reader-mode .toc-popover,
+body.reader-mode .edit-mode-toggle,
+body.reader-mode .reader-mode-toggle,
+body.reader-mode .marginalia,
+/* Toasts and the save-error banner stay visible: an unnoticed "couldn't
+   save" costs more than a moment of chrome. */
+body.reader-mode .reattach-banner,
+body.reader-mode .saved-pulse,
+body.reader-mode .editor-toolbar,
+body.reader-mode .backdrop,
+body.reader-mode .overlay[aria-label='Welcome tutorial'] {
   display: none !important;
 }
 
-/* Minimap is hidden by default in reader mode. The popout class
-   (set when reader-mode + the minimapPopoutInFocusMode setting are
-   both on) keeps it mounted so the peek-zone slide-in can reveal it
-   on hover — see Minimap.svelte for the popout transitions. */
-body.reader-mode:not(.minimap-popout) .minimap {
-  display: none !important;
+/* The minimap, if shown: quieter than usual and in the theme's own
+   colours; its arrow still tucks it away and brings it back. Nothing below
+   it in reader mode, so it runs the height of the window. */
+body.reader-mode.reader-minimap .minimap,
+body.reader-mode.reader-minimap .minimap:hover {
+  bottom: 52px;
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  border-color: var(--glass-border);
+  box-shadow: none;
+}
+body.reader-mode.reader-minimap .minimap-toggle {
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  color: var(--fg-2);
+  box-shadow: none;
+  opacity: 0.7;
+}
+body.reader-mode.reader-minimap .minimap-toggle:hover {
+  background: color-mix(in srgb, var(--bg-1) 90%, transparent);
+  color: var(--fg-0);
+  opacity: 1;
+}
+body.reader-mode.reader-minimap .viewport-indicator {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* In a narrow window the centred column would run under it: keep its
+   gutter clear instead. */
+@media (max-width: 1000px) {
+  body.reader-mode.reader-minimap .scroll {
+    padding-right: 172px;
+  }
+}
+
+/* The menu stays exactly where it always is — just its three lines, no
+   box, as quiet as the back arrow beside it — so going in and out it
+   only loses or regains its box. The wordmark and tag fade away. */
+body.reader-mode .hamburger {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  opacity: 0.6;
+}
+body.reader-mode .hamburger .bar {
+  background: var(--fg-2);
+}
+body.reader-mode .hamburger:hover,
+body.reader-mode .hamburger:focus-visible,
+body.reader-mode .hamburger[aria-expanded='true'] {
+  opacity: 1;
+  transform: none;
+  background: var(--glass-fill);
+  border-color: transparent;
+  box-shadow: none;
+}
+body.reader-mode .hamburger:hover .bar,
+body.reader-mode .hamburger[aria-expanded='true'] .bar {
+  background: var(--fg-0);
+}
+body.reader-mode .wordmark,
+body.reader-mode .pre-tag {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The menu over a reader page sits on the page's own paper. (The reader
+   themes' glass is all but clear, so the dimmed page showed through it and
+   the menu looked dimmed along with everything else.) The dim behind it is
+   a light veil of the page's own ink rather than the app's dark wash. */
+body.reader-mode .menu-root .popover {
+  background: var(--bg-1);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+body.reader-mode .menu-overlay {
+  background-color: color-mix(in srgb, var(--fg-0) 22%, transparent);
+}
+
+/* The window buttons stay, muted to the page's ink, on one line with the
+   back arrow and the meta line. Their hover glow still says what they do. */
+body.reader-mode .titlebar-controls .ctrl {
+  color: var(--fg-2);
+}
+body.reader-mode .titlebar-controls .ctrl:hover {
+  color: #fff;
+}
+
+/* "Contents on the left" replaces the line at the top — where there's
+   room beside the column. In a narrower window the contents would run
+   into the text, so the line comes back instead. */
+@media (min-width: 1040px) {
+  body.reader-mode.reader-nav-left .reader-meta-wrap {
+    display: none;
+  }
+}
+@media (max-width: 1039.98px) {
+  body.reader-mode .reader-contents {
+    display: none;
+  }
 }
 
 /* Resize-grip stays grabbable but visually invisible so the user can
@@ -34,9 +150,280 @@ body.reader-mode .resize-grip .grip-glyph {
   opacity: 0;
 }
 
-/* In reader mode the toggle button slides into the spot the zoom pill
-   used to occupy — otherwise it'd be floating alone at left:144 with
-   nothing visible to its left. */
-body.reader-mode .reader-mode-toggle {
-  left: 22px !important;
+/* ── 2. Reading typography ────────────────────────────────────────────── */
+
+/* The minimap's reserved gutter goes; the column sits in the middle.
+   Text scrolling up fades out before it reaches the meta line
+   (ReaderMeta.svelte) — a mask on the scroller rather than a painted
+   backdrop, so the page behind stays exactly the page in every theme. */
+body.reader-mode .scroll {
+  padding-right: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 46px, #000 72px);
+  mask-image: linear-gradient(to bottom, transparent 46px, #000 72px);
+}
+/* ~62 characters a line of the reading face at ~1.12× the normal size
+   (rem, so zoom still applies). Sized in em rather than `ch`: ch is the
+   width of a "0", wider than an average letter, so 62ch would set ~80
+   letters a line. The 96px is the article's side padding. */
+body.reader-mode {
+  --reader-column: calc(30em + 96px);
+}
+body.reader-mode .text-frame {
+  font-size: 1.12rem;
+  max-width: var(--reader-column);
+  margin-left: auto;
+  margin-right: auto;
+}
+/* border-box so the side padding sits inside the frame and the text is
+   truly centred (normally the article overhangs the frame on the right). */
+body.reader-mode :is(.viewer, .minimap-content) {
+  box-sizing: border-box;
+  padding-top: 68px;
+}
+body.reader-mode :is(.viewer, .minimap-content).md-rendered {
+  color: var(--reader-body);
+  line-height: 1.75;
+}
+body.reader-mode :is(.viewer, .minimap-content) > :first-child {
+  margin-top: 0;
+}
+body.reader-mode :is(.viewer, .minimap-content) p {
+  margin: 0 0 1.15em;
+}
+body.reader-mode :is(.viewer, .minimap-content) li {
+  margin: 0.35em 0;
+}
+/* Headings in the reading face, a little tighter than the body. */
+body.reader-mode :is(.viewer, .minimap-content) :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  color: var(--fg-0);
+  text-wrap: balance;
+  margin-bottom: 0.55em;
+}
+body.reader-mode :is(.viewer, .minimap-content) h1 { font-size: 2.15rem; margin-top: 1.4em; }
+body.reader-mode :is(.viewer, .minimap-content) h2 { font-size: 1.6rem; margin-top: 1.6em; }
+body.reader-mode :is(.viewer, .minimap-content) h3 { font-size: 1.3rem; margin-top: 1.5em; }
+/* Code and tables keep a denser rhythm than prose. */
+body.reader-mode :is(.viewer, .minimap-content) pre {
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+body.reader-mode :is(.viewer, .minimap-content) table {
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+body.reader-mode :is(.viewer, .minimap-content) .callout-body {
+  color: var(--reader-body);
+}
+body.reader-mode :is(.viewer, .minimap-content) .callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── 3. Reader themes ─────────────────────────────────────────────────── */
+
+/* Default: the app's own palette, body copy one step softer than ink. */
+body.reader-mode {
+  --reader-body: var(--fg-1);
+}
+
+body.reader-mode[data-reader-theme='paper'] {
+  color-scheme: light;
+  --bg-0: #fbf9f4;
+  --bg-1: #f3efe6;
+  --bg-2: #ece7db;
+  --fg-0: #22201c;
+  --reader-body: #3d3a33;
+  --fg-1: #3d3a33;
+  --fg-2: #8b8574;
+  --accent: #5b51c8;
+  --accent-soft: rgba(91, 81, 200, 0.22);
+  --glass-border: rgba(34, 32, 28, 0.12);
+  --glass-fill: rgba(34, 32, 28, 0.03);
+  --danger: #b42318;
+}
+/* Textured paper: a cream page with grain and soft mottling, written in
+   blue-black iron-gall ink that has bled into it a little; red-brown ink
+   for links and marks. */
+body.reader-mode[data-reader-theme='textured'] {
+  color-scheme: light;
+  --bg-0: #f1e9d8;
+  --bg-1: #e9dfca;
+  --bg-2: #e2d6bd;
+  --fg-0: #1d2130;
+  --reader-body: #262a38;
+  --fg-1: #262a38;
+  --fg-2: #7d7363;
+  --accent: #8a3324;
+  --accent-soft: rgba(138, 51, 36, 0.22);
+  --glass-border: rgba(40, 34, 24, 0.16);
+  --glass-fill: rgba(40, 34, 24, 0.04);
+  --danger: #8a3324;
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.36  0 0 0 0 0.29  0 0 0 0 0.19  0 0 0 0.11 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --paper-mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.43  0 0 0 0 0.25  0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
+}
+body.reader-mode[data-reader-theme='sepia'] {
+  color-scheme: light;
+  --bg-0: #f3e7cf;
+  --bg-1: #ecdec2;
+  --bg-2: #e5d4b3;
+  --fg-0: #3b2f1e;
+  --reader-body: #4f4130;
+  --fg-1: #4f4130;
+  --fg-2: #8f7a5b;
+  --accent: #8a5524;
+  --accent-soft: rgba(138, 85, 36, 0.25);
+  --glass-border: rgba(59, 47, 30, 0.16);
+  --glass-fill: rgba(59, 47, 30, 0.04);
+  --danger: #a3271b;
+}
+body.reader-mode[data-reader-theme='night'] {
+  color-scheme: dark;
+  --bg-0: #121417;
+  --bg-1: #181b1f;
+  --bg-2: #1f2328;
+  --fg-0: #d6d3cc;
+  --reader-body: #a9a59c;
+  --fg-1: #a9a59c;
+  --fg-2: #6e6a62;
+  --accent: #c9a25e;
+  --accent-soft: rgba(201, 162, 94, 0.25);
+  --glass-border: rgba(214, 211, 204, 0.10);
+  --glass-fill: rgba(214, 211, 204, 0.03);
+  --danger: #e8836f;
+}
+body.reader-mode[data-reader-theme='eink'] {
+  color-scheme: light;
+  --bg-0: #f2f2f0;
+  --bg-1: #e9e9e6;
+  --bg-2: #e3e3e0;
+  --fg-0: #111111;
+  --reader-body: #222222;
+  --fg-1: #222222;
+  --fg-2: #666666;
+  --accent: #111111;
+  --accent-soft: rgba(0, 0, 0, 0.35);
+  --glass-border: rgba(0, 0, 0, 0.2);
+  --glass-fill: rgba(0, 0, 0, 0.03);
+  --danger: #111111;
+}
+/* A flat page — the app's glow gradients belong to the default look. */
+body.reader-mode:not([data-reader-theme='default']) {
+  background: var(--bg-0);
+}
+/* Textured: the grain is on the page and scrolls with it, like paper; the
+   window behind (seen only through the fade at the top) has the same. */
+body.reader-mode[data-reader-theme='textured'] {
+  background: var(--paper-grain), var(--paper-mottle), var(--bg-0);
+}
+body.reader-mode[data-reader-theme='textured'] .scroll {
+  background-image: var(--paper-grain), var(--paper-mottle);
+  background-attachment: local, local;
+}
+/* Ink: a hair of bleed around every letter (a soft shadow in the ink's own
+   colour, and the faintest stroke), so it reads as written into the paper
+   rather than printed on a screen. */
+body.reader-mode[data-reader-theme='textured'] :is(.viewer, .minimap-content).md-rendered {
+  text-shadow:
+    0 0 0.6px rgba(29, 33, 48, 0.55),
+    0 0.3px 1.4px rgba(29, 33, 48, 0.18);
+  -webkit-text-stroke: 0.15px rgba(29, 33, 48, 0.35);
+}
+
+/* The theme's highlighter ink replaces the default yellow (the other
+   pens keep their colours). E-ink has no colour: every pen is grey. */
+body.reader-mode[data-reader-theme='paper'] ::highlight(rmd-hl-0) {
+  background-color: rgba(255, 214, 102, 0.45);
+  text-decoration-color: rgba(214, 160, 40, 0.65);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='textured'] ::highlight(rmd-hl-0) {
+  background-color: rgba(230, 178, 60, 0.4);
+  text-decoration-color: rgba(176, 120, 40, 0.6);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='sepia'] ::highlight(rmd-hl-0) {
+  background-color: rgba(214, 160, 70, 0.35);
+  text-decoration-color: rgba(176, 120, 40, 0.6);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='night'] ::highlight(rmd-hl-0) {
+  background-color: rgba(201, 162, 94, 0.28);
+  text-decoration-color: rgba(201, 162, 94, 0.6);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-0),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-1),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-2),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-3),
+body.reader-mode[data-reader-theme='eink'] ::highlight(rmd-hl-4) {
+  background-color: rgba(0, 0, 0, 0.12);
+  text-decoration-color: rgba(0, 0, 0, 0.45);
+  text-shadow: none;
+}
+
+/* Links: underlined in the theme's accent so they read as links on
+   paper-like pages too. */
+body.reader-mode:not([data-reader-theme='default']) :is(.viewer, .minimap-content) a {
+  border-bottom-color: var(--accent-soft);
+}
+
+/* Callouts: the stock colours are pastel, made for a dark page. Light
+   reader pages (including Default over the light app theme) get the same
+   hues, deep enough to read on paper. */
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-note, .callout-info) {
+  border-left-color: #2f6fb5;
+  color: #2f6fb5;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-tip, .callout-hint, .callout-success, .callout-done) {
+  border-left-color: #2e7d4f;
+  color: #2e7d4f;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-question, .callout-help, .callout-faq) {
+  border-left-color: #946b00;
+  color: #946b00;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-warning, .callout-caution, .callout-attention) {
+  border-left-color: #b0551a;
+  color: #b0551a;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-failure, .callout-fail, .callout-missing, .callout-danger, .callout-error, .callout-bug) {
+  border-left-color: #b42318;
+  color: #b42318;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) .callout-example {
+  border-left-color: #6f45b8;
+  color: #6f45b8;
+}
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-quote, .callout-cite, .callout-abstract, .callout-summary, .callout-tldr) {
+  border-left-color: #6b665c;
+  color: #6b665c;
+}
+body.reader-mode[data-reader-theme='eink'] .callout {
+  border-left-color: #111111;
+  color: #111111;
+}
+
+/* E-ink: ink on grey, nothing in colour — code without syntax colours,
+   diagrams in greys. */
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) pre.shiki {
+  background-color: var(--bg-2) !important;
+}
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) pre.shiki span {
+  color: #111111 !important;
+}
+body.reader-mode[data-reader-theme='eink'] :is(.viewer, .minimap-content) .mermaid-block svg {
+  filter: grayscale(1);
+}
+
+/* E-ink screens smear motion: no animation or transition at all. */
+body.reader-mode[data-reader-theme='eink'],
+body.reader-mode[data-reader-theme='eink'] *,
+body.reader-mode[data-reader-theme='eink'] *::before,
+body.reader-mode[data-reader-theme='eink'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
 }

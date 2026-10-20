@@ -51,7 +51,7 @@
     class="mermaid-direction-picker glass"
     hidden={!current.visible}
     role="toolbar"
-    aria-label="Flowchart direction"
+    aria-label="Layout direction"
   >
     {#each OPTIONS as opt (opt.direction)}
       <button

@@ -491,6 +491,25 @@ body.reattach-mode .reader-mode-toggle {
   stroke: var(--accent) !important;
 }
 
+/* Groups (flowchart subgraphs): clickable to rename / remove; the
+   selected one gets an accent outline. */
+.mermaid-block-editor .mermaid-rendered g.cluster {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.cluster:hover > rect {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.35));
+}
+.mermaid-block-editor .mermaid-rendered g.cluster.mermaid-selected > rect {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+
+/* Editable diagrams carry floating toolbars in their top corners;
+   keep the drawing clear of them. */
+.mermaid-block-editor:not(.mermaid-fallback) .mermaid-rendered {
+  padding-top: 44px;
+}
+
 /* Connect mode: the user has clicked "+ connect" and is now picking a
    destination. Cursor turns to crosshair; non-source nodes pulse to
    invite clicking. */
@@ -527,25 +546,105 @@ body.reattach-mode .reader-mode-toggle {
   color: var(--bg-0);
 }
 
-/* Note under diagrams the visual editor can't change yet (other
-   diagram types, flowcharts with subgraphs / styling, …). The diagram
-   still renders; the note (a real element, toggled via `hidden` by
-   MermaidNodeView) says editing is coming and the diagram is kept as
-   it is. Never mentions markdown or source. */
+/* Under diagrams the visual editor can't change: a quiet line and an
+   "Edit diagram text" button (the same, as "Fix the diagram text", under
+   a diagram that won't draw). The button opens the text panel below
+   (lib/editor/mermaid/text-panel.ts). Never mentions markdown or source. */
 .mermaid-block-editor .mermaid-fallback-note[hidden] {
   display: none;
 }
 .mermaid-block-editor .mermaid-fallback-note {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin: 6px 0 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: var(--bg-2);
   border: 1px solid var(--glass-border);
   border-radius: 6px;
   font-family: var(--font-sans);
   font-size: 11px;
   color: var(--fg-2);
-  text-align: center;
+}
+.mermaid-block-editor.mermaid-text-open .mermaid-fallback-note { display: none; }
+.mermaid-block-editor .mermaid-text-edit-btn {
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font: 500 11px var(--font-sans);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-text-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* The text panel: in the page's flow under the diagram (not floating
+   over it like the popovers), the text beside a live drawing of it. */
+.mermaid-popover-host.mermaid-text-panel-host {
+  position: static;
+  pointer-events: auto;
+}
+.mermaid-text-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-1);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.mermaid-text-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  min-height: 180px;
+}
+.mermaid-text-box {
+  width: 100%;
+  min-height: 180px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: 12px/1.5 var(--font-mono);
+  tab-size: 2;
+  outline: none;
+}
+.mermaid-text-box:focus { border-color: var(--accent); }
+.mermaid-text-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mermaid-text-preview {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--bg-0);
+  transition: opacity 0.2s ease;
+}
+.mermaid-text-preview svg { max-width: 100%; height: auto; min-width: 0 !important; }
+.mermaid-text-preview.stale { opacity: 0.35; }
+.mermaid-text-problem { margin: 0; color: var(--danger, #d05050); font-size: 11.5px; }
+.mermaid-text-problem[hidden] { display: none; }
+.mermaid-text-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.mermaid-text-hint { flex: 1 1 auto; color: var(--fg-2); font-size: 11px; }
+.mermaid-text-cancel,
+.mermaid-text-save {
+  border-radius: 5px;
+  padding: 4px 12px;
+  font: 500 12px var(--font-sans);
+  cursor: pointer;
+}
+.mermaid-text-cancel { background: transparent; border: 1px solid var(--glass-border); color: var(--fg-2); }
+.mermaid-text-cancel:hover { color: var(--fg-0); }
+.mermaid-text-save { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+.mermaid-text-save:hover { filter: brightness(1.08); }
+@media (max-width: 760px) {
+  .mermaid-text-body { grid-template-columns: 1fr; }
 }
 
 /* Popover hosts — no styling, just containers. The popovers themselves
@@ -601,6 +700,26 @@ body.reattach-mode .reader-mode-toggle {
 }
 .mermaid-block-editor .mermaid-rendered g[data-et="note"].sequence-selected {
   filter: drop-shadow(0 0 8px var(--accent));
+}
+
+/* Blocks (loop / alt / …) and group boxes: their frames open the block
+   / box popover. */
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"] {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"]:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"].sequence-selected line,
+.mermaid-block-editor .mermaid-rendered g[data-et="control-structure"].sequence-selected polygon {
+  stroke: var(--accent) !important;
+}
+.mermaid-block-editor .mermaid-rendered svg > g > rect.rect {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg > g.sequence-selected > rect.rect {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
 }
 
 /* Add-message mode: crosshair cursor on the rendered area, pulse
@@ -696,4 +815,280 @@ body.reattach-mode .reader-mode-toggle {
 }
 .md-rendered a.footnote-backref:hover {
   opacity: 1;
+}
+
+/* ── Pie charts (pie-controller.ts): wedges, legend entries and the
+   title are clickable; the selected slice gets an accent outline. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.slice,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.pieTitleText {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle:hover,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend:hover > rect {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] path.pieCircle.mermaid-selected,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] g.legend.mermaid-selected > rect {
+  stroke: var(--accent) !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="pie"] text.pieTitleText.mermaid-selected {
+  fill: var(--accent) !important;
+}
+
+/* ── Gantt charts (gantt-controller.ts): bars, their labels, section
+   titles and the title are clickable; the selected bar is outlined. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text[id$="-text"],
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.sectionTitle,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.titleText {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] rect.task.mermaid-selected {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.sectionTitle.mermaid-selected,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="gantt"] text.titleText.mermaid-selected {
+  fill: var(--accent) !important;
+}
+
+/* ── Timelines (timeline-controller.ts): every box (section header,
+   period, event) and the title are clickable. ── */
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node,
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] > text {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node.mermaid-selected {
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] g.timeline-node.mermaid-selected path {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+.mermaid-block-editor .mermaid-rendered svg[aria-roledescription="timeline"] > text.mermaid-selected {
+  fill: var(--accent) !important;
+}
+/* ── State diagrams in edit mode (mermaid/state-controller.ts) ────────
+   States, notes and start / end circles are g.node (rules above). Groups
+   are g.statediagram-cluster (not g.cluster), transitions
+   path.transition with a clickable label. Everything scoped to
+   svg.statediagram so other diagram types are unaffected. */
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster,
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.note-cluster,
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.edgeLabel {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster:hover rect.outer {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.35));
+}
+.mermaid-block-editor .mermaid-rendered svg.statediagram g.statediagram-cluster.mermaid-selected rect.outer {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition {
+  cursor: pointer;
+  transition: stroke 0.12s ease, filter 0.12s ease;
+}
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg.statediagram path.transition.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+/* Connect mode: groups invite a click too. */
+.mermaid-block-editor.mermaid-connect-mode .mermaid-rendered svg.statediagram g.statediagram-cluster rect.outer {
+  animation: mermaidConnectPulse 1.4s ease-in-out infinite;
+}
+/* ── end state diagrams ─────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────
+   Mermaid class diagram editor
+   ──────────────────────────────────────────────────────
+   Class boxes and notes are g.node (hover / selected glow from the
+   generic rules above). Member rows, relationship lines and labels
+   are clickable too; namespaces have nothing to edit on their own. */
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.cluster {
+  cursor: default;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.cluster:hover > rect {
+  filter: none;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label:hover {
+  filter: drop-shadow(0 0 3px rgba(139, 127, 255, 0.6));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram :is(.members-group, .methods-group) > g.label.mermaid-selected {
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation,
+.mermaid-block-editor .mermaid-rendered svg.classDiagram g.edgeLabel {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg.classDiagram path.relation.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+
+/* ──────────────────────────────────────────────────────
+   Mermaid ER diagram editor
+   ──────────────────────────────────────────────────────
+   Entities are g.node (generic hover / selected glow); each attribute
+   row's background is clickable, as are relationship lines and labels. */
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even) {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even):hover {
+  filter: drop-shadow(0 0 3px rgba(139, 127, 255, 0.6));
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.node :is(.row-rect-odd, .row-rect-even).mermaid-selected path {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine,
+.mermaid-block-editor .mermaid-rendered svg.erDiagram g.edgeLabel {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine:hover {
+  filter: drop-shadow(0 0 4px rgba(139, 127, 255, 0.45));
+}
+.mermaid-block-editor .mermaid-rendered svg.erDiagram path.relationshipLine.mermaid-selected {
+  filter: drop-shadow(0 0 6px var(--accent));
+  stroke: var(--accent) !important;
+}
+/* ── Mindmap editing (mindmap-controller.ts) ──────────────────────────
+   Every idea is a `g.mindmap-node` (it also gets the generic `g.node`
+   hover / selection glow above); its shape is a <path>, <rect>,
+   <circle> or <polygon>. Plain ideas are drawn with only an underline,
+   so the selected one also gets an accent outline on its shape. */
+.mermaid-block-editor .mermaid-rendered g.mindmap-node {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node:hover > :is(path, rect, circle, polygon) {
+  stroke: var(--accent-soft);
+  stroke-width: 2px;
+}
+.mermaid-block-editor .mermaid-rendered g.mindmap-node.mermaid-selected > :is(path, rect, circle, polygon) {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+/* ── end mindmap editing ── */
+
+/* ── Kanban editing (kanban-controller.ts) ────────────────────────────
+   Columns are `g.sections > g.cluster` (they share the flowchart group
+   rules above: pointer, hover glow, accent outline when selected);
+   the header is where a click usually lands, so it gets the hover cue.
+   Cards are `g.items > g.node` with a rounded <rect>: the selected
+   card gets an accent border on top of the generic `g.node` glow. */
+.mermaid-block-editor .mermaid-rendered g.sections > g.cluster .cluster-label {
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-rendered g.sections > g.cluster:hover .cluster-label {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-soft);
+}
+.mermaid-block-editor .mermaid-rendered g.items > g.node:hover > rect.label-container {
+  stroke: var(--accent-soft);
+  stroke-width: 2px;
+}
+.mermaid-block-editor .mermaid-rendered g.items > g.node.mermaid-selected > rect.label-container {
+  stroke: var(--accent) !important;
+  stroke-width: 2px !important;
+}
+/* ── end kanban editing ── */
+
+/* ─── Document details (front matter) ────────────────────────────────
+   The settings block some files start with (lib/markdown-it-frontmatter
+   .ts): folded away in the reader as "Document details", a quiet card in
+   the editor that opens its text when clicked. */
+.md-rendered .front-matter {
+  margin: 0 0 1.4em;
+  padding: 0.5em 0.85em;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg-0) 3%, transparent);
+  font-family: var(--font-sans);
+  font-size: 0.82em;
+  color: var(--fg-2);
+}
+.md-rendered .front-matter summary,
+.md-rendered .front-matter-summary {
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.md-rendered .front-matter dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2em 1em;
+  margin: 0.5em 0 0.1em;
+}
+.md-rendered .front-matter dt { color: var(--fg-2); }
+.md-rendered .front-matter dd { margin: 0; color: var(--fg-1); overflow-wrap: anywhere; }
+.md-rendered .front-matter-block { cursor: pointer; }
+.md-rendered .front-matter-block:hover,
+.md-rendered .front-matter-block.ProseMirror-selectednode { border-color: var(--accent); }
+
+/* ─── Formulas in the editor ─────────────────────────────────────────
+   Drawn as in the reader; click to change (lib/editor/source-node-views.ts). */
+.ProseMirror .math-inline,
+.ProseMirror .math-block {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+.ProseMirror .math-block { display: block; text-align: center; margin: 1em 0; padding: 0.2em 0; }
+.ProseMirror .math-inline:hover,
+.ProseMirror .math-block:hover,
+.ProseMirror .math-inline.ProseMirror-selectednode,
+.ProseMirror .math-block.ProseMirror-selectednode {
+  background: var(--accent-soft);
+  outline: none;
+}
+.md-rendered .math-error {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--danger, #d05050);
+  text-decoration: underline wavy;
+}
+.md-rendered .math-empty { font-family: var(--font-sans); font-size: 0.85em; color: var(--fg-2); font-style: italic; }
+
+/* Pictures in the editor: click to describe one. */
+.ProseMirror .editor-image { cursor: pointer; }
+.ProseMirror .editor-image img { max-width: 100%; border-radius: 4px; }
+.ProseMirror .editor-image.ProseMirror-selectednode img,
+.ProseMirror .editor-image:hover img { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Code colours follow the page: GitHub's dark colouring on dark pages
+   (the default the highlighter writes), its light one on light pages —
+   the light app theme, and the light reader themes. On those, code sits
+   on the page's own shade rather than a white box. */
+:is(
+  :root[data-theme='light'] body:not(.reader-mode),
+  :root[data-theme='light'] body.reader-mode[data-reader-theme='default'],
+  body.reader-mode:is([data-reader-theme='paper'], [data-reader-theme='textured'], [data-reader-theme='sepia'])
+) :is(.md-rendered pre.shiki, .md-rendered pre.shiki span, .md-rendered .shiki-tok) {
+  color: var(--shiki-light) !important;
+}
+:is(
+  :root[data-theme='light'] body:not(.reader-mode),
+  :root[data-theme='light'] body.reader-mode[data-reader-theme='default'],
+  body.reader-mode:is([data-reader-theme='paper'], [data-reader-theme='textured'], [data-reader-theme='sepia'])
+) .md-rendered pre.shiki {
+  background-color: var(--bg-2) !important;
 }

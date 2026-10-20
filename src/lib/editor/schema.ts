@@ -15,10 +15,7 @@
 // This file ALSO overrides the default `code_block` node to add an
 // explicit `language` attr (the prosemirror-markdown default stores
 // the language under `params`, which doesn't round-trip cleanly with
-// our toolbar/NodeView surface). The matching custom parser and
-// serializer integration land in Tasks 2-3 of Phase 2b — until those
-// ship, stock `defaultMarkdownParser`/`defaultMarkdownSerializer`
-// against `editorSchema` will not preserve the language on round-trip.
+// our toolbar/NodeView surface).
 
 import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
@@ -70,10 +67,8 @@ const calloutNode: NodeSpec = {
   },
 };
 
-// TODO(Phase 2b Tasks 2-3): pair this NodeSpec with a custom markdown
-// parser + serializer. Until those land, round-tripping through the
-// stock prosemirror-markdown parser/serializer will drop the language
-// (base reads `params`, this override stores it on `language`).
+// The language lives on `language` (the base schema's `params` doesn't
+// round-trip cleanly); parser.ts and serializer.ts read and write it.
 const codeBlockNode: NodeSpec = {
   attrs: { language: { default: '' } },
   content: 'text*',
@@ -186,6 +181,82 @@ const footnoteNode: NodeSpec = {
   },
 };
 
+// `bullet_list` remembering its marker (`-`, `*` or `+`), so saving
+// doesn't rewrite every list in the file. New lists use `*`.
+const bulletListNode: NodeSpec = {
+  content: 'list_item+',
+  group: 'block',
+  attrs: { tight: { default: false }, bullet: { default: '*' } },
+  parseDOM: [{ tag: 'ul', getAttrs: (dom: HTMLElement) => ({ tight: dom.hasAttribute('data-tight') }) }],
+  toDOM(node) {
+    return ['ul', { 'data-tight': node.attrs.tight ? 'true' : null }, 0];
+  },
+};
+
+// Maths, kept exactly as written: `$…$` inline (or `$$…$$` within a
+// line, `display`), and `$$` blocks. Atoms — the formula is edited in a
+// popover (math-node-view.ts) and drawn with KaTeX; the TeX itself never
+// passes through markdown escaping. A block remembers whether it was
+// written on one line (`$$x$$`) or over several.
+const mathInlineNode: NodeSpec = {
+  attrs: { tex: { default: '' }, display: { default: false } },
+  inline: true,
+  group: 'inline',
+  atom: true,
+  parseDOM: [
+    {
+      tag: 'span.math-inline',
+      getAttrs: (dom: HTMLElement) => ({
+        tex: dom.getAttribute('data-tex') || '',
+        display: dom.getAttribute('data-display') === 'true',
+      }),
+    },
+  ],
+  toDOM(node) {
+    return ['span', { class: 'math-inline', 'data-tex': String(node.attrs.tex), 'data-display': String(node.attrs.display) }, String(node.attrs.tex)];
+  },
+};
+
+const mathBlockNode: NodeSpec = {
+  attrs: { tex: { default: '' }, oneLine: { default: false } },
+  group: 'block',
+  atom: true,
+  parseDOM: [
+    {
+      tag: 'div.math-block',
+      getAttrs: (dom: HTMLElement) => ({
+        tex: dom.getAttribute('data-tex') || '',
+        oneLine: dom.getAttribute('data-one-line') === 'true',
+      }),
+    },
+  ],
+  toDOM(node) {
+    return ['div', { class: 'math-block', 'data-tex': String(node.attrs.tex), 'data-one-line': String(node.attrs.oneLine) }, String(node.attrs.tex)];
+  },
+};
+
+// Front matter (lib/markdown-it-frontmatter.ts): the settings block at
+// the top of a file, kept byte for byte. `content` is the text between
+// the fences, final newline included; `close` is the closing fence
+// (`---` or `...`).
+const frontMatterNode: NodeSpec = {
+  attrs: { content: { default: '' }, close: { default: '---' } },
+  group: 'block',
+  atom: true,
+  parseDOM: [
+    {
+      tag: 'div.front-matter-block',
+      getAttrs: (dom: HTMLElement) => ({
+        content: dom.getAttribute('data-content') || '',
+        close: dom.getAttribute('data-close') || '---',
+      }),
+    },
+  ],
+  toDOM(node) {
+    return ['div', { class: 'front-matter-block', 'data-content': String(node.attrs.content), 'data-close': String(node.attrs.close) }];
+  },
+};
+
 // OrderedMap.update() REPLACES the spec wholesale rather than merging,
 // so `codeBlockNode` must be a complete NodeSpec — fields like
 // `marks: ''`, `content: 'text*'`, `code: true`, etc. are restated on
@@ -193,8 +264,12 @@ const footnoteNode: NodeSpec = {
 const nodes = baseSchema.spec.nodes
   .update('code_block', codeBlockNode)
   .update('list_item', listItemNode)
+  .update('bullet_list', bulletListNode)
   .addBefore('blockquote', 'callout', calloutNode)
   .addToEnd('footnote', footnoteNode)
+  .addToEnd('math_inline', mathInlineNode)
+  .addToEnd('math_block', mathBlockNode)
+  .addToStart('front_matter', frontMatterNode)
   .addToEnd('table', tableNodes.table)
   .addToEnd('table_row', tableNodes.table_row)
   .addToEnd('table_cell', tableNodes.table_cell)

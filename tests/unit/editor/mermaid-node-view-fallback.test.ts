@@ -1,5 +1,6 @@
-// What the editor says about diagrams it can't edit or can't draw.
-// Product rule: never tell the user to edit markdown / source.
+// What the editor says about diagrams it can't edit visually or can't
+// draw, and the text panel it offers for both. Product rule: never tell
+// the user to edit markdown / source.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditorView } from 'prosemirror-view';
 import { EditorState } from 'prosemirror-state';
@@ -45,23 +46,60 @@ function setBlockText(view: EditorView, newText: string): void {
 }
 
 const note = (parent: HTMLElement) => parent.querySelector<HTMLElement>('.mermaid-fallback-note');
+const GIT = '```mermaid\ngitGraph\n  commit\n```\n';
 
 beforeEach(() => {
   resetMermaidRuntimeForTests();
   document.body.innerHTML = '';
 });
 
-describe('MermaidNodeView: diagrams that can\'t be edited visually', () => {
-  it('says editing is coming soon and that the diagram is kept as is — never "markdown" or "source"', async () => {
-    const { view, parent } = makeView('```mermaid\nclassDiagram\nclass Animal\n```\n');
+describe("MermaidNodeView: diagrams that can't be edited visually", () => {
+  it('offers to change the diagram through its text — never "markdown" or "source"', async () => {
+    const { view, parent } = makeView(GIT);
     await flush();
     const el = note(parent);
     expect(el).not.toBeNull();
     expect(el!.hidden).toBe(false);
-    expect(el!.textContent).toBe(
-      'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.',
-    );
-    expect(parent.textContent).not.toMatch(/markdown|source|syntax/i);
+    expect(el!.querySelector('.mermaid-fallback-text')?.textContent).toBe('This diagram is changed through its text.');
+    expect(el!.querySelector('button')?.textContent).toBe('Edit diagram text');
+    expect(parent.textContent).not.toMatch(/markdown|source|syntax|coming soon/i);
+    view.destroy();
+  });
+
+  it('the text panel: the text, a live drawing of it, and Save puts it in the document', async () => {
+    const { view, parent } = makeView(GIT);
+    await flush();
+    note(parent)!.querySelector('button')!.click();
+    const panel = parent.querySelector<HTMLElement>('.mermaid-text-panel')!;
+    expect(panel).not.toBeNull();
+    expect(parent.querySelector('.mermaid-block-editor')!.classList.contains('mermaid-text-open')).toBe(true);
+    const box = panel.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(box.value).toBe('gitGraph\n  commit');
+    await flush();
+    expect(panel.querySelector('.mermaid-text-preview svg')).not.toBeNull();
+    // A mistake: the drawing stays (faded) and says what's wrong.
+    box.value = 'gitGraph\n  BROKEN\n';
+    box.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 300));
+    await flush();
+    expect(panel.querySelector('.mermaid-text-preview')!.classList.contains('stale')).toBe(true);
+    expect(panel.querySelector('.mermaid-text-problem')!.textContent).toMatch(/^Can't draw this yet: Parse error on line 2/);
+    box.value = 'gitGraph\n  commit\n  commit\n';
+    panel.querySelector<HTMLButtonElement>('.mermaid-text-save')!.click();
+    expect(parent.querySelector('.mermaid-text-panel')).toBeNull();
+    expect(view.state.doc.firstChild!.textContent).toBe('gitGraph\n  commit\n  commit');
+    view.destroy();
+  });
+
+  it('Esc closes the panel without changing anything', async () => {
+    const { view, parent } = makeView(GIT);
+    await flush();
+    note(parent)!.querySelector('button')!.click();
+    const box = parent.querySelector<HTMLTextAreaElement>('.mermaid-text-panel textarea')!;
+    box.value = 'changed';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(parent.querySelector('.mermaid-text-panel')).toBeNull();
+    expect(view.state.doc.firstChild!.textContent).toBe('gitGraph\n  commit');
     view.destroy();
   });
 
@@ -74,14 +112,15 @@ describe('MermaidNodeView: diagrams that can\'t be edited visually', () => {
 });
 
 describe('MermaidNodeView: diagrams that fail to draw', () => {
-  it('a diagram that was already broken in the file: friendly error, no undo hint', async () => {
+  it('a diagram that was already broken in the file: friendly error, no undo hint, a way to fix it', async () => {
     const { view, parent } = makeView('```mermaid\nflowchart TD\nA[BROKEN\n```\n');
     await flush();
     const err = parent.querySelector('.mermaid-error');
     expect(err?.querySelector('.mermaid-error-title')?.textContent).toBe("This diagram couldn't be displayed.");
     expect(err?.querySelector('.mermaid-error-hint')).toBeNull();
-    // The "coming soon" note would be wrong here — it's broken, not unsupported.
-    expect(note(parent)?.hidden ?? true).toBe(true);
+    // Broken, not unsupported: the way to fix it, through its text.
+    expect(note(parent)?.hidden).toBe(false);
+    expect(note(parent)!.querySelector('button')?.textContent).toBe('Fix the diagram text');
     view.destroy();
   });
 

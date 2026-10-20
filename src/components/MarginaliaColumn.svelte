@@ -1,23 +1,19 @@
 <script lang="ts">
-  // Right-margin marginalia column — read-only prototype.
-  // Renders one card per resolved re.mark, vertically aligned with the
-  // anchor's y-position in the article. Cards live inside .content
-  // (sibling of .text-frame) so they scroll naturally with the article;
-  // only their y is computed from anchor positions.
+  // Margin notes: one card per re.mark in the right margin, level with
+  // its pin in the text. Cards live inside .text-frame so they scroll with
+  // the article; only their y is computed from anchor positions. Cards
+  // anchored close together are pushed down clear of each other (with a
+  // sloping connector back to the pin), and a click edits the card's
+  // re.mark in place.
   //
-  // Visibility:
-  // - Setting `marginaliaEnabled` must be on
-  // - Viewport must be ≥ 1440px wide (CSS @media; otherwise the column
-  //   would either overlap the text or get clipped by the minimap pad)
-  //
-  // Known prototype gaps:
-  // - No collision avoidance — cards anchored close together overlap
-  // - No connection lines yet
-  // - Read-only (no inline editing)
+  // Visibility: the `marginaliaEnabled` setting, and a window at least
+  // 1000px wide (Viewer.svelte makes room for the cards: 280px wide from
+  // 1440px, 220px below that; narrower, there's no room and they hide).
 
   import { resolvedAnnots, currentViewerRoot, updateAnnotation } from '../stores/annots';
   import { settings } from '../stores/settings';
   import { zoomLevel } from '../stores/ui';
+  import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { contextFor } from '../lib/note-context';
   import type { Note } from '../lib/schema';
@@ -37,6 +33,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     if (typeof requestAnimationFrame === 'undefined') {
       resizeTick += 1;
       return;
@@ -320,12 +317,14 @@
        added via padding/margin trick — actually via margin-left so
        the cards measure inside this 280px width. */
     left: 100%;
-    margin-left: 32px;
+    /* The article's text runs 48px past the frame (its side padding), so
+       48 + the 32px gap keeps the cards clear of the text. */
+    margin-left: 80px;
     bottom: 0;
-    width: 280px;
-    /* No display:none gate — clipping handles overflow at narrow
-       viewports gracefully. .scroll has overflow-x:hidden so anything
-       past the right edge of the scroll container is cropped. */
+    width: var(--card-w, 280px);
+  }
+  @media (max-width: 999px) {
+    .marginalia { display: none; }
   }
 
   /* Liquid-glass card with 2.5D 'waterfall' edges.

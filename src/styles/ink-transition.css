@@ -1,0 +1,64 @@
+/* The ink-drying swap between reader mode and the normal view
+   (lib/ink-transition.ts). The new view sits still underneath; the old
+   one, on top, loses its colour and dries away through the ink mask drawn
+   by public/ink-worklet.js as --ink-t runs from 0 to 1. */
+
+@property --ink-t {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+::view-transition-group(root) {
+  animation-duration: var(--ink-dry-ms, 950ms);
+}
+::view-transition-new(root) {
+  animation: none;
+  z-index: 0;
+}
+/* On top (by default the new view is painted over the old one and fades
+   in; here it waits underneath while the old one dries away). */
+::view-transition-old(root) {
+  z-index: 1;
+  animation: ink-fade var(--ink-dry-ms, 950ms) ease-in forwards;
+}
+:root.ink-worklet::view-transition-old(root) {
+  -webkit-mask-image: paint(ink-dry);
+  mask-image: paint(ink-dry);
+  animation:
+    /* Fast at first, like ink meeting paper, so it's moving from the very
+       first frame after the snapshot; slowing as it dries. */
+    ink-dry var(--ink-dry-ms, 950ms) cubic-bezier(0.22, 0.6, 0.3, 1) forwards,
+    ink-drain var(--ink-dry-ms, 950ms) ease-in forwards;
+}
+@keyframes ink-dry {
+  from { --ink-t: 0; }
+  to { --ink-t: 1; }
+}
+@keyframes ink-drain {
+  from { filter: saturate(1); }
+  to { filter: saturate(0.15) brightness(1.04); }
+}
+/* Without a paint worklet: the old view just fades. */
+@keyframes ink-fade {
+  from { opacity: 1; filter: saturate(1); }
+  to { opacity: 0; filter: saturate(0.15); }
+}
+
+/* Warming the next switch's pattern (lib/ink-transition.ts): a small,
+   all-but-invisible element in the window's proportions paints it over a
+   few frames, so the worklet has it ready. */
+.ink-warm {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 160px;
+  opacity: 0.004;
+  pointer-events: none;
+  z-index: 1;
+  background-image: paint(ink-dry);
+  --ink-t: 0.5;
+}
+.ink-warm.warming {
+  animation: ink-dry 600ms linear;
+}

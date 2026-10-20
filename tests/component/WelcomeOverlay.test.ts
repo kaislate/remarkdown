@@ -74,28 +74,43 @@ describe('WelcomeOverlay', () => {
     expect(document.querySelector('.overlay')).toBeNull();
   });
 
-  it('shows all six expected tips when visible', () => {
+  // Controls on screen, at the given boxes (jsdom has no layout).
+  function control(cls: string, left: number, top: number, width = 38, height = 38) {
+    const el = document.createElement('div');
+    el.className = cls;
+    el.getBoundingClientRect = () => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} }) as DOMRect;
+    el.getClientRects = () => [el.getBoundingClientRect()] as unknown as DOMRectList;
+    document.body.appendChild(el);
+    return el;
+  }
+  const shown = () => Array.from(document.querySelectorAll('[data-tip]')).map((t) => t.getAttribute('data-tip'));
+
+  it('shows a tip for each control on screen, and none for those that are not', async () => {
+    control('hamburger', 14, 14);
+    control('edit-mode-toggle', 14, 60);
+    control('toc-button', 14, 106);
+    control('reader-mode-toggle', 14, 152);
+    control('zoom-rail', 22, 700, 118, 40);
     setWelcomeDocOpen();
     render(WelcomeOverlay);
-    expect(document.querySelector('.tip-hamburger')).not.toBeNull();
-    expect(document.querySelector('.tip-drag')).not.toBeNull();
-    expect(document.querySelector('.bracket-row')).not.toBeNull();
-    expect(document.querySelector('.tip-tools')).not.toBeNull();
-    expect(document.querySelector('.tip-titlebar')).not.toBeNull();
-    expect(document.querySelector('.tip-zoom')).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(shown()).toEqual(expect.arrayContaining(['menu', 'edit', 'contents', 'reader', 'drag', 'drop', 'zoom']));
+    // No annotation tools, re.marks pill or minimap on screen: no tips for them.
+    expect(shown()).not.toContain('tools');
+    expect(shown()).not.toContain('remarks');
+    expect(shown()).not.toContain('minimap');
   });
 
-  it('contains the expected guidance copy', () => {
+  it('speaks of documents, not markdown files', async () => {
+    control('hamburger', 14, 14);
     setWelcomeDocOpen();
     render(WelcomeOverlay);
-    const overlay = document.querySelector('.overlay')!;
-    expect(overlay.textContent).toContain('Open');
-    expect(overlay.textContent).toContain('settings');
-    expect(overlay.textContent).toContain('drop');
-    expect(overlay.textContent).toContain('Navigate long documents');
-    expect(overlay.textContent).toContain('annotations');
-    expect(overlay.textContent).toContain('drag the window');
-    expect(overlay.textContent).toContain('Resize');
+    await new Promise((r) => setTimeout(r, 60));
+    const text = document.querySelector('.overlay')!.textContent ?? '';
+    expect(text).toContain('Open documents and settings');
+    expect(text).toContain('drop a document');
+    expect(text).toContain('drag the window');
+    expect(text).not.toMatch(/\.md\b|markdown/i);
   });
 
   it('clicking "Got it" hides the overlay for the session WITHOUT touching the persisted setting', async () => {
@@ -120,11 +135,12 @@ describe('WelcomeOverlay', () => {
     expect(document.querySelector('.overlay')).toBeNull();
   });
 
-  it('the seventh re.marks tip is rendered alongside the others', () => {
+  it('the re.marks tip shows when the re.marks pill is on screen', async () => {
+    control('notes-pill-wrap', 49, 694, 86, 38);
     setWelcomeDocOpen();
     render(WelcomeOverlay);
-    expect(document.querySelector('.tip-remarks')).not.toBeNull();
-    const overlay = document.querySelector('.overlay')!;
-    expect(overlay.textContent).toContain('Browse and jump to your re');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(shown()).toContain('remarks');
+    expect(document.querySelector('.overlay')!.textContent).toContain('Browse and jump to your re');
   });
 });

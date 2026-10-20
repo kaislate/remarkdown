@@ -6,7 +6,9 @@ export type ModalState =
   | { kind: 'corrupt-sidecar'; path: string }
   | { kind: 'settings' }
   | { kind: 'confirm-clear-annots' }
-  | { kind: 'check-update' };
+  | { kind: 'check-update' }
+  | { kind: 'edit-conflict'; sessionId: string }
+  | { kind: 'onboarding' };
 
 export const activeModal = writable<ModalState>(null);
 

@@ -1,0 +1,43 @@
+/* Room for the tabs. TabBar.svelte sets these body classes while tabs are
+   shown:
+     has-tabs            — tabs are shown (top or left)
+     tabs-left           — tabs live in the sidebar on the left
+     tab-sidebar-pinned  — that sidebar is pinned open
+   Top tabs float over the page like the rest of the chrome, so the page
+   keeps the whole window; the sidebar takes a strip on the left and the
+   page (Viewer's .scroll) starts right of it, so its scroll box is exactly
+   the visible part of the page (the minimap's viewport box relies on
+   that). */
+
+:root {
+  --tab-side-w: 0px;
+}
+/* Reader mode hides every bit of chrome, the sidebar included, and the
+   page gets the whole window back. */
+body.has-tabs.tabs-left:not(.reader-mode) {
+  --tab-side-w: 52px;
+}
+body.has-tabs.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
+  --tab-side-w: 200px;
+}
+
+/* Editing under top tabs: the formatting toolbar sticks below them and
+   below the menu button's row (it reaches 52px, and the toolbar starts
+   left of where the wordmark ends) instead of under either. */
+body.has-tabs:not(.tabs-left) .editor-toolbar {
+  top: 54px;
+}
+
+/* The floating buttons down the left edge (and the watermark) move over
+   with the sidebar. `translate` composes with their own transforms. */
+body .edit-mode-toggle,
+body .toc-button,
+body .toc-popover,
+body .reader-mode-toggle,
+body .zoom-rail,
+body .notes-pill-wrap,
+body .notes-popup-wrap,
+body div.dismiss,
+body .left-title {
+  translate: var(--tab-side-w) 0;
+}

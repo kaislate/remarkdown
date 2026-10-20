@@ -6,6 +6,7 @@
 // Known upstream mermaid quirks deliberately NOT asserted here:
 // block-beta label overflow, sequence `critical` label spill, radar
 // title clipping, C4 relation label colour.
+import { chooseSetting } from './support/settings';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -63,11 +64,7 @@ async function seedAndOpen(page: Page, path: string, md: string, opts: { clear?:
 }
 
 async function setTheme(page: Page, theme: 'dark' | 'light'): Promise<void> {
-  await clickMenuItem(page, /settings/i);
-  await page.locator('#setting-theme').selectOption(theme);
-  await page.keyboard.press('Escape');
-  const close = page.locator('button.close[aria-label="Close"]');
-  if (await close.count()) await close.first().click({ force: true }).catch(() => {});
+  await chooseSetting(page, 'Appearance', 'setting-theme', theme === 'dark' ? 'Dark' : 'Light');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 }
 
@@ -494,7 +491,9 @@ async function clickInBlock(page: Page, heading: string, selector: string): Prom
   }, [blockSelectorScript(heading), selector] as [string, string]);
 }
 
-const FALLBACK_NOTE = 'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+// The note and its button, as the block's text reads.
+const FALLBACK_NOTE = 'This diagram is changed through its text.Edit diagram text';
+const FIX_NOTE = 'You can fix it by changing its text.Fix the diagram text';
 
 test.describe('mermaid — edit mode', () => {
   test('every block: diagram (never raw code), friendly notes, untouched sources survive a save', async ({ page }) => {
@@ -517,11 +516,20 @@ test.describe('mermaid — edit mode', () => {
     for (const b of m.blocks) {
       expect(b.status, b.heading).toBe(/^invalid-/.test(b.heading) ? 'error' : 'svg');
       expect(b.sourceVisible, `${b.heading} source visible`).toBe(false);
-      if (b.note !== null) expect(b.note).toBe(FALLBACK_NOTE);
-      if (b.status === 'error') expect(b.note, `${b.heading}: broken, not "coming soon"`).toBeNull();
+      if (b.note !== null && b.status !== 'error') expect(b.note).toBe(FALLBACK_NOTE);
+      if (b.status === 'error') expect(b.note, `${b.heading}: broken — offered a fix, not an edit`).toBe(FIX_NOTE);
     }
-    expect(m.blocks.find((b) => b.heading === 'class-diagram')?.note).toBe(FALLBACK_NOTE);
+    expect(m.blocks.find((b) => b.heading === 'gitgraph')?.note).toBe(FALLBACK_NOTE);
     expect(m.blocks.find((b) => b.heading === 'fc-td-basic')?.note).toBeNull();
+    // Every flowchart (legacy `graph`, subgraphs, styling, every shape
+    // and link) is editable visually: none offers its text instead.
+    const flowcharts = m.blocks.filter((b) => /^(fc-|graph-)/.test(b.heading));
+    expect(flowcharts.length).toBeGreaterThanOrEqual(19);
+    expect(flowcharts.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);
+    // Same for every sequence diagram (actors, activations, blocks, boxes …).
+    const sequences = m.blocks.filter((b) => /^seq-/.test(b.heading));
+    expect(sequences.length).toBeGreaterThanOrEqual(10);
+    expect(sequences.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);
     // The only code block left is the real one.
     expect(m.codeBlocks.map((c) => c.heading)).toEqual(['mixed-plain-code']);
     // Never tell people to edit markdown / source.
@@ -546,8 +554,20 @@ test.describe('mermaid — edit mode', () => {
     { heading: 'fc-tb-direction', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Renamed', touches: /\bB\b/, keeps: /flowchart TB/ },
     { heading: 'fc-special-chars', selector: 'g.node[id*="flowchart-E-"]', input: '.mermaid-popover-label', value: 'End & <done>', touches: /\bE\b/ },
     { heading: 'fc-quoted-unicode-emoji', selector: 'g.node[id*="flowchart-A-"]', input: '.mermaid-popover-label', value: 'Ärger 🚀 "quoted"', touches: /\bA\b/ },
+    { heading: 'graph-td-legacy', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Common still', touches: /\bB\b/, keeps: /^graph TD$/m },
+    { heading: 'fc-subgraphs-nested', selector: 'g.cluster[id$="-Inner1"]', input: '.mermaid-group-title', value: 'Renamed group', touches: /subgraph Inner1/, keeps: /subgraph Inner2\[Inner two\]/ },
+    { heading: 'fc-styling', selector: 'g.node[id*="flowchart-C-"]', input: '.mermaid-popover-label', value: 'Plainer', touches: /\bC\b/, keeps: /classDef hot fill:#f96,stroke:#333,stroke-width:2px/ },
+    { heading: 'fc-comments-ampersand-chain', selector: 'g.node[id*="flowchart-E-"]', input: '.mermaid-popover-label', value: 'Echo', touches: /\bE\b/, keeps: /A & B --> C/ },
+    { heading: 'fc-frontmatter-title', selector: 'g.node[id*="flowchart-B-"]', input: '.mermaid-popover-label', value: 'Below', touches: /\bB\b/, keeps: /title: Flowchart with frontmatter title/ },
     { heading: 'seq-comment-subset', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'Done!', touches: /B-->>A/, keeps: /Map x->y and back/ },
     { heading: 'seq-special-chars', selector: '[data-et="message"][data-id="i1"]', input: '.mermaid-message-popover-text', value: 'OK & <done>', touches: /B-->>A/ },
+    // Past blocks, numbering and activations mermaid's own numbering
+    // shifts: i26 is "Highlighted", i4 "Hi Alice".
+    { heading: 'seq-blocks', selector: '[data-et="message"][data-id="i26"]', input: '.mermaid-message-popover-text', value: 'Lit up', touches: /Highlighted|loop Every minute/, keeps: /loop Every minute/ },
+    { heading: 'seq-activations', selector: '[data-et="message"][data-id="i4"]', input: '.mermaid-message-popover-text', value: 'Hi there', touches: /Hi Alice/, keeps: /activate Alice/ },
+    { heading: 'seq-blocks', selector: 'g[data-et="control-structure"][data-id="i3"]', input: '.mermaid-block-label', value: 'Every hour', touches: /Highlighted|loop Every minute/, keeps: /C->>S: Lit up/ },
+    { heading: 'seq-box', selector: 'g[data-et="participant"][data-id="A"]', input: '.mermaid-participant-popover-display', value: 'Web browser', touches: /participant A as Browser/, keeps: /box Purple Frontend/ },
+    { heading: 'seq-participants-actors', selector: '[data-et="message"][data-id="i0"]', input: '.mermaid-message-popover-text', value: 'Tap', touches: /U->>W: Click/, keeps: /actor U as User/ },
     { heading: 'seq-basic', selector: '[data-et="message"][data-id="i0"]', input: '.mermaid-message-popover-text', value: 'Hello again; Bob # 1', touches: /A->>B/, shows: 'Hello again; Bob # 1' },
   ];
 
@@ -627,8 +647,82 @@ test.describe('mermaid — edit mode', () => {
     expect(hit, 'edge hit area stroke').toBe('rgba(0, 0, 0, 0)');
   });
 
-  test('keyboard next to a diagram never edits its hidden source', async ({ page }) => {
-    const md = '# T\n\nBefore para.\n\n```mermaid\nsequenceDiagram\n    A->>B: one\n    B->>A: two\n```\n\nAfter para.\n';
+  test('a popover rich-text field takes a real click and real typing (bold included)', async ({ page }) => {
+    const logs = captureConsole(page);
+    const md = '# T\n\n## rich\n\n```mermaid\nflowchart LR\n    A[Start] --> B[End]\n```\n\nAfter.\n';
+    await seedAndOpen(page, '/e2e/rich.md', md);
+    await enterEditMode(page);
+    expect(await clickInBlock(page, 'rich', 'g.node[id*="flowchart-B-"]')).toBe(true);
+    const field = page.locator('.editor-surface .mermaid-popover .mermaid-popover-label:visible').first();
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Big ');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type('finish');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1200);
+    const src = fencedBlocks((await lastWrite(page)) ?? '')['rich'];
+    expect(src).toBe('flowchart LR\n    A[Start] --> B["`Big **finish**`"]');
+    // The document around the diagram was not typed into.
+    expect(await lastWrite(page)).toContain('\nAfter.\n');
+    expect(logs.errors).toEqual([]);
+  });
+
+  test('every diagram kind in the toolbar menu arrives drawn and editable', async ({ page }) => {
+    const logs = captureConsole(page);
+    const kinds = ['pie', 'timeline', 'gantt', 'state', 'class', 'er', 'mindmap', 'kanban'];
+    // Inserting takes the place of the paragraph the caret is in.
+    await seedAndOpen(page, '/e2e/insert.md', `# Insert\n\n${kinds.map((k) => `Slot ${k}.`).join('\n\n')}\n`);
+    await page.locator('.edit-mode-toggle').click();
+    await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+    for (const kind of kinds) {
+      await page.locator('.editor-surface .ProseMirror p', { hasText: `Slot ${kind}.` }).click();
+      await page.evaluate((k) => (document.querySelector(`[data-action="diagram-${k}"]`) as HTMLElement | null)?.click(), kind);
+      await page.waitForTimeout(150);
+    }
+    await page.waitForFunction(
+      (n) => {
+        const blocks = Array.from(document.querySelectorAll('.editor-surface .mermaid-block-editor'));
+        return blocks.length === n && blocks.every((b) => b.querySelector('.mermaid-rendered > svg'));
+      },
+      kinds.length,
+      { timeout: 60_000 },
+    );
+    const state = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.editor-surface .mermaid-block-editor')).map((b) => ({
+        fallback: b.classList.contains('mermaid-fallback'),
+        bar: !!b.querySelector('.mermaid-actions-bar:not([hidden])'),
+      })),
+    );
+    expect(state.every((s) => !s.fallback), JSON.stringify(state)).toBe(true);
+    expect(state.every((s) => s.bar), JSON.stringify(state)).toBe(true);
+    await page.waitForTimeout(1200);
+    const saved = (await lastWrite(page)) ?? '';
+    for (const header of ['pie', 'timeline', 'gantt', 'stateDiagram-v2', 'classDiagram', 'erDiagram', 'mindmap', 'kanban']) {
+      expect(saved, header).toContain(`\`\`\`mermaid\n${header}`);
+    }
+    expect(logs.errors).toEqual([]);
+  });
+
+  test('a sequence group box opens from its frame and is renamed in place', async ({ page }) => {
+    const logs = captureConsole(page);
+    await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
+    await waitReaderDiagramsSettled(page);
+    await enterEditMode(page);
+    // Boxes are drawn last-first: the first frame in the svg is "Backend".
+    expect(await clickInBlock(page, 'seq-box', 'svg > g > rect.rect')).toBe(true);
+    const input = page.locator('.editor-surface .mermaid-form-popover .mermaid-box-label:visible').first();
+    await expect(input).toHaveValue('Backend');
+    await input.fill('Server side');
+    await input.press('Enter');
+    await page.waitForTimeout(1200);
+    const src = fencedBlocks((await lastWrite(page)) ?? '')['seq-box'];
+    const original = fencedBlocks(CORPUS_MD)['seq-box'];
+    expect(src).toBe(original.replace('box Backend', 'box Server side'));
+    expect(logs.errors).toEqual([]);
+  });
+
+  test('keyboard next to a diagram never edits its hidden source', async ({ page }) => {    const md = '# T\n\nBefore para.\n\n```mermaid\nsequenceDiagram\n    A->>B: one\n    B->>A: two\n```\n\nAfter para.\n';
     await seedAndOpen(page, '/e2e/keys.md', md);
     await enterEditMode(page);
     await page.locator('.editor-surface p', { hasText: 'Before para.' }).click();

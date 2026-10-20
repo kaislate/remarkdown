@@ -198,3 +198,94 @@ describe('resolveAnchor — slow path (doc changed)', () => {
     expect(resolved!.toString()).toBe('distinctive phrase');
   });
 });
+
+// Highlights that span paragraphs (#multi-block): the selection's text
+// includes both paragraphs and the newline between them, so it can only be
+// found again in the article's full text, not inside one block.
+describe('anchors across several blocks', () => {
+  const HTML =
+    '<h1 data-block-id="h:1">Title</h1>\n' +
+    '<p data-block-id="p:1">The first paragraph ends here.</p>\n' +
+    '<p data-block-id="p:2">The second paragraph starts here.</p>\n' +
+    '<p data-block-id="p:3">A third one.</p>';
+
+  function crossRange(root: HTMLElement): Range {
+    const a = rangeOf(root, 'p:1', 'ends here.');
+    const b = rangeOf(root, 'p:2', 'The second');
+    const r = document.createRange();
+    r.setStart(a.startContainer, a.startOffset);
+    r.setEnd(b.endContainer, b.endOffset);
+    return r;
+  }
+
+  it('records the end block and context from the surrounding text', () => {
+    const root = buildRoot(HTML);
+    const a = createAnchor(crossRange(root), root)!;
+    expect(a.blockHint).toBe('p:1');
+    expect(a.endBlockHint).toBe('p:2');
+    expect(a.text).toBe('ends here.\nThe second');
+    expect(a.prefix.endsWith('The first paragraph ')).toBe(true);
+    expect(a.suffix.startsWith(' paragraph starts')).toBe(true);
+  });
+
+  it('resolves after a reload (fresh DOM) to the same text', () => {
+    const a = createAnchor(crossRange(buildRoot(HTML)), document.body)!;
+    document.body.innerHTML = '';
+    const root = buildRoot(HTML);
+    const r = resolveAnchor(a, root);
+    expect(r).not.toBeNull();
+    expect(r!.toString()).toBe('ends here.\nThe second');
+  });
+
+  it('still resolves when text elsewhere in the document changed', () => {
+    const a = createAnchor(crossRange(buildRoot(HTML)), document.body)!;
+    document.body.innerHTML = '';
+    const root = buildRoot(HTML.replace('A third one.', 'A rewritten third paragraph.'));
+    expect(resolveAnchor(a, root)!.toString()).toBe('ends here.\nThe second');
+  });
+
+  it('is orphaned when the spanned text is gone', () => {
+    const a = createAnchor(crossRange(buildRoot(HTML)), document.body)!;
+    document.body.innerHTML = '';
+    const root = buildRoot(HTML.replace('The second paragraph', 'Another paragraph'));
+    expect(resolveAnchor(a, root)).toBeNull();
+  });
+
+  it('recovers highlights saved by older versions (no end block recorded) when unambiguous', () => {
+    const legacy: Anchor = {
+      text: 'ends here.\nThe second',
+      prefix: 'The first paragraph ',
+      suffix: '', // older versions clamped context to the first block
+      blockHint: 'p:1',
+    };
+    const root = buildRoot(HTML);
+    expect(resolveAnchor(legacy, root)!.toString()).toBe('ends here.\nThe second');
+  });
+});
+
+describe('cross-block anchors over a diagram', () => {
+  const svg = (id: string) =>
+    `<svg id="${id}"><style>#${id}{fill:#333}</style><g><text>Start</text><text>End</text></g></svg>`;
+
+  it('ignore the diagram, so the highlight survives the diagram being redrawn', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">Before the chart we explain things.</p>\n` +
+      `<div class="mermaid-block" data-block-id="div:2">${svg('mermaid-1')}</div>\n` +
+      `<p data-block-id="p:3">After the chart we conclude.</p>\n`,
+    );
+    const p1 = root.querySelector('[data-block-id="p:1"]')!.firstChild as Text;
+    const p3 = root.querySelector('[data-block-id="p:3"]')!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(p1, 7);
+    range.setEnd(p3, 15); // ends after "After the chart"
+    const a = createAnchor(range, root)!;
+    expect(a.text).not.toMatch(/mermaid|fill|Start|End/);
+    expect(a.text).toContain('the chart we explain things.');
+    expect(a.text).toContain('After the chart');
+    // Next launch: drawn again with a new id (and briefly empty before that).
+    root.querySelector('.mermaid-block')!.innerHTML = '';
+    expect(resolveAnchor(a, root)).not.toBeNull();
+    root.querySelector('.mermaid-block')!.innerHTML = svg('mermaid-7');
+    expect(resolveAnchor(a, root)).not.toBeNull();
+  });
+});

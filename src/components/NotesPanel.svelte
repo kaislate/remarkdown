@@ -130,7 +130,7 @@
      We anchor the pill's RIGHT edge at 136px from the viewport's left
      so the gap stays consistent regardless of how wide the wordmark +
      count grow. Same vertical level (bottom:68) so the two read as a
-     "navigation tools" cluster above the bottom-left zoom + Focus
+     "navigation tools" cluster above the bottom-left zoom + Reader
      stack.
      z-index 110 puts the wrap above WelcomeDismiss (z:100) so the
      expanding popup doesn't get visually covered by the dismiss text

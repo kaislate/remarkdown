@@ -14,6 +14,7 @@ import { reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
+import { askAboutConflict, savesSettled } from '../lib/edit-save';
 import { activeModal, closeModal } from './modals';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
@@ -134,12 +135,24 @@ export async function closeSession(id: string): Promise<void> {
   const idx = list.findIndex((s) => s.id === id);
   if (idx < 0) return;
   const closing = list[idx];
-  closing.closed = true;
+
+  // Never close away edits the user hasn't decided about: if the tab's last
+  // save hit a conflict (or one is pending), keep it open and ask.
+  const keepForConflict = () => {
+    if (!closing.editConflict) return false;
+    closing.closed = false;
+    if (closing !== get(activeSession)) void activateSession(closing.id);
+    askAboutConflict(closing);
+    return true;
+  };
+  if (keepForConflict()) return;
 
   if (closing === get(activeSession)) {
     const ticket = ++switchTicket;
     cancelReattach();
     await runBeforeSwitch();
+    if (keepForConflict()) return;
+    closing.closed = true;
     // A newer switch may have happened meanwhile — then leave it be, unless
     // the closing tab is somehow still the visible one.
     if (ticket === switchTicket || get(activeSession) === closing) {
@@ -155,6 +168,12 @@ export async function closeSession(id: string): Promise<void> {
         setActive(fresh);
       }
     }
+  } else {
+    // A background tab: its pending save was flushed when the user left it,
+    // but may still be in flight.
+    await savesSettled(closing);
+    if (keepForConflict()) return;
+    closing.closed = true;
   }
 
   if (closing.disposeWatcher) {
@@ -170,4 +189,27 @@ export async function cycleSession(delta: 1 | -1): Promise<void> {
   if (list.length < 2) return;
   const i = list.indexOf(get(activeSession));
   await activateSession(list[(i + delta + list.length) % list.length].id);
+}
+
+// Bulk closes from the tab context menu. The tab the user right-clicked
+// becomes (or stays) the visible one first, so closing the rest never
+// flashes a neighbour that is about to go too.
+async function closeAllBut(keep: DocSession, closing: DocSession[]): Promise<void> {
+  if (closing.includes(get(activeSession))) await activateSession(keep.id);
+  for (const s of closing) await closeSession(s.id);
+}
+
+export async function closeOtherSessions(id: string): Promise<void> {
+  const list = get(sessions);
+  const keep = list.find((s) => s.id === id);
+  if (!keep) return;
+  await closeAllBut(keep, list.filter((s) => s !== keep));
+}
+
+// "Close tabs to the right" (or "below", with tabs on the left).
+export async function closeSessionsAfter(id: string): Promise<void> {
+  const list = get(sessions);
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return;
+  await closeAllBut(list[i], list.slice(i + 1));
 }

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import HighlightLayer from '../../src/components/HighlightLayer.svelte';
 import { annots, currentViewerRoot, docEpoch } from '../../src/stores/annots';
 import { setMode, HIGHLIGHT_COLORS } from '../../src/stores/tool';
+import { readerMode } from '../../src/stores/reader-mode';
 
 function mountViewer(html: string): HTMLElement {
   const article = document.createElement('article');
@@ -197,5 +198,23 @@ describe('HighlightLayer — eraser tool', () => {
       bubbles: true, cancelable: true, clientX: 5, clientY: 5, button: 0,
     }));
     expect(get(annots).filter((a) => a.type === 'highlight')).toHaveLength(1);
+  });
+});
+
+describe('HighlightLayer — reader mode', () => {
+  it('highlights stay painted but right-click offers no delete', () => {
+    const root = mountViewer('<p data-block-id="p:1">Hello the world here.</p>');
+    render(HighlightLayer);
+    readerMode.set(true);
+    annots.set([{
+      id: '01A', type: 'highlight', color: HIGHLIGHT_COLORS[0],
+      anchor: { text: 'the world', prefix: 'Hello ', suffix: ' here.', blockHint: 'p:1' },
+      createdAt: 'now', updatedAt: 'now',
+    }]);
+    expect((CSS.highlights as unknown as Map<string, unknown>).has('rmd-hl-0')).toBe(true);
+    const tn = root.querySelector('p')!.firstChild as Text;
+    (document as any).caretPositionFromPoint = () => ({ offsetNode: tn, offset: tn.data.indexOf('the world') + 2 });
+    flushSync(() => root.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 100 })));
+    expect(document.querySelector('.highlight-menu')).toBeNull();
   });
 });

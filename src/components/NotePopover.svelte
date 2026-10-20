@@ -1,10 +1,12 @@
 <script lang="ts">
   interface Props {
     body: string;
+    // Reader mode: the note can be read, not changed.
+    readonly?: boolean;
     onUpdate: (next: string) => void;
     onDelete: () => void;
   }
-  let { body, onUpdate, onDelete }: Props = $props();
+  let { body, readonly = false, onUpdate, onDelete }: Props = $props();
 </script>
 
 <div class="popover sticky-note" role="dialog" aria-label="re.mark">
@@ -12,12 +14,15 @@
     aria-label="re.mark body"
     placeholder="Write a re.mark…"
     value={body}
+    {readonly}
     oninput={(e) => onUpdate((e.currentTarget as HTMLTextAreaElement).value)}
     rows="4"
   ></textarea>
-  <div class="actions">
-    <button class="danger" onclick={onDelete}>Delete</button>
-  </div>
+  {#if !readonly}
+    <div class="actions">
+      <button class="danger" onclick={onDelete}>Delete</button>
+    </div>
+  {/if}
 </div>
 
 <style>

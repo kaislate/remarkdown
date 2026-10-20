@@ -1,11 +1,17 @@
 <!-- src/components/Editor.svelte -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
+  import { get } from 'svelte/store';
   import type { EditorView } from 'prosemirror-view';
   import { toggleMark } from 'prosemirror-commands';
   import { TextSelection } from 'prosemirror-state';
-  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram } from '../lib/editor/view';
+  import { createEditorView, insertCallout, insertCodeBlock, insertTaskList, insertTable, insertMermaid, insertSequenceDiagram, insertDiagram } from '../lib/editor/view';
+  import type { StarterKind } from '../lib/editor/mermaid-commands';
   import { insertFootnote } from '../lib/editor/footnote-commands';
+  import { currentBlockStyle, setBlockStyle, insertDivider, insertFormula, insertImage, type BlockStyle } from '../lib/editor/block-commands';
+  import { openImageDialog, toAssetUrl } from '../lib/tauri-api';
+  import { imageSrcFor, resolveImageSrc } from '../lib/image-paths';
+  import { addToast } from '../stores/toasts';
   import { editorSchema } from '../lib/editor/schema';
   import EditorToolbar from './EditorToolbar.svelte';
   import EditorBubbleMenu from './EditorBubbleMenu.svelte';
@@ -20,6 +26,7 @@
 
   import type { DocSession } from '../stores/sessions';
   import { onBeforeSwitch } from '../stores/tabs';
+  import { currentEditorRoot } from '../stores/viewport';
 
   interface Props {
     initialMarkdown: string;
@@ -51,6 +58,39 @@
   // (the table-actions plugin tracks the active table's pos). The
   // menu floats above the active table's top edge.
   let tableMenu = $state({ visible: false, x: 0, y: 0 });
+
+  // The style of the block the cursor is in, for the toolbar's Text style.
+  let blockStyle = $state<BlockStyle | null>('paragraph');
+  function updateBlockStyle() {
+    if (view) blockStyle = currentBlockStyle(view.state);
+  }
+
+  function onBlockStyle(style: BlockStyle) {
+    const v = view;
+    if (!v) return;
+    v.focus();
+    setBlockStyle(style)(v.state, v.dispatch, v);
+    updateBlockStyle();
+  }
+
+  const docDir = () => (session ? get(session.doc)?.dir : undefined);
+
+  // A picture from disk, linked relative to the document's folder.
+  async function pickImage(v: EditorView) {
+    const dir = docDir();
+    let picked: string | null = null;
+    try {
+      picked = await openImageDialog(dir);
+    } catch {
+      addToast({ kind: 'error', message: "Couldn't open the picture chooser." });
+      return;
+    }
+    if (!picked) return;
+    const name = picked.split(/[\\/]/).pop() ?? '';
+    const alt = name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+    v.focus();
+    insertImage(dir ? imageSrcFor(dir, picked) : picked, alt)(v.state, v.dispatch);
+  }
 
   function updateBubble() {
     const v = view;
@@ -159,7 +199,7 @@
     v.dispatch(tr);
   }
 
-  function onToolbarInsert(action: string) {
+  function onToolbarInsert(action: string, diagram?: StarterKind) {
     const v = view;
     if (!v) return;
     // Focus first so the editor is the active element when the command
@@ -182,8 +222,20 @@
       insertMermaid()(v.state, v.dispatch);
     } else if (action === 'sequence') {
       insertSequenceDiagram()(v.state, v.dispatch);
+    } else if (action === 'diagram' && diagram) {
+      insertDiagram(diagram)(v.state, v.dispatch);
+    } else if (action === 'divider') {
+      insertDivider(v.state, v.dispatch);
+    } else if (action === 'formula') {
+      // Open the new formula's editor straight away.
+      insertFormula((pos) => void tick().then(() => (v.nodeDOM(pos) as HTMLElement | null)?.click()))(v.state, v.dispatch);
+      return;
+    } else if (action === 'image') {
+      void pickImage(v);
+      return;
     }
     v.focus();
+    updateBlockStyle();
   }
 
   function onBubbleMark(name: 'strong' | 'em' | 'strike' | 'code' | 'sub' | 'sup') {
@@ -245,9 +297,15 @@
   // Wrappers fire BOTH bubble + table-menu updates on every event —
   // selections and doc changes can affect either. Cheap to run both
   // since each early-returns when its precondition isn't met.
+  // After PM has read the new selection from the DOM.
+  function onSelectionChange() {
+    requestAnimationFrame(updateBlockStyle);
+  }
+
   function onSelectionMaybeChanged() {
     updateBubble();
     updateTableMenu();
+    updateBlockStyle();
   }
 
   onMount(() => {
@@ -256,10 +314,16 @@
       onChange(md);
       updateBubble();
       updateTableMenu();
-    }, session?.editorState ?? undefined);
+      updateBlockStyle();
+    }, session?.editorState ?? undefined, (src) => resolveImageSrc(src, docDir(), toAssetUrl));
+    updateBlockStyle();
+    currentEditorRoot.set(view.dom);
     parentEl.addEventListener('mouseup', onSelectionMaybeChanged);
     parentEl.addEventListener('keyup', onSelectionMaybeChanged);
     document.addEventListener('mousedown', onAnyMouseDown);
+    // The Text style follows the cursor however it moves (only the
+    // toolbar label, so no race with the bubble — see below).
+    document.addEventListener('selectionchange', onSelectionChange);
     // NOTE: previously had a `selectionchange` listener too, but it
     // races onAnyMouseDown — every click outside the editor changes
     // the document selection, fires selectionchange, which calls
@@ -280,13 +344,16 @@
       parentEl.removeEventListener('keyup', onSelectionMaybeChanged);
     }
     document.removeEventListener('mousedown', onAnyMouseDown);
+    document.removeEventListener('selectionchange', onSelectionChange);
+    // Only clear it if it's still ours (a remount may have set the next one).
+    if (view && get(currentEditorRoot) === view.dom) currentEditorRoot.set(null);
     view?.destroy();
     view = null;
   });
 </script>
 
 <div class="editor-shell">
-  <EditorToolbar onInsert={onToolbarInsert} />
+  <EditorToolbar onInsert={onToolbarInsert} {blockStyle} {onBlockStyle} />
   <div class="editor-surface" bind:this={parentEl}></div>
   <EditorBubbleMenu
     visible={bubble.visible}

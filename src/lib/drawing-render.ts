@@ -21,6 +21,16 @@ const PADDING_EM = {
   strikethrough: 0.0,
 } as const;
 
+// An arrow: the shaft, and two barbs at the tip, sized to the arrow.
+function arrowNodes(rc: RoughSVG, tail: [number, number], tip: [number, number], opts: Record<string, unknown>): SVGElement[] {
+  const len = Math.hypot(tip[0] - tail[0], tip[1] - tail[1]);
+  if (!len) return [];
+  const head = Math.min(18, Math.max(8, len * 0.22));
+  const back = Math.atan2(tail[1] - tip[1], tail[0] - tip[0]);
+  const barb = (turn: number) => rc.line(tip[0], tip[1], tip[0] + head * Math.cos(back + turn), tip[1] + head * Math.sin(back + turn), opts);
+  return [rc.line(tail[0], tail[1], tip[0], tip[1], opts), barb(0.5), barb(-0.5)];
+}
+
 export function renderDrawing(
   rc: RoughSVG,
   d: Drawing,
@@ -118,7 +128,10 @@ export function renderDrawing(
         [r.left - svg_r.left + xEm * rem, r.top - svg_r.top + yEm * rem] as [number, number],
       );
       if (pts.length < 2) return [];
-      return [rc.curve(pts, { ...roughOpts, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) })];
+      const opts = { ...roughOpts, stroke: d.shape.color, strokeWidth: d.shape.width, seed: hashId(d.id) };
+      if (d.shape.drawn === 'arrow') return arrowNodes(rc, pts[0], pts[pts.length - 1], opts);
+      if (d.shape.drawn === 'bracket') return [rc.linearPath(pts, opts)];
+      return [rc.curve(pts, opts)];
     }
 
     case 'freehand-legacy': {

@@ -69,4 +69,25 @@ describe('FootnotePopover', () => {
     expect(onDelete).toHaveBeenCalled();
     cleanup();
   });
+
+  it('Bold and Italic wrap the selected words, and the preview shows them formatted', async () => {
+    const stateStore = makeStore(true, '1', 'make this strong');
+    const onSave = vi.fn();
+    const user = userEvent.setup();
+    const { container, getByRole } = render(FootnotePopover, {
+      props: { stateStore, onSave, onDelete: () => {} },
+    });
+    const body = container.querySelector<HTMLTextAreaElement>('textarea[data-field="body"]')!;
+    body.focus();
+    body.setSelectionRange(10, 16);
+    await user.click(getByRole('button', { name: 'Bold' }));
+    expect(body.value).toBe('make this **strong**');
+    expect(container.querySelector('.preview strong')?.textContent).toBe('strong');
+    body.setSelectionRange(0, 4);
+    await user.keyboard('{Control>}i{/Control}');
+    expect(body.value).toBe('*make* this **strong**');
+    expect(container.querySelector('.preview em')?.textContent).toBe('make');
+    await user.click(container.querySelector<HTMLButtonElement>('button[data-action="save"]')!);
+    expect(onSave).toHaveBeenCalledWith({ label: '1', body: '*make* this **strong**' });
+  });
 });

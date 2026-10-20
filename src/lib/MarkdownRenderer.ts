@@ -6,8 +6,10 @@ import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
+import { frontMatterPlugin } from './markdown-it-frontmatter';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
 import { isMermaidFence } from './mermaid-fence';
+import { resolveImageSrc } from './image-paths';
 
 export interface RenderResult {
   html: string;
@@ -26,7 +28,8 @@ const md = new MarkdownIt({
   .use(katex.default ?? katex)
   .use(subPlugin)
   .use(supPlugin)
-  .use(calloutsPlugin);
+  .use(calloutsPlugin)
+  .use(frontMatterPlugin);
 
 // Mermaid fences become diagram placeholders at markdown-it's fence
 // renderer, BEFORE Shiki sees the html. Deciding here (from the token's
@@ -55,7 +58,7 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark'],
+      themes: ['github-dark', 'github-light'],
       langs: [...SUPPORTED_LANGUAGES],
     });
   }
@@ -71,7 +74,13 @@ async function highlightFences(html: string): Promise<string> {
     // resolveLanguage handles case-folding, alias lookup, and unknown-lang
     // fallback to 'text' so the same matrix the editor uses applies here.
     const resolvedLang = resolveLanguage(lang);
-    return highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
+    // Both colourings, dark by default; on light pages article.css swaps
+    // in the light one (--shiki-light).
+    return highlighter.codeToHtml(raw, {
+      lang: resolvedLang,
+      themes: { dark: 'github-dark', light: 'github-light' },
+      defaultColor: 'dark',
+    });
   });
 }
 
@@ -124,36 +133,13 @@ export interface RenderOptions {
   toAssetUrl?: (absolutePath: string) => string;
 }
 
-function isAbsoluteUrl(src: string): boolean {
-  return (
-    /^(https?:|asset:|data:|file:)/i.test(src) ||
-    src.startsWith('/') ||
-    /^[A-Za-z]:[\\/]/.test(src) // Windows drive-letter absolute paths
-  );
-}
-
-function joinPath(baseDir: string, rel: string): string {
-  // Minimal POSIX-style join (our stored paths are normalized to forward slashes).
-  const parts = (baseDir + '/' + rel).split('/').filter(Boolean);
-  const stack: string[] = [];
-  for (const p of parts) {
-    if (p === '.') continue;
-    if (p === '..') stack.pop();
-    else stack.push(p);
-  }
-  return '/' + stack.join('/');
-}
-
 function rewriteImageSrcs(html: string, opts: RenderOptions): string {
   if (!opts.baseDir || !opts.toAssetUrl) return html;
   const { baseDir, toAssetUrl } = opts;
-  return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (m, pre, src, post) => {
-    if (isAbsoluteUrl(src)) return m;
-    // Decode percent-encoded backslashes (markdown-it encodes \ as %5C) then normalize to forward slash.
-    const normalized = src.replace(/%5C/gi, '/').replace(/\\/g, '/');
-    const abs = joinPath(baseDir, normalized);
-    return `<img${pre}src="${toAssetUrl(abs)}"${post}>`;
-  });
+  // markdown-it encodes a backslash as %5C; resolveImageSrc decodes it.
+  return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (_m, pre, src, post) =>
+    `<img${pre}src="${resolveImageSrc(src, baseDir, toAssetUrl)}"${post}>`,
+  );
 }
 
 export async function render(markdown: string, options: RenderOptions = {}): Promise<RenderResult> {

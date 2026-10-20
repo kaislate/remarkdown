@@ -34,6 +34,10 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const path = (window as any).__E2E_DIALOG_PATH__ ?? null;
       return path;
     }
+    case 'open_image_dialog': {
+      (window as any).__E2E_IMAGE_DIALOG_START__ = (args as any)?.startDir ?? null;
+      return (window as any).__E2E_IMAGE_PICK__ ?? null;
+    }
     case 'read_document': {
       const path = args?.path as string;
       const doc = getDoc(path);
@@ -57,6 +61,9 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     case 'write_document': {
       const path = args?.path as string;
       const markdown = args?.markdown as string;
+      const expected = args?.expectedSha256 as string | null | undefined;
+      const onDisk = getDoc(path);
+      if (expected && onDisk && onDisk.sha256 !== expected) throw { Conflict: onDisk.sha256 };
       const bytes = new TextEncoder().encode(markdown);
       localStorage.setItem(docKey(path), JSON.stringify({
         markdown,
@@ -67,7 +74,7 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const writes = (window as any).__E2E_WRITES__ ?? [];
       writes.push({ path, markdown });
       (window as any).__E2E_WRITES__ = writes;
-      return;
+      return hashBytes(bytes);
     }
     case 'push_recent': {
       const path = args?.path as string;
@@ -108,8 +115,31 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       (window as any).__E2E_WINDOWS__ = opened;
       return;
     }
+    case 'reveal_in_folder': {
+      const revealed = (window as any).__E2E_REVEALED__ ?? [];
+      revealed.push(args?.path);
+      (window as any).__E2E_REVEALED__ = revealed;
+      return;
+    }
+    case 'plugin:app|version':
+      // Off by default (no pre-release tag in specs); screenshot specs set
+      // __E2E_APP_VERSION__ to show the window exactly as a build does.
+      return (window as any).__E2E_APP_VERSION__ ?? null;
+    case 'plugin:clipboard-manager|write_text':
+      (window as any).__E2E_CLIPBOARD__ = (args as any)?.text ?? '';
+      return;
+    case 'plugin:clipboard-manager|read_text':
+      return (window as any).__E2E_CLIPBOARD__ ?? '';
     case 'default_app_status':
       return { supported: false, md: false, markdown: false };
+    case 'load_settings':
+      // Specs behave like an existing install (no first-run dialog) unless
+      // they set __E2E_FRESH_INSTALL__ before the app loads.
+      return localStorage.getItem('rmd-settings')
+        ?? ((window as any).__E2E_FRESH_INSTALL__ ? null : JSON.stringify({ schemaVersion: 1, onboardingCompleted: true }));
+    case 'save_settings':
+      localStorage.setItem('rmd-settings', args?.json as string);
+      return;
     case 'load_session':
       return localStorage.getItem('rmd-session');
     case 'save_session':

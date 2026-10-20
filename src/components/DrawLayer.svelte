@@ -9,11 +9,12 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
-  import { recognize, recognizeAsFreehand } from '../lib/drawing-recognize';
+  import { recognize, recognizeAsFreehand, arrowFromStrokes } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
   import { resolveAnchor } from '../lib/anchoring';
   import { hitTestDrawing } from '../lib/drawing-hit-test';
   import { zoomLevel } from '../stores/ui';
+  import { readerMode } from '../stores/reader-mode';
   import type { Drawing, Stroke } from '../lib/schema';
 
   // Idle finalize duration is sourced from the settings store so the user can
@@ -51,13 +52,29 @@
     const svgRect = svgEl ? svgEl.getBoundingClientRect() : root.getBoundingClientRect();
 
     const now = new Date().toISOString();
-    for (const stroke of pendingStrokes) {
-      const viewportPoints: Array<[number, number]> = stroke.points.map(
-        ([x, y]) => [x + svgRect.left, y + svgRect.top],
-      );
-      const result = $settings.autoTransformDrawings
-        ? recognize(viewportPoints, root)
-        : recognizeAsFreehand(viewportPoints, root, 1.0);
+    const toViewport = (stroke: Stroke): Array<[number, number]> =>
+      stroke.points.map(([x, y]) => [x + svgRect.left, y + svgRect.top]);
+    // An arrow drawn in several strokes (a shaft, then its head) becomes one
+    // drawing; the strokes it used aren't recognised on their own.
+    const jobs: Array<{ stroke: Stroke; result: ReturnType<typeof recognize> }> = [];
+    let rest = [...pendingStrokes];
+    while ($settings.autoTransformDrawings && rest.length > 1) {
+      const arrow = arrowFromStrokes(rest.map(toViewport));
+      if (!arrow) break;
+      jobs.push({ stroke: rest[arrow.used[0]], result: recognizeAsFreehand([arrow.tail, arrow.tip], root, 0.7, 'arrow') });
+      rest = rest.filter((_, i) => !arrow.used.includes(i));
+    }
+    for (const stroke of rest) {
+      const viewportPoints = toViewport(stroke);
+      jobs.push({
+        stroke,
+        result: $settings.autoTransformDrawings
+          ? recognize(viewportPoints, root)
+          : recognizeAsFreehand(viewportPoints, root, 1.0),
+      });
+    }
+
+    for (const { stroke, result } of jobs) {
 
       let shape: Drawing['shape'];
       switch (result.kind) {
@@ -87,6 +104,7 @@
             points: result.points,
             color: stroke.color,
             width: stroke.width,
+            ...(result.drawn ? { drawn: result.drawn } : {}),
           };
           break;
       }
@@ -208,6 +226,7 @@
   $effect(() => {
     void $zoomLevel;
     void $settings.articleWidth;
+    void $readerMode; // reader typography reflows the column
     void $settings.showDrawingRecognitionConfidence;
     void $settings.drawingRoughness;
     void $resolvedAnnots;

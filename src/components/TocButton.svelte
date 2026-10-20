@@ -5,6 +5,11 @@
   import { currentViewerRoot } from '../stores/annots';
   import { viewerScroll } from '../stores/viewport';
   import { get } from 'svelte/store';
+  import { jumpToSection } from '../lib/section-jump';
+
+  // After picking an entry the popover stays a moment: long enough to see
+  // the marker slide to it (0.34s) and the ink set off.
+  const CLOSE_AFTER_PICK_MS = 420;
 
   interface Heading {
     text: string;
@@ -36,23 +41,60 @@
     }));
   });
 
-  function scrollToHeading(h: Heading) {
+  function headingEl(h: Heading): HTMLElement | null {
     const root = get(currentViewerRoot);
-    if (!root) return;
-    const el = root.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(h.id)}"]`);
-    if (!el) return;
-    // Use the scroll element's scrollTo for smoother integration with
-    // the viewer's flexbox layout. Falls back to scrollIntoView.
+    return root?.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(h.id)}"]`) ?? null;
+  }
+
+  // The section being read (the last heading come up to the top third of
+  // the page), marked on the list's track while it's open.
+  let current = $state(-1);
+  let itemEls = $state<HTMLElement[]>([]);
+  let listEl = $state<HTMLElement | null>(null);
+  let marker = $state<{ top: number; height: number } | null>(null);
+  let picked = false;
+
+  function measureCurrent() {
+    if (picked) return;
     const scrollEl = get(viewerScroll);
-    if (scrollEl) {
-      const elRect = el.getBoundingClientRect();
-      const scrollRect = scrollEl.getBoundingClientRect();
-      const target = scrollEl.scrollTop + (elRect.top - scrollRect.top) - 24;
-      scrollEl.scrollTo({ top: target, behavior: 'smooth' });
-    } else {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    open = false;
+    if (!scrollEl) return;
+    const view = scrollEl.getBoundingClientRect();
+    const line = view.top + view.height / 3;
+    let at = -1;
+    headings.forEach((h, i) => {
+      const el = headingEl(h);
+      if (el && el.getBoundingClientRect().top <= line) at = i;
+    });
+    current = at;
+  }
+
+  $effect(() => {
+    if (!open) return;
+    picked = false;
+    measureCurrent();
+    const scrollEl = $viewerScroll;
+    scrollEl?.addEventListener('scroll', measureCurrent, { passive: true });
+    return () => scrollEl?.removeEventListener('scroll', measureCurrent);
+  });
+
+  $effect(() => {
+    const el = current >= 0 ? itemEls[current] : null;
+    marker = el ? { top: el.offsetTop, height: el.offsetHeight } : null;
+  });
+
+  let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  function scrollToHeading(h: Heading, i: number) {
+    const el = headingEl(h);
+    if (!el) return;
+    picked = true;
+    current = i;
+    // The ink wells up on the track, level with the picked entry.
+    const item = itemEls[i]?.getBoundingClientRect();
+    const track = listEl?.getBoundingClientRect();
+    const from = item && track ? { x: track.left + 7, y: item.top + item.height / 2 } : undefined; // the track is 6px in
+    jumpToSection(el, { from });
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => { open = false; closeTimer = null; }, CLOSE_AFTER_PICK_MS);
   }
 
   function toggle() { open = !open; }
@@ -63,11 +105,15 @@
     }
   }
 
-  // Close popover when clicking outside.
+  // Close popover when clicking outside. Checked against the event's path,
+  // not target.closest(): opening redraws the button's icon (regular ->
+  // fill), so by the time the click bubbles here the clicked <path> has
+  // left the document and would read as an outside click.
   function onDocumentClick(e: MouseEvent) {
     if (!open) return;
-    const t = e.target as HTMLElement | null;
-    if (t?.closest('.toc-popover') || t?.closest('.toc-button')) return;
+    const inside = e.composedPath().some((n) =>
+      n instanceof Element && (n.classList.contains('toc-popover') || n.classList.contains('toc-button')));
+    if (inside) return;
     open = false;
   }
 
@@ -99,23 +145,31 @@
       <span class="toc-title">Table of contents</span>
       <span class="toc-count">{headings.length}</span>
     </header>
-    <ul>
-      {#each headings as h, i (h.id + i)}
-        <li class="level-{h.level}">
-          <button
-            class="toc-entry"
-            onclick={() => scrollToHeading(h)}
-            title={h.text}
-          >{h.text}</button>
-        </li>
-      {/each}
-    </ul>
+    <div class="toc-list" bind:this={listEl}>
+      <span class="track" aria-hidden="true"></span>
+      {#if marker}
+        <span class="marker" aria-hidden="true" style:top={`${marker.top}px`} style:height={`${marker.height}px`}></span>
+      {/if}
+      <ul>
+        {#each headings as h, i (h.id + i)}
+          <li class="level-{h.level}" bind:this={itemEls[i]}>
+            <button
+              class="toc-entry"
+              class:current={i === current}
+              aria-current={i === current ? 'location' : undefined}
+              onclick={() => scrollToHeading(h, i)}
+              title={h.text}
+            >{h.text}</button>
+          </li>
+        {/each}
+      </ul>
+    </div>
   </div>
 {/if}
 
 <style>
   /* Third in the top-left stack: hamburger (top:14), EditMode (top:60),
-     this button (top:106 = 60 + 38 + 8 gap), Focus toggle (top:152). */
+     this button (top:106 = 60 + 38 + 8 gap), Reader toggle (top:152). */
   .toc-button {
     position: fixed;
     top: 106px;
@@ -191,12 +245,40 @@
     color: var(--fg-2);
     font-variant-numeric: tabular-nums;
   }
+  /* The list scrolls; down its left edge runs a track, and a marker on it
+     shows the section being read — sliding to an entry when it's picked
+     (the ink sets off from there). */
+  .toc-list {
+    position: relative;
+    overflow-y: auto;
+    flex: 1;
+  }
   .toc-popover ul {
     list-style: none;
     margin: 0;
     padding: 6px 0;
-    overflow-y: auto;
-    flex: 1;
+  }
+  .track {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 6px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--glass-border);
+  }
+  .marker {
+    position: absolute;
+    left: 6px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    transition:
+      top 0.34s cubic-bezier(0.34, 1.4, 0.64, 1),
+      height 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .marker { transition: none; }
   }
   .toc-popover li {
     margin: 0;
@@ -231,4 +313,5 @@
   .toc-popover .level-3 .toc-entry { color: var(--fg-1); font-size: 12px; }
   .toc-popover .level-4 .toc-entry { color: var(--fg-2); font-size: 12px; }
   .toc-entry:hover { background: var(--accent-soft); color: var(--accent); }
+  .toc-entry.current { color: var(--accent); }
 </style>

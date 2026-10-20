@@ -136,8 +136,8 @@ test.describe('edit mode — code blocks', () => {
   test('toggle on → existing fenced code block renders with language pill', async ({ page }) => {
     await page.locator('.edit-mode-toggle').click();
     // The NodeView's pill is the marker that the code-block surface mounted.
-    await expect(page.locator('.code-block-lang-pill')).toBeVisible();
-    await expect(page.locator('.code-block-lang-pill')).toHaveText('typescript');
+    await expect(page.locator('.editor-surface .code-block-lang-pill')).toBeVisible();
+    await expect(page.locator('.editor-surface .code-block-lang-pill')).toHaveText('typescript');
   });
 
   test('insert-code-block button wraps a paragraph and saves with ``` syntax', async ({ page }) => {
@@ -373,7 +373,8 @@ test.describe('edit mode — mermaid', () => {
     // Popover should be visible with the label "Start" pre-filled.
     const popover = page.locator('.mermaid-popover').first();
     await expect(popover).toBeVisible();
-    await expect(popover.locator('.mermaid-popover-label')).toHaveValue('Start');
+    // The label is a rich-text field (bold / italic), not a plain input.
+    await expect(popover.locator('.mermaid-popover-label')).toHaveText('Start');
   });
 
   test('clicking an edge LABEL (not the path line) opens the edge popover', async ({ page }) => {
