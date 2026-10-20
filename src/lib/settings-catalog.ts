@@ -104,6 +104,16 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'smooth scrolling scroll wheel edge animation glide inertia',
   },
   {
+    id: 'setting-smooth-scroll-glide', section: 'reading', title: 'Glide', depiction: 'smooth-scroll',
+    description: "How long the page keeps gliding. Short is Microsoft Edge's own timing.",
+    control: {
+      type: 'segmented', key: 'smoothScrollGlide',
+      options: [{ value: 'short', label: 'Short' }, { value: 'medium', label: 'Medium' }, { value: 'long', label: 'Long' }],
+    },
+    enabled: (s) => s.smoothScrolling,
+    keywords: 'smooth scrolling glide length duration speed inertia',
+  },
+  {
     id: 'setting-reader-nav', section: 'reading', title: 'Section and time left', depiction: 'reader-nav',
     description: 'In reader mode: a quiet line above the page, or the contents beside it with the section you are in marked.',
     control: {

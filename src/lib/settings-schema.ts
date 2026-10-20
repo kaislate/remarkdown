@@ -58,6 +58,8 @@ export const SettingsSchema = z.object({
   // Edge-style smooth scrolling for the mouse wheel and keys
   // (lib/smooth-scroll.ts).
   smoothScrolling: z.boolean(),
+  // How long a smooth-scroll glide lasts: Edge's own timing, 2× or 3×.
+  smoothScrollGlide: z.enum(['short', 'medium', 'long']),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -122,6 +124,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readerMinimap: true,
   readerNav: 'top',
   smoothScrolling: true,
+  smoothScrollGlide: 'medium',
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,

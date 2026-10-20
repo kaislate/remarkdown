@@ -22,6 +22,16 @@ describe('the impulse curve', () => {
     expect(impulseDurationMs(1000)).toBe(500);
   });
 
+  it('a longer glide stretches the whole curve: medium is twice Edge, long three times', () => {
+    expect(impulseDurationMs(100, 2)).toBe(400);
+    expect(impulseDurationMs(1000, 2)).toBe(1000);
+    expect(impulseDurationMs(100, 3)).toBe(600);
+    const a = new ImpulseScroll(0, 100, 0, 2);
+    expect(a.duration).toBe(400);
+    a.retarget(100, 300);
+    expect(a.duration).toBe(impulseDurationMs(300 - a.start, 2));
+  });
+
   it('starts as cubic-bezier(0.25, 0, 0, 1) and bends its first handle to match a starting speed', () => {
     expect(impulseCurveWithInitialSlope(0)).toEqual([0.25, 0, 0, 1]);
     expect(impulseCurveWithInitialSlope(2)).toEqual([0.25, 0.5, 0, 1]);

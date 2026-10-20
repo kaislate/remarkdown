@@ -16,6 +16,12 @@
 // notch or an arrow key moves 1/8 of the scroller's height (at least 16px),
 // Page Up / Page Down / Space 87.5% of it.
 //
+// How long the glide lasts is the user's choice (settings → Glide): Edge's
+// own timing is 200ms for a notch — measured against Edge 155 on Windows,
+// today's Edge (plain Chromium, ~190ms ease-in-out) and this curve are both
+// so brief that they read as no smoothing at all — so the whole curve can be
+// stretched 2× or 3×. The shape, distances and retargeting stay Edge's.
+//
 // Touchpads (and free-spinning wheels) send fine-grained deltas that are
 // already smooth; like Edge, those are left to scroll natively.
 
@@ -33,8 +39,9 @@ const PAGE_FRACTION = 0.875;
 const PX_PER_NOTCH = 100;
 const PX_PER_LINE = PX_PER_NOTCH / 3;
 
-export function impulseDurationMs(deltaPx: number): number {
-  return Math.min(IMPULSE_MAX_MS, Math.max(IMPULSE_MIN_MS, IMPULSE_MS_PER_PX * Math.abs(deltaPx)));
+// `scale` stretches the glide: 1 is Edge's own timing.
+export function impulseDurationMs(deltaPx: number, scale = 1): number {
+  return scale * Math.min(IMPULSE_MAX_MS, Math.max(IMPULSE_MIN_MS, IMPULSE_MS_PER_PX * Math.abs(deltaPx)));
 }
 
 // The impulse curve's control points, its first handle bent so the curve
@@ -95,12 +102,14 @@ export class ImpulseScroll {
   t0: number;
   duration: number;
   private curve: UnitBezier;
+  private scale: number;
 
-  constructor(start: number, target: number, t0: number) {
+  constructor(start: number, target: number, t0: number, scale = 1) {
     this.start = start;
     this.target = target;
     this.t0 = t0;
-    this.duration = impulseDurationMs(target - start);
+    this.scale = scale;
+    this.duration = impulseDurationMs(target - start, scale);
     this.curve = new UnitBezier(...impulseCurveWithInitialSlope(0));
   }
 
@@ -129,7 +138,7 @@ export class ImpulseScroll {
     const position = this.valueAt(t);
     const velocity = this.velocityAt(t);
     const delta = newTarget - position;
-    const duration = impulseDurationMs(delta);
+    const duration = impulseDurationMs(delta, this.scale);
     const reversed = Math.sign(newTarget - position) !== Math.sign(this.target - position);
     let slope = delta === 0 ? 0 : velocity * (duration / delta);
     if (reversed || slope < 0) slope = 0;
@@ -171,6 +180,8 @@ export function isWheelNotch(e: WheelLike): boolean {
 export interface SmoothScrollOptions {
   // Checked on every event: the setting, reduced motion, e-ink.
   enabled: () => boolean;
+  // How much longer than Edge's own timing a glide lasts (1 = Edge).
+  glide?: () => number;
   now?: () => number;
   raf?: (cb: (t: number) => void) => number;
   cancelRaf?: (id: number) => void;
@@ -222,7 +233,7 @@ export function installSmoothScroll(el: HTMLElement, opts: SmoothScrollOptions):
       stop();
       const start = el.scrollTop;
       if (target === start) return false;
-      anim = new ImpulseScroll(start, target, t);
+      anim = new ImpulseScroll(start, target, t, opts.glide?.() ?? 1);
       lastSet = start;
     }
     if (!frame) frame = raf(tick);

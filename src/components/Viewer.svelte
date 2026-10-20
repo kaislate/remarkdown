@@ -39,6 +39,8 @@
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
 
+  const GLIDE_SCALE = { short: 1, medium: 2, long: 3 } as const;
+
   // Edge-style smooth scrolling for the wheel and keys. Checked per event,
   // so turning it off (or reduced motion / e-ink) applies at once; nothing
   // is taken over while a dialog is up.
@@ -47,6 +49,7 @@
     if (!el) return;
     return installSmoothScroll(el, {
       enabled: () => get(settings).smoothScrolling && !reducedMotion() && get(activeModal) === null,
+      glide: () => GLIDE_SCALE[get(settings).smoothScrollGlide],
     });
   });
 
