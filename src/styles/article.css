@@ -546,25 +546,105 @@ body.reattach-mode .reader-mode-toggle {
   color: var(--bg-0);
 }
 
-/* Note under diagrams the visual editor can't change yet (other
-   diagram types, flowcharts with subgraphs / styling, …). The diagram
-   still renders; the note (a real element, toggled via `hidden` by
-   MermaidNodeView) says editing is coming and the diagram is kept as
-   it is. Never mentions markdown or source. */
+/* Under diagrams the visual editor can't change: a quiet line and an
+   "Edit diagram text" button (the same, as "Fix the diagram text", under
+   a diagram that won't draw). The button opens the text panel below
+   (lib/editor/mermaid/text-panel.ts). Never mentions markdown or source. */
 .mermaid-block-editor .mermaid-fallback-note[hidden] {
   display: none;
 }
 .mermaid-block-editor .mermaid-fallback-note {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin: 6px 0 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: var(--bg-2);
   border: 1px solid var(--glass-border);
   border-radius: 6px;
   font-family: var(--font-sans);
   font-size: 11px;
   color: var(--fg-2);
-  text-align: center;
+}
+.mermaid-block-editor.mermaid-text-open .mermaid-fallback-note { display: none; }
+.mermaid-block-editor .mermaid-text-edit-btn {
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font: 500 11px var(--font-sans);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.mermaid-block-editor .mermaid-text-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* The text panel: in the page's flow under the diagram (not floating
+   over it like the popovers), the text beside a live drawing of it. */
+.mermaid-popover-host.mermaid-text-panel-host {
+  position: static;
+  pointer-events: auto;
+}
+.mermaid-text-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-1);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.mermaid-text-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  min-height: 180px;
+}
+.mermaid-text-box {
+  width: 100%;
+  min-height: 180px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: 12px/1.5 var(--font-mono);
+  tab-size: 2;
+  outline: none;
+}
+.mermaid-text-box:focus { border-color: var(--accent); }
+.mermaid-text-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mermaid-text-preview {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--bg-0);
+  transition: opacity 0.2s ease;
+}
+.mermaid-text-preview svg { max-width: 100%; height: auto; min-width: 0 !important; }
+.mermaid-text-preview.stale { opacity: 0.35; }
+.mermaid-text-problem { margin: 0; color: var(--danger, #d05050); font-size: 11.5px; }
+.mermaid-text-problem[hidden] { display: none; }
+.mermaid-text-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.mermaid-text-hint { flex: 1 1 auto; color: var(--fg-2); font-size: 11px; }
+.mermaid-text-cancel,
+.mermaid-text-save {
+  border-radius: 5px;
+  padding: 4px 12px;
+  font: 500 12px var(--font-sans);
+  cursor: pointer;
+}
+.mermaid-text-cancel { background: transparent; border: 1px solid var(--glass-border); color: var(--fg-2); }
+.mermaid-text-cancel:hover { color: var(--fg-0); }
+.mermaid-text-save { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+.mermaid-text-save:hover { filter: brightness(1.08); }
+@media (max-width: 760px) {
+  .mermaid-text-body { grid-template-columns: 1fr; }
 }
 
 /* Popover hosts — no styling, just containers. The popovers themselves

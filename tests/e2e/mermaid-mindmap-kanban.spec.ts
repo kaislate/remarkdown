@@ -29,7 +29,7 @@ const KANBAN = [
 
 const DOC = `# Boards\n\n## mm\n\n\`\`\`mermaid\n${MINDMAP}\n\`\`\`\n\n## kb\n\n\`\`\`mermaid\n${KANBAN}\n\`\`\`\n\nThe end.\n`;
 
-const FALLBACK_NOTE = 'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+const FALLBACK_NOTE = 'This diagram is changed through its text.';
 
 function captureErrors(page: Page): string[] {
   const errors: string[] = [];

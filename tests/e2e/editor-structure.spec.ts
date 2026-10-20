@@ -126,3 +126,25 @@ test('the details card opens its text to change', async ({ page }) => {
   await expect(page.locator('.editor-surface .front-matter-block dt')).toHaveText(['title', 'author']);
   expect((await lastWrite(page)).startsWith('---\ntitle: Structure\nauthor: Me\n---\n')).toBe(true);
 });
+
+test('a kind of diagram the visual editor does not cover: changed through its text, with a live drawing', async ({ page }) => {
+  const GIT = '/e2e/docs/git.md';
+  await page.evaluate(([p, md]) => (window as any).__E2E_SEED_DOC__(p, md), [GIT, '# Git\n\n```mermaid\ngitGraph\n  commit\n  branch feature\n  commit\n```\n']);
+  await page.evaluate((p) => (window as any).__E2E_SET_DIALOG_PATH__(p), GIT);
+  await page.getByRole('button', { name: /menu/i }).click();
+  await page.getByRole('menuitem', { name: /open…/i }).click();
+  await expect(page.locator('.viewer h1')).toHaveText('Git');
+  await page.locator('.edit-mode-toggle').click();
+  const block = page.locator('.editor-surface .mermaid-block-editor');
+  await expect(block.locator('.mermaid-rendered svg')).toBeVisible();
+  await block.getByRole('button', { name: 'Edit diagram text' }).click();
+  const panel = page.getByRole('dialog', { name: 'Edit diagram text' });
+  await expect(panel.locator('.mermaid-text-preview svg')).toBeVisible();
+  const box = panel.getByRole('textbox', { name: 'Diagram text' });
+  await box.press('Control+End');
+  await box.pressSequentially('\n  checkout main\n  merge feature');
+  await expect(panel.locator('.mermaid-text-problem')).toBeHidden();
+  await box.press('Control+Enter');
+  await expect(panel).toHaveCount(0);
+  expect(await lastWrite(page)).toContain('  checkout main\n  merge feature\n```');
+});

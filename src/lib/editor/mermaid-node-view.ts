@@ -26,16 +26,22 @@ import {
 } from '../mermaid-runtime';
 import { createController, type DiagramController, type DiagramHost, type Point } from './mermaid/controller';
 import './mermaid/registry';
+import { openTextPanel, type TextPanel } from './mermaid/text-panel';
 
 // Rendering goes through the shared mermaid runtime: theme (from
 // settings) + font (the editor surface's) + strict security applied on
 // every render, serialized with the reader's renders, cached by source.
 // See src/lib/mermaid-runtime.ts.
 
-// Shown under diagrams the visual editor can't change yet. Product
-// rule: never point people at markdown or "the source".
-const FALLBACK_NOTE =
-  'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+// Under diagrams the visual editor can't change (other kinds, or lines
+// it can't take apart): they're changed through their text instead, in
+// a panel with a live preview (mermaid/text-panel.ts). Under a diagram
+// that won't draw, the same panel is the way to fix it. Product rule:
+// never point people at markdown or "the source".
+const FALLBACK_NOTE = 'This diagram is changed through its text.';
+const FALLBACK_BUTTON = 'Edit diagram text';
+const FIX_NOTE = 'You can fix it by changing its text.';
+const FIX_BUTTON = 'Fix the diagram text';
 
 // Mermaid sources each editor started with. A diagram that fails to
 // render with one of these was already broken in the file; any other
@@ -86,7 +92,12 @@ export class MermaidNodeView implements NodeView {
   // "Editing coming soon" note under render-only diagrams (see
   // FALLBACK_NOTE); hidden for editable and for broken diagrams.
   private fallbackNote: HTMLElement;
+  private fallbackText: HTMLElement;
+  private fallbackButton: HTMLButtonElement;
   private initialSources: Set<string>;
+  // The text panel, while open, and its host.
+  private textPanel: TextPanel | null = null;
+  private textPanelHost: HTMLElement | null = null;
 
   constructor(
     node: Node,
@@ -128,11 +139,24 @@ export class MermaidNodeView implements NodeView {
     code.className = 'language-mermaid';
     pre.appendChild(code);
 
-    const fallbackNote = document.createElement('p');
+    const fallbackNote = document.createElement('div');
     fallbackNote.className = 'mermaid-fallback-note';
     fallbackNote.contentEditable = 'false';
-    fallbackNote.textContent = FALLBACK_NOTE;
     fallbackNote.hidden = true;
+    const fallbackText = document.createElement('span');
+    fallbackText.className = 'mermaid-fallback-text';
+    fallbackText.textContent = FALLBACK_NOTE;
+    const fallbackButton = document.createElement('button');
+    fallbackButton.type = 'button';
+    fallbackButton.className = 'mermaid-text-edit-btn';
+    fallbackButton.textContent = FALLBACK_BUTTON;
+    fallbackButton.addEventListener('mousedown', (e) => e.preventDefault());
+    fallbackButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openText();
+    });
+    fallbackNote.append(fallbackText, fallbackButton);
 
     wrap.appendChild(rendered);
     wrap.appendChild(fallbackNote);
@@ -142,6 +166,8 @@ export class MermaidNodeView implements NodeView {
     this.contentDOM = code;
     this.renderedEl = rendered;
     this.fallbackNote = fallbackNote;
+    this.fallbackText = fallbackText;
+    this.fallbackButton = fallbackButton;
     this.initialSources = recordInitialSources(view);
     this.host = this.createHost();
 
@@ -243,7 +269,8 @@ export class MermaidNodeView implements NodeView {
     if (!target) return false;
     return (
       target.closest('.mermaid-rendered') !== null ||
-      target.closest('.mermaid-popover-host') !== null
+      target.closest('.mermaid-popover-host') !== null ||
+      target.closest('.mermaid-fallback-note') !== null
     );
   }
 
@@ -288,11 +315,54 @@ export class MermaidNodeView implements NodeView {
   // Cleanup when PM tears down the NodeView (block removed, editor
   // destroyed, etc.). Without this the Svelte components would leak.
   destroy(): void {
+    this.closeText();
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;
     this.controller?.destroy();
     this.controller = null;
     this.setEscapeHandler(null);
+  }
+
+  // The text panel (see FALLBACK_NOTE): under the diagram, in the flow
+  // of the page, until saved or cancelled.
+  private openText(): void {
+    if (this.textPanel) return;
+    const source = this.currentSource();
+    if (source == null) return;
+    this.controller?.cleared();
+    this.textPanelHost = this.host.createUiHost('mermaid-text-panel-host');
+    this.dom.classList.add('mermaid-text-open');
+    this.textPanel = openTextPanel({
+      host: this.textPanelHost,
+      text: source,
+      context: () => currentRenderContext(this.view.dom),
+      onSave: (text) => {
+        this.closeText();
+        // A block's text doesn't end in a newline (the fence closes it).
+        this.commitSource(text.replace(/\s+$/, ''));
+        this.view.focus();
+      },
+      onClose: () => {
+        this.closeText();
+        this.view.focus();
+      },
+    });
+  }
+
+  private closeText(): void {
+    this.textPanel?.destroy();
+    this.textPanel = null;
+    this.textPanelHost?.remove();
+    this.textPanelHost = null;
+    this.dom.classList.remove('mermaid-text-open');
+  }
+
+  // The note under the diagram: how to change it, or to fix it.
+  private showNote(kind: 'edit' | 'fix' | null): void {
+    this.fallbackNote.hidden = kind === null;
+    this.fallbackNote.classList.toggle('fix', kind === 'fix');
+    this.fallbackText.textContent = kind === 'fix' ? FIX_NOTE : FALLBACK_NOTE;
+    this.fallbackButton.textContent = kind === 'fix' ? FIX_BUTTON : FALLBACK_BUTTON;
   }
 
   // The controller for `type`, (re)created when the type changed.
@@ -336,7 +406,7 @@ export class MermaidNodeView implements NodeView {
         empty.onActivate();
       });
       this.renderedEl.appendChild(placeholder);
-      this.fallbackNote.hidden = true;
+      this.showNote(null);
       return;
     }
 
@@ -350,14 +420,14 @@ export class MermaidNodeView implements NodeView {
       this.renderedEl.innerHTML = outcome.svg;
       const svgRoot = this.renderedEl.querySelector<SVGSVGElement>(':scope > svg');
       if (svgRoot) applyDiagramSizing(svgRoot);
-      this.fallbackNote.hidden = editable;
+      this.showNote(editable ? null : 'edit');
       if (active) active.rendered();
       else controller?.cleared();
     } else {
-      // Broken, not unsupported: the "coming soon" note would mislead.
-      // When this source didn't exist when the editor opened, an edit in
-      // this session broke it — say how to get back.
-      this.fallbackNote.hidden = true;
+      // Broken, not unsupported: offer to fix it through its text. When
+      // this source didn't exist when the editor opened, an edit in this
+      // session broke it — say how to get back.
+      this.showNote('fix');
       this.renderedEl.replaceChildren(
         buildDiagramError(outcome.error, { undoHint: !this.initialSources.has(source) }),
       );

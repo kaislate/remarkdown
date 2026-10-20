@@ -491,7 +491,9 @@ async function clickInBlock(page: Page, heading: string, selector: string): Prom
   }, [blockSelectorScript(heading), selector] as [string, string]);
 }
 
-const FALLBACK_NOTE = 'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+// The note and its button, as the block's text reads.
+const FALLBACK_NOTE = 'This diagram is changed through its text.Edit diagram text';
+const FIX_NOTE = 'You can fix it by changing its text.Fix the diagram text';
 
 test.describe('mermaid — edit mode', () => {
   test('every block: diagram (never raw code), friendly notes, untouched sources survive a save', async ({ page }) => {
@@ -514,13 +516,13 @@ test.describe('mermaid — edit mode', () => {
     for (const b of m.blocks) {
       expect(b.status, b.heading).toBe(/^invalid-/.test(b.heading) ? 'error' : 'svg');
       expect(b.sourceVisible, `${b.heading} source visible`).toBe(false);
-      if (b.note !== null) expect(b.note).toBe(FALLBACK_NOTE);
-      if (b.status === 'error') expect(b.note, `${b.heading}: broken, not "coming soon"`).toBeNull();
+      if (b.note !== null && b.status !== 'error') expect(b.note).toBe(FALLBACK_NOTE);
+      if (b.status === 'error') expect(b.note, `${b.heading}: broken — offered a fix, not an edit`).toBe(FIX_NOTE);
     }
     expect(m.blocks.find((b) => b.heading === 'gitgraph')?.note).toBe(FALLBACK_NOTE);
     expect(m.blocks.find((b) => b.heading === 'fc-td-basic')?.note).toBeNull();
     // Every flowchart (legacy `graph`, subgraphs, styling, every shape
-    // and link) is editable: none says "coming soon".
+    // and link) is editable visually: none offers its text instead.
     const flowcharts = m.blocks.filter((b) => /^(fc-|graph-)/.test(b.heading));
     expect(flowcharts.length).toBeGreaterThanOrEqual(19);
     expect(flowcharts.filter((b) => b.note !== null).map((b) => b.heading)).toEqual([]);

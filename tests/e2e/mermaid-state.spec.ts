@@ -89,7 +89,7 @@ async function clickInBlock(page: Page, selector: string): Promise<boolean> {
   }, [BLOCK, selector] as [string, string]);
 }
 
-const FALLBACK_NOTE = 'Editing for this kind of diagram is coming soon — it will be kept exactly as it is.';
+const FALLBACK_NOTE = 'This diagram is changed through its text.';
 
 const SOURCE = [
   'stateDiagram-v2',
