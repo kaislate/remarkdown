@@ -98,6 +98,12 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'reader theme paper sepia night e-ink eink',
   },
   {
+    id: 'setting-smooth-scroll', section: 'reading', title: 'Smooth scrolling', depiction: 'smooth-scroll',
+    description: 'Like Microsoft Edge: each turn of the mouse wheel or press of an arrow or Page key sets the page gliding, and it eases to a stop.',
+    control: { type: 'switch', key: 'smoothScrolling' },
+    keywords: 'smooth scrolling scroll wheel edge animation glide inertia',
+  },
+  {
     id: 'setting-reader-nav', section: 'reading', title: 'Section and time left', depiction: 'reader-nav',
     description: 'In reader mode: a quiet line above the page, or the contents beside it with the section you are in marked.',
     control: {

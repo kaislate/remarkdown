@@ -110,6 +110,15 @@
     <rect x="30" y="16" width="40" height="4" rx="2" style:fill={pal[1]} />
     {#each [26, 33, 40, 47, 54] as y, i (y)}<rect x="30" y={y} width={[52, 48, 52, 44, 30][i]} height="2.5" rx="1.25" style:fill={pal[1]} opacity="0.7" />{/each}
 
+  {:else if name === 'smooth-scroll'}
+    <g class="glide" class:on={value !== false}>
+      {#each [8, 16, 24, 32, 40, 48, 56, 64, 72] as y, i (y)}
+        <rect x="24" y={y} width={[52, 60, 48, 56, 40, 58, 50, 44, 54][i]} height="3" rx="1.5" class="ln" />
+      {/each}
+    </g>
+    <rect x="92" y="10" width="4" height="50" rx="2" class="chrome" />
+    <rect x="92" y="10" width="4" height="16" rx="2" class="thumb glide-thumb" class:on={value !== false} />
+
   {:else if name === 'show-tabs'}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
     <g class="tabsrow" class:off={value === false}>
@@ -298,6 +307,14 @@
   .theme-dark { clip-path: inset(0 0 0 50%); transition: clip-path 0.5s ease; }
   .theme-dark.right { clip-path: inset(0 0 0 100%); }
   .col { transition: width 0.3s ease, x 0.3s ease; }
+  .thumb { fill: var(--accent); opacity: 0.7; }
+  /* Smooth: the page glides in each step and eases to a stop. Off: it
+     jumps a step at a time. */
+  .playing .glide.on, .playing .glide-thumb.on { animation: glide 2.4s cubic-bezier(0.25, 0, 0, 1) infinite; }
+  .playing .glide:not(.on), .playing .glide-thumb:not(.on) { animation: glide 2.4s steps(3, jump-none) infinite; }
+  .playing .glide-thumb { animation-name: glidethumb !important; }
+  @keyframes glide { 0%, 10% { transform: none; } 80%, 100% { transform: translateY(-16px); } }
+  @keyframes glidethumb { 0%, 10% { transform: none; } 80%, 100% { transform: translateY(18px); } }
   .tabsrow { transition: opacity 0.3s ease, transform 0.3s ease; }
   .tabsrow.off { opacity: 0; transform: translateY(-4px); }
   /* A lone tab is hidden at rest; playing, a second document opens and

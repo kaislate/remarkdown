@@ -55,6 +55,9 @@ export const SettingsSchema = z.object({
   // Where reader mode shows your place: the line at the top ("Chapter 3 ·
   // 6 min left") or a contents list on the left.
   readerNav: z.enum(['top', 'left']),
+  // Edge-style smooth scrolling for the mouse wheel and keys
+  // (lib/smooth-scroll.ts).
+  smoothScrolling: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -118,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readerTheme: 'default',
   readerMinimap: true,
   readerNav: 'top',
+  smoothScrolling: true,
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,
