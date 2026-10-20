@@ -386,13 +386,22 @@
        left edge (the window's, or the tab sidebar's); the text starts at
        gutter + the article's 48px padding = 152px. Right, measured from
        the frame's edge: the article's 96px of padding overflow, or, where
-       they show, the margin notes (80px gap + 280px cards + 6px air, less
-       the 14px between this padding box and the minimap). */
+       they show, the margin notes (80px gap + the cards (--card-w) + 6px
+       air, less the 14px between this padding box and the minimap). */
     --col-gutter: 104px;
     --col-right: 96px;
   }
+  /* Margin notes: 280px cards on wide windows, 220px from 1000px up
+     (below that there's no room beside a readable column — they hide). */
+  @media (min-width: 1000px) {
+    .scroll.with-marginalia {
+      --card-w: 220px;
+      --col-right: 292px;
+    }
+  }
   @media (min-width: 1440px) {
     .scroll.with-marginalia {
+      --card-w: 280px;
       --col-right: 352px;
     }
   }

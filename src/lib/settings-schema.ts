@@ -99,7 +99,7 @@ export const SettingsSchema = z.object({
   remarkContextStopAtParagraph: z.boolean(),
   remarkContextStopAtListItem: z.boolean(),
 
-  // Right-margin marginalia column for re.marks (prototype).
+  // re.marks as cards in the right margin (MarginaliaColumn.svelte).
   marginaliaEnabled: z.boolean(),
 
   // First-run "How do you want to use remarkdown?" has been answered.

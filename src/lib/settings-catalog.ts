@@ -275,8 +275,8 @@ export const OPTIONS: OptionDef[] = [
     control: { type: 'switch', key: 'remarkContextStopAtListItem' },
   },
   {
-    id: 'setting-marginalia', section: 'annotations', title: 'Margin notes', depiction: 'marginalia', badge: 'preview',
-    description: 'Show re.marks as cards in the right margin on wide windows.',
+    id: 'setting-marginalia', section: 'annotations', title: 'Margin notes', depiction: 'marginalia',
+    description: 'Show re.marks as cards in the right margin, next to what they are about (in windows at least 1000 pixels wide).',
     control: { type: 'switch', key: 'marginaliaEnabled' },
     keywords: 'marginalia cards',
   },

@@ -364,9 +364,9 @@ test('the contents list opens clear of the round buttons and the sidebar', async
   }
 });
 
-for (const state of ['top', 'left-expanded', 'left-collapsed'] as const) {
-  test(`margin notes still fit between the text and the minimap at 1440px (${state})`, async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
+for (const [state, width] of [['top', 1440], ['left-expanded', 1440], ['left-collapsed', 1440], ['top', 1100], ['left-expanded', 1280]] as const) {
+  test(`margin notes still fit between the text and the minimap at ${width}px (${state})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await setSettings(page, { marginaliaEnabled: true });
     await openViaLaunch(page, [B, A]);
     await expect(h1(page)).toHaveText('Alpha');
@@ -376,5 +376,15 @@ for (const state of ['top', 'left-expanded', 'left-collapsed'] as const) {
     const minimap = await rect(page, '.minimap');
     expect(notes.left).toBeGreaterThanOrEqual(text.right);
     expect(notes.right).toBeLessThanOrEqual(minimap.left);
+    // …and the text keeps a readable column.
+    expect(text.right - text.left).toBeGreaterThan(380);
   });
 }
+
+test('margin notes stay out of the way in a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await setSettings(page, { marginaliaEnabled: true });
+  await openViaLaunch(page, [B, A]);
+  await expect(h1(page)).toHaveText('Alpha');
+  await expect(page.locator('.marginalia')).toBeHidden();
+});
