@@ -24,7 +24,7 @@
 
 ## 🎉 New in 0.8.0: reader mode, and every diagram editable
 
-- **👋 Pick how you want to use it.** First launch asks: **Reader**, **Annotator** or **Writer**. Each sets remarkdown up for you, and you can adjust it before you start.
+- **👋 Pick how you want to use it.** First launch asks: **Reader**, **Annotator** or **Writer**. Each sets remarkdown up for you, and you can adjust it before you start. Updating to 0.8.0 starts everyone fresh: settings go back to the new defaults (your annotations and recent files stay).
 - **📖 Reader mode** has nothing on screen but the page:
   - **Six page styles**, including the new **Textured** paper.
   - The contents beside the page, with minutes left.

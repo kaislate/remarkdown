@@ -62,7 +62,7 @@
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
-  import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
+  import { zoomLevel, increaseZoom, decreaseZoom, resetZoom, minimapShown } from './stores/ui';
   import { tool, setMode } from './stores/tool';
   import { readerMode, installReaderMode } from './stores/reader-mode';
   import { loadInkWorklet } from './lib/ink-transition';
@@ -373,9 +373,12 @@
 
     // "How do you want to use remarkdown?" — once, in the main window, for
     // everyone who hasn't answered it: new installs, and everyone updating
-    // to 0.8, the version that introduced it (earlier versions never wrote
-    // onboardingCompleted). It's in Settings → About after that.
+    // to 0.8 (fresh_start.rs sets their old settings aside). It's in
+    // Settings → About after that.
     if (!presetPath && !get(settings).onboardingCompleted) {
+      // Starting fresh: the minimap's shown / hidden (kept in the window's
+      // storage, not settings) goes back to shown too.
+      minimapShown.set(true);
       openModal({ kind: 'onboarding' });
     }
 

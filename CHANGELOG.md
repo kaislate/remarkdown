@@ -6,7 +6,7 @@ What changed in each version of remarkdown, newest first. The same notes appear 
 
 ## 0.8.0 — 📖 Reader mode, and every diagram editable
 
-*Not released yet*
+*Released 2026-10-20 · [v0.8.0](https://github.com/kaislate/remarkdown/releases/tag/v0.8.0)*
 
 **Two big things this time.** Focus mode grows up into **reader mode**: nothing on screen but the page, on paper you can choose. And edit mode can now change **every kind of diagram** and make **every kind of block**: headings, lists, quotes, pictures and formulas, all without typing any markdown.
 
@@ -17,7 +17,8 @@ What changed in each version of remarkdown, newest first. The same notes appear 
   - **Annotator**: highlighter, re.marks, pen and margin notes.
   - **Writer**: documents open ready to edit, with tabs in a sidebar.
 - **Customize this layout** lets you adjust that layout's options before you start.
-- It appears once for everyone, people updating included. To see it again, go to **Settings → About → Choose a starting layout…**
+- **Updating starts you fresh.** The first launch of 0.8.0 resets your settings and closes your open tabs, so everyone begins with this window and the new defaults. Your annotations, recent files and reading progress are all kept, and your old settings are saved beside the new ones as `settings.before-0.8.0.json`.
+- To see this window again later, go to **Settings → About → Choose a starting layout…**
 - On a first run, Continue sends you into reader mode with a slow ink swap. The hand-drawn tutorial waits until you first leave reader mode.
 
 ### 📖 Reader mode

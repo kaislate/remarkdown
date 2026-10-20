@@ -2,6 +2,7 @@
 
 mod commands;
 mod default_app;
+mod fresh_start;
 mod launch;
 mod reading_progress;
 mod recent;
@@ -28,6 +29,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
+            // Before any window reads them: 0.8.0 resets settings once.
+            fresh_start::run(app.handle());
             // Files passed on our own command line (double-click on a cold
             // start). The frontend drains these once it's mounted.
             // args_os: std::env::args() panics on arguments that aren't
