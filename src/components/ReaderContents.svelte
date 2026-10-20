@@ -10,6 +10,7 @@
   import { currentViewerRoot } from '../stores/annots';
   import { doc } from '../stores/doc';
   import { countWords, wordsBelow, minutesLeft } from '../lib/reading-time';
+  import { jumpToSection } from '../lib/section-jump';
 
   interface Entry { el: HTMLElement; text: string; level: number }
 
@@ -17,6 +18,18 @@
   let current = $state(-1);
   let minutes = $state(0);
   let listEl = $state<HTMLElement | null>(null);
+  let itemEls = $state<HTMLElement[]>([]);
+  // The marker riding the track: slides to the section being read, or
+  // straight to the one just picked.
+  let marker = $state<{ top: number; height: number } | null>(null);
+  // While the page glides to a picked heading, the sections it passes
+  // don't take the marker.
+  let lockedUntil = 0;
+
+  $effect(() => {
+    const el = current >= 0 ? itemEls[current] : null;
+    marker = el ? { top: el.offsetTop, height: el.offsetHeight } : null;
+  });
 
   const wordCache = new WeakMap<Element, number>();
   function wordsIn(el: Element): number {
@@ -46,6 +59,7 @@
       if (entries[i].el.getBoundingClientRect().top > line) break;
       at = i;
     }
+    if (performance.now() < lockedUntil) at = current;
     if (at !== current) {
       current = at;
       void tick().then(() => {
@@ -88,29 +102,39 @@
     };
   });
 
-  function jump(e: MouseEvent, entry: Entry): void {
+  function jump(e: MouseEvent, entry: Entry, i: number): void {
     e.preventDefault();
-    const scroll = $viewerScroll;
-    if (!scroll) return;
-    const top = entry.el.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+    current = i;
+    // The ink wells up where the marker is headed: on the track, level
+    // with the picked entry.
+    const item = itemEls[i]?.getBoundingClientRect();
+    const track = listEl?.getBoundingClientRect();
+    const from = item && track ? { x: track.left + 1, y: item.top + item.height / 2 } : undefined;
     // A little air above the heading; the very first one goes to the top.
-    scroll.scrollTo({ top: entry === entries[0] ? 0 : Math.max(0, top - 56) });
+    const ms = jumpToSection(entry.el, { offset: 56, toTop: entry === entries[0], from });
+    lockedUntil = performance.now() + ms + 150;
   }
 </script>
 
 {#if entries.length > 0}
   <nav class="reader-contents" aria-label="Contents">
-    <ol bind:this={listEl}>
+    <div class="list" bind:this={listEl}>
+      <span class="track" aria-hidden="true"></span>
+      {#if marker}
+        <span class="marker" aria-hidden="true" style:top={`${marker.top}px`} style:height={`${marker.height}px`}></span>
+      {/if}
+      <ol>
       {#each entries as entry, i (entry.el)}
-        <li class={`level-${entry.level}`}>
+        <li class={`level-${entry.level}`} bind:this={itemEls[i]}>
           <a
             href={`#${entry.el.id}`}
             aria-current={i === current ? 'location' : undefined}
-            onclick={(e) => jump(e, entry)}
+            onclick={(e) => jump(e, entry, i)}
           >{entry.text}</a>
         </li>
       {/each}
-    </ol>
+      </ol>
+    </div>
     {#if minutes > 0}<p class="left">{minutes} min left</p>{/if}
   </nav>
 {/if}
@@ -130,20 +154,46 @@
     gap: 14px;
     font-family: var(--font-sans);
   }
-  ol {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  .list {
+    position: relative;
+    min-height: 0;
     overflow-y: auto;
     scrollbar-width: none;
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
     mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
   }
-  ol::-webkit-scrollbar { display: none; }
+  .list::-webkit-scrollbar { display: none; }
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* The track down the left of the list, and the marker riding it. */
+  .track {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--glass-border);
+  }
+  .marker {
+    position: absolute;
+    left: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    transition:
+      top 0.34s cubic-bezier(0.34, 1.4, 0.64, 1),
+      height 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .marker { transition: none; }
+  }
   a {
     display: block;
-    padding: 5px 10px;
-    border-left: 2px solid transparent;
+    padding: 5px 10px 5px 12px;
     color: var(--fg-2);
     font-size: 12.5px;
     line-height: 1.35;
@@ -157,7 +207,6 @@
   a:hover { color: var(--fg-0); }
   a[aria-current] {
     color: var(--fg-0);
-    border-left-color: var(--accent);
   }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .left {

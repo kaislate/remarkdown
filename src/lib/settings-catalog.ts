@@ -114,6 +114,18 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'smooth scrolling glide length duration speed inertia',
   },
   {
+    id: 'setting-toc-glide', section: 'reading', title: 'Glide to a section from the contents', depiction: 'toc-glide',
+    description: 'Picking a heading in the contents glides the page there, instead of jumping.',
+    control: { type: 'switch', key: 'tocGlide' },
+    keywords: 'table of contents toc glide scroll jump heading section smooth',
+  },
+  {
+    id: 'setting-toc-ink', section: 'reading', title: 'Ink trail to the section', depiction: 'toc-ink',
+    description: 'A drop of ink runs from the contents to the heading you picked, and settles under it.',
+    control: { type: 'switch', key: 'tocInk' },
+    keywords: 'table of contents toc ink animation trail heading goo',
+  },
+  {
     id: 'setting-reader-nav', section: 'reading', title: 'Section and time left', depiction: 'reader-nav',
     description: 'In reader mode: a quiet line above the page, or the contents beside it with the section you are in marked.',
     control: {

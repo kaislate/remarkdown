@@ -60,6 +60,10 @@ export const SettingsSchema = z.object({
   smoothScrolling: z.boolean(),
   // How long a smooth-scroll glide lasts: Edge's own timing, 2× or 3×.
   smoothScrollGlide: z.enum(['short', 'medium', 'long']),
+  // Picking a heading from the contents glides there (else it jumps)…
+  tocGlide: z.boolean(),
+  // …and a drop of ink runs from the contents to the heading.
+  tocInk: z.boolean(),
   dontShowWelcomeOnLaunch: z.boolean(),
   welcomeTutorialDismissed: z.boolean(),
   hideAnnotationControls: z.boolean(),
@@ -125,6 +129,8 @@ export const DEFAULT_SETTINGS: Settings = {
   readerNav: 'top',
   smoothScrolling: true,
   smoothScrollGlide: 'medium',
+  tocGlide: true,
+  tocInk: true,
   dontShowWelcomeOnLaunch: false,
   welcomeTutorialDismissed: false,
   hideAnnotationControls: false,

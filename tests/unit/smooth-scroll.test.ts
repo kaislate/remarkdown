@@ -236,3 +236,47 @@ describe('installSmoothScroll', () => {
     expect(e2.defaultPrevented).toBe(false);
   });
 });
+
+describe('glideScrollTo (a jump that glides, e.g. from the contents)', () => {
+  it('glides there along the impulse curve and reports how long it takes', async () => {
+    const { glideScrollTo } = await import('../../src/lib/smooth-scroll');
+    let now = 0;
+    let frames: Array<() => void> = [];
+    const el = document.createElement('div');
+    let top = 0;
+    Object.defineProperty(el, 'clientHeight', { value: 800 });
+    Object.defineProperty(el, 'scrollHeight', { value: 9000 });
+    Object.defineProperty(el, 'scrollTop', { get: () => top, set: (v: number) => { top = Math.max(0, Math.min(8200, v)); } });
+    const g = glideScrollTo(el, 3000, { scale: 2, now: () => now, raf: (cb) => { frames.push(() => cb(now)); return 1; } });
+    expect(g.duration).toBe(1000);
+    const run = () => { now += 16; const f = frames; frames = []; f.forEach((cb) => cb()); };
+    run();
+    expect(top).toBeGreaterThan(0);
+    for (let i = 0; i < 80; i++) run();
+    expect(top).toBe(3000);
+  });
+
+  it('stops if something else moves the page, and can be cancelled', async () => {
+    const { glideScrollTo } = await import('../../src/lib/smooth-scroll');
+    let now = 0;
+    let frames: Array<() => void> = [];
+    const el = document.createElement('div');
+    let top = 0;
+    Object.defineProperty(el, 'clientHeight', { value: 800 });
+    Object.defineProperty(el, 'scrollHeight', { value: 9000 });
+    Object.defineProperty(el, 'scrollTop', { get: () => top, set: (v: number) => { top = v; } });
+    const raf = (cb: (t: number) => void) => { frames.push(() => cb(now)); return 1; };
+    const run = () => { now += 16; const f = frames; frames = []; f.forEach((cb) => cb()); };
+    glideScrollTo(el, 3000, { now: () => now, raf });
+    run();
+    top = 50; // the wheel, say
+    for (let i = 0; i < 60; i++) run();
+    expect(top).toBe(50);
+    const g = glideScrollTo(el, 2000, { now: () => now, raf });
+    run();
+    g.cancel();
+    const at = top;
+    for (let i = 0; i < 60; i++) run();
+    expect(top).toBe(at);
+  });
+});

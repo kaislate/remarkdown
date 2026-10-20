@@ -40,6 +40,9 @@ const PX_PER_NOTCH = 100;
 const PX_PER_LINE = PX_PER_NOTCH / 3;
 
 // `scale` stretches the glide: 1 is Edge's own timing.
+// Settings → Glide: how much longer than Edge's own timing a glide lasts.
+export const GLIDE_SCALES = { short: 1, medium: 2, long: 3 } as const;
+
 export function impulseDurationMs(deltaPx: number, scale = 1): number {
   return scale * Math.min(IMPULSE_MAX_MS, Math.max(IMPULSE_MIN_MS, IMPULSE_MS_PER_PX * Math.abs(deltaPx)));
 }
@@ -295,5 +298,48 @@ export function installSmoothScroll(el: HTMLElement, opts: SmoothScrollOptions):
     stop();
     el.removeEventListener('wheel', onWheel);
     window.removeEventListener('keydown', onKeydown);
+  };
+}
+
+export interface Glide {
+  // How long the glide takes, in ms (0 if there was nowhere to go).
+  duration: number;
+  cancel: () => void;
+}
+
+// Glide `el` to `top` along the same curve — for jumps the user asked for
+// (a heading picked from the contents). Gives way if anything else moves
+// the page meanwhile.
+export function glideScrollTo(
+  el: HTMLElement,
+  top: number,
+  opts: { scale?: number; now?: () => number; raf?: (cb: (t: number) => void) => number; cancelRaf?: (id: number) => void } = {},
+): Glide {
+  const now = opts.now ?? (() => performance.now());
+  const raf = opts.raf ?? ((cb) => requestAnimationFrame(cb));
+  const cancelRaf = opts.cancelRaf ?? ((id) => cancelAnimationFrame(id));
+  const target = Math.min(Math.max(0, el.scrollHeight - el.clientHeight), Math.max(0, top));
+  const start = el.scrollTop;
+  if (target === start) return { duration: 0, cancel: () => {} };
+  const anim = new ImpulseScroll(start, target, now(), opts.scale ?? 1);
+  let lastSet = start;
+  let frame = 0;
+  let stopped = false;
+  const tick = () => {
+    frame = 0;
+    if (stopped) return;
+    if (Math.abs(el.scrollTop - lastSet) > 1) { stopped = true; return; }
+    const t = now();
+    el.scrollTop = anim.valueAt(t);
+    lastSet = el.scrollTop;
+    if (!anim.done(t)) frame = raf(tick);
+  };
+  frame = raf(tick);
+  return {
+    duration: anim.duration,
+    cancel: () => {
+      stopped = true;
+      if (frame) cancelRaf(frame);
+    },
   };
 }

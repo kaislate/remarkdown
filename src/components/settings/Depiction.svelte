@@ -119,6 +119,21 @@
     <rect x="92" y="10" width="4" height="50" rx="2" class="chrome" />
     <rect x="92" y="10" width="4" height="16" rx="2" class="thumb glide-thumb" class:on={value !== false} />
 
+  {:else if name === 'toc-glide' || name === 'toc-ink'}
+    <rect x="8" y="12" width="1.5" height="40" rx="0.75" class="chrome" />
+    <rect x="8" y="14" width="1.5" height="7" rx="0.75" class="caret tocmark" />
+    {#each [14, 23, 32, 41] as y, i (y)}<rect x="13" y={y + 1.5} width={[16, 12, 14, 10][i]} height="2.5" rx="1" class="ln" />{/each}
+    <g class="tocpage" class:glides={name === 'toc-ink' || value !== false}>
+      <rect x="42" y="18" width="34" height="4" rx="2" class="ln ctx" />
+      {#each [28, 35, 42, 49, 56, 63, 70] as y, i (y)}<rect x="42" y={y} width={[56, 50, 54, 46, 52, 44, 50][i]} height="2.5" rx="1.25" class="ln" />{/each}
+    </g>
+    {#if name === 'toc-ink'}
+      <g class="inkdrops" class:off={value === false}>
+        {#each [0, 1, 2, 3] as k (k)}<circle cx="10" cy="44" r={3 - k * 0.5} class="inkdrop" style:animation-delay={`${k * 0.06}s`} />{/each}
+        <rect x="42" y="24.5" width="34" height="2" rx="1" class="inkline" />
+      </g>
+    {/if}
+
   {:else if name === 'show-tabs'}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
     <g class="tabsrow" class:off={value === false}>
@@ -315,6 +330,20 @@
   .playing .glide-thumb { animation-name: glidethumb !important; }
   @keyframes glide { 0%, 10% { transform: none; } 80%, 100% { transform: translateY(-16px); } }
   @keyframes glidethumb { 0%, 10% { transform: none; } 80%, 100% { transform: translateY(18px); } }
+  /* Contents: the marker slides to the last entry; the page glides (or,
+     off, jumps) to its heading; the ink runs across and settles under it. */
+  .playing .tocmark { animation: tocmark 2.6s cubic-bezier(0.34, 1.4, 0.64, 1) infinite; }
+  @keyframes tocmark { 0%, 15% { transform: none; } 30%, 100% { transform: translateY(27px); } }
+  .playing .tocpage.glides { animation: tocglide 2.6s cubic-bezier(0.25, 0, 0, 1) infinite; }
+  .playing .tocpage:not(.glides) { animation: tocglide 2.6s steps(1, jump-end) infinite; }
+  @keyframes tocglide { 0%, 30% { transform: translateY(14px); } 70%, 100% { transform: none; } }
+  .inkdrop { fill: var(--accent); opacity: 0; }
+  .inkline { fill: var(--accent); opacity: 0; transform-box: fill-box; transform-origin: left center; }
+  .inkdrops.off { display: none; }
+  .playing .inkdrop { animation: inkrun 2.6s ease-in-out infinite; }
+  @keyframes inkrun { 0%, 28% { opacity: 0; transform: none; } 32% { opacity: 1; transform: none; } 62% { opacity: 1; transform: translate(34px, -19px); } 70%, 100% { opacity: 0; transform: translate(34px, -19px); } }
+  .playing .inkline { animation: inkline 2.6s ease-out infinite; }
+  @keyframes inkline { 0%, 62% { opacity: 0; transform: scaleX(0); } 72% { opacity: 1; transform: scaleX(1); } 90% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
   .tabsrow { transition: opacity 0.3s ease, transform 0.3s ease; }
   .tabsrow.off { opacity: 0; transform: translateY(-4px); }
   /* A lone tab is hidden at rest; playing, a second document opens and
