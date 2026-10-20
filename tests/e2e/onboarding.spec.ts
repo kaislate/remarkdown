@@ -6,7 +6,7 @@ test('a fresh install asks how you want to use remarkdown, once', async ({ page 
   const dialog = page.getByRole('dialog', { name: 'How do you want to use remarkdown?' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('radiogroup', { name: 'How do you want to use remarkdown?' }).getByRole('radio')).toHaveCount(3);
-  await expect(dialog.getByRole('radiogroup', { name: 'Reader mode colours' }).getByRole('radio')).toHaveCount(5);
+  await expect(dialog.getByRole('radiogroup', { name: 'Reader mode colours' }).getByRole('radio')).toHaveCount(6);
   for (const img of await dialog.locator('img').all()) {
     expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
   }

@@ -1,17 +1,38 @@
 <script lang="ts">
+  import { onDestroy, tick } from 'svelte';
   import {
     tutorialOverlayVisible,
     dismissTutorialForSession,
     dismissTutorialForever,
   } from '../stores/tutorial';
+  import { settings } from '../stores/settings';
+  import { minimapShown } from '../stores/ui';
   import FileArrowDown from 'phosphor-svelte/lib/FileArrowDown';
   import rough from 'roughjs';
   import type { Options } from 'roughjs/bin/core';
+  import {
+    placeTips,
+    labelBox,
+    separate,
+    arrowPaths,
+    type Anchors,
+    type Rect,
+    type Tip,
+    type TipId,
+    type Bracket,
+  } from '../lib/tutorial-layout';
 
   // Visibility lives in src/stores/tutorial.ts so the global '?' key
   // handler in App.svelte can toggle it. The two dismiss buttons here
   // call the store helpers, which set the relevant flags (session vs
   // persisted) and clear the force-shown flag at the same time.
+  //
+  // Each tip points at the control it explains wherever that control is
+  // right now (lib/tutorial-layout.ts): the overlay measures the controls,
+  // places the labels, moves any that would cover each other, then draws
+  // the arrows. It does it again whenever the layout changes — window
+  // size, tabs moved, shown or hidden, the sidebar pinned, the minimap
+  // tucked away — and a control that isn't on screen gets no tip.
 
   function dismissForSession() {
     dismissTutorialForSession();
@@ -33,99 +54,169 @@
     };
   });
 
-  // Each arrow is described as a sequence of paths. roughjs renders each
-  // one with hand-drawn jitter, multiple slightly-offset strokes, and the
-  // characteristic ink-laid-down feel that pure SVG filters can't quite
-  // reproduce. The action below mounts them on the bound <svg> at the
-  // moment that element appears in the DOM.
-  type RoughPath = { d: string; fill?: string; strokeWidth?: number };
+  const COPY: Record<TipId, string> = {
+    menu: 'Open documents and settings here',
+    edit: 'Edit the text (Ctrl+E)',
+    contents: 'Jump to any section',
+    reader: 'Reader mode: nothing but the page',
+    tabs: 'Your open documents. Ctrl+Shift+B hides the tabs',
+    drag: 'Hold to drag the window from here',
+    drop: '…or drop a document anywhere in the window',
+    minimap: 'Navigate long documents here',
+    tools: 'Highlight, write re.marks and draw with these',
+    remarks: 'Browse and jump to your re.marks here',
+    // Short: in a narrow gap beside the zoom control, clear of the dismiss buttons.
+    zoom: 'Text size',
+  };
 
+  // The controls, measured. Only what's actually on screen counts.
+  function box(sel: string): Rect | undefined {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el || el.getClientRects().length === 0) return undefined;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return undefined;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.right <= 0 || r.left >= window.innerWidth || r.bottom <= 0 || r.top >= window.innerHeight) return undefined;
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+  }
+
+  function measure(): Anchors {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const active = box('.tabbar [role="tab"][aria-selected="true"]');
+    const end = box('.tabbar .new-tab');
+    const rows = document.querySelectorAll('.tab-sidebar .side-list > *').length;
+    const last = rows ? box(`.tab-sidebar .side-list > :nth-child(${rows})`) : undefined;
+    const sidebar = box('.tab-sidebar');
+    return {
+      window: { width: w, height: h },
+      page: box('.scroll') ?? { left: 0, top: 0, right: w, bottom: h, width: w, height: h },
+      menu: box('.hamburger'),
+      edit: box('.edit-mode-toggle'),
+      contents: box('.toc-button'),
+      reader: box('.reader-mode-toggle'),
+      tabsTop: active && end ? { active, end } : undefined,
+      tabsLeft: last && sidebar ? { last, sidebar } : undefined,
+      controls: box('.titlebar-controls'),
+      minimap: box('.minimap'),
+      tools: box('.rail'),
+      remarks: box('.notes-pill-wrap'),
+      zoom: box('.zoom-rail'),
+    };
+  }
+
+  let tips = $state<Tip[]>([]);
+  let bracket = $state<Bracket | null>(null);
+  // Where each label ended up, once measured and kept apart; null while
+  // the labels are being measured (they're laid out but not shown yet).
+  let placed = $state<Map<TipId, Rect> | null>(null);
+  let arrows = $state<Array<{ line: string; head: string }>>([]);
+  const tipEls: Partial<Record<TipId, HTMLElement>> = {};
+
+  async function layout() {
+    const a = measure();
+    const p = placeTips(a);
+    tips = p.tips;
+    bracket = p.bracket ?? null;
+    placed = null;
+    await tick();
+    const boxes = tips.map((t) => {
+      const el = tipEls[t.id];
+      return { id: t.id, nudge: t.nudge, box: labelBox(t, { width: el?.offsetWidth ?? 0, height: el?.offsetHeight ?? 0 }) };
+    });
+    const dismiss = document.querySelector('.dismiss-stack')?.getBoundingClientRect();
+    const obstacles = dismiss && dismiss.width > 0
+      ? [{ left: dismiss.left, top: dismiss.top, right: dismiss.right, bottom: dismiss.bottom, width: dismiss.width, height: dismiss.height }]
+      : [];
+    const out = separate(boxes, a.window, obstacles);
+    placed = out;
+    arrows = tips.flatMap((t) => (t.point && out.get(t.id) ? [arrowPaths(out.get(t.id)!, t.point)] : []));
+  }
+
+  let frame = 0;
+  function relayout() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      void layout();
+    });
+  }
+
+  // Lay out on opening, and again whenever the window or the layout moves
+  // (the sidebar and minimap slide, so once more after they've settled).
+  $effect(() => {
+    if (!$tutorialOverlayVisible) return;
+    void $settings;
+    void $minimapShown;
+    relayout();
+    const settle = setTimeout(relayout, 380);
+    window.addEventListener('resize', relayout);
+    const mo = new MutationObserver(relayout);
+    mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => {
+      clearTimeout(settle);
+      window.removeEventListener('resize', relayout);
+      mo.disconnect();
+    };
+  });
+
+  onDestroy(() => {
+    if (frame) cancelAnimationFrame(frame);
+  });
+
+  function tipStyle(t: Tip): string {
+    const b = placed?.get(t.id);
+    if (b) return `left:${b.left}px;top:${b.top}px;`;
+    // Measuring: at its position, aligned, but not shown yet.
+    const tx = t.alignX === 'left' ? '0' : t.alignX === 'right' ? '-100%' : '-50%';
+    const ty = t.alignY === 'top' ? '0' : t.alignY === 'bottom' ? '-100%' : '-50%';
+    return `left:${t.at.x}px;top:${t.at.y}px;transform:translate(${tx},${ty});visibility:hidden;`;
+  }
+
+  // Arrows and the minimap's bracket are drawn with rough.js: hand-drawn
+  // jitter, several slightly offset strokes — the ink-laid-down feel that
+  // plain SVG strokes don't have. Redrawn whenever the layout changes.
   const ROUGH_DEFAULTS: Options = {
     stroke: 'currentColor',
-    strokeWidth: 3,
-    roughness: 2.4,
+    strokeWidth: 2.6,
+    roughness: 2.2,
     bowing: 2,
     seed: 42,
   };
 
-  function drawRough(svg: SVGSVGElement, paths: RoughPath[]) {
-    const rc = rough.svg(svg);
-    const elements = paths.map((p) => {
-      const opts: Options = {
-        ...ROUGH_DEFAULTS,
-        strokeWidth: p.strokeWidth ?? ROUGH_DEFAULTS.strokeWidth,
-      };
-      if (p.fill) {
-        opts.fill = p.fill;
-        opts.fillStyle = 'solid';
-      }
-      const el = rc.path(p.d, opts);
-      svg.appendChild(el);
-      return el;
-    });
+  function roughArrows(svg: SVGSVGElement, list: Array<{ line: string; head: string }>) {
+    let els: SVGElement[] = [];
+    const draw = (items: Array<{ line: string; head: string }>) => {
+      els.forEach((el) => el.remove());
+      const rc = rough.svg(svg);
+      els = items.flatMap((a, i) => [
+        rc.path(a.line, { ...ROUGH_DEFAULTS, seed: 42 + i }),
+        rc.path(a.head, { ...ROUGH_DEFAULTS, seed: 42 + i, strokeWidth: 1.5, fill: 'currentColor', fillStyle: 'solid' }),
+      ]);
+      els.forEach((el) => svg.appendChild(el));
+    };
+    draw(list);
     return {
-      destroy() {
-        elements.forEach((el) => el.remove());
-      },
+      update: draw,
+      destroy() { els.forEach((el) => el.remove()); },
     };
   }
 
-  // Path data for each arrow + its arrowhead. Arrowheads are filled with
-  // currentColor so they read as the arrow's tip rather than just an
-  // outlined triangle. Each arrow gets a unique `seed` via path index +
-  // base seed so neighbouring arrows don't look like clones.
-  const arrowHamburger: RoughPath[] = [
-    { d: 'M 70,60 Q 40,30 18,12', strokeWidth: 3 },
-    { d: 'M 8,6 L 24,8 L 18,22 Z', fill: 'currentColor', strokeWidth: 1.5 },
-  ];
-  const arrowTools: RoughPath[] = [
-    { d: 'M 10,10 Q 40,40 62,58', strokeWidth: 3 },
-    { d: 'M 72,64 L 56,62 L 62,48 Z', fill: 'currentColor', strokeWidth: 1.5 },
-  ];
-  const arrowTitlebar: RoughPath[] = [
-    { d: 'M 15,55 L 15,16', strokeWidth: 3 },
-    { d: 'M 15,4 L 24,18 L 6,18 Z', fill: 'currentColor', strokeWidth: 1.5 },
-  ];
-  const arrowZoom: RoughPath[] = [
-    { d: 'M 70,10 Q 40,40 18,58', strokeWidth: 3 },
-    { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
-  ];
-  // Re.marks pill is just above the zoom pill at left:22, bottom:68.
-  // S-curve (cubic bezier with control points pulling in OPPOSITE
-  // directions) gives this arrow a distinctly wavy silhouette so it
-  // doesn't read as a duplicate of the zoom tip's plain diagonal.
-  const arrowRemarks: RoughPath[] = [
-    { d: 'M 70,8 C 80,30 5,38 18,58', strokeWidth: 3 },
-    { d: 'M 8,64 L 14,48 L 24,58 Z', fill: 'currentColor', strokeWidth: 1.5 },
-  ];
-  // Bracket spine + arms — drawn as three short strokes rather than one
-  // continuous path so each segment gets its own jitter and reads as
-  // separate pen strokes laid down in sequence (which is how a person
-  // would actually draw a bracket of this shape).
-  const bracketPaths: RoughPath[] = [
-    { d: 'M 20,2 L 6,2', strokeWidth: 2.5 },           // top arm
-    { d: 'M 6,2 L 6,198', strokeWidth: 2.5 },          // spine
-    { d: 'M 6,198 L 20,198', strokeWidth: 2.5 },       // bottom arm
-  ];
-
-  // Visual connector linking Tip 1 (Open .md files) to Tip 2 (drag-drop
-  // hint) — same hand-drawn line style as the arrows but with no
-  // arrowhead. Shape is a J-hook: a near-vertical drop from below
-  // Tip 1's lower edge, then a sweep to the right that lands just
-  // before the file icon of Tip 2.
-  const connectorTip1to2: RoughPath[] = [
-    { d: 'M 8,4 C 4,28 4,45 46,55', strokeWidth: 2.5 },
-  ];
-
-  // Tip 8 — sketchy ring encircling the reader-mode button. The button
-  // sits at left:144, bottom:22 (38×38 → screen centre 163,41 from
-  // bottom). With the tip positioned at left:93, bottom:0 and the SVG
-  // 140×110, the button centre lands at SVG (70, 69) and the ring is
-  // an ellipse with rx=29 / ry=24 around that point. Closed with two
-  // half-arcs as the standard SVG full-ellipse-via-path idiom.
-  const ringFocus: RoughPath[] = [
-    { d: 'M 41,69 a 29,24 0 1 0 58,0 a 29,24 0 1 0 -58,0', strokeWidth: 2.5 },
-  ];
+  // Bracket spine + arms — three short strokes so each gets its own jitter
+  // and reads as separate pen strokes laid down in sequence.
+  function roughBracket(svg: SVGSVGElement, height: number) {
+    let els: SVGElement[] = [];
+    const draw = (h: number) => {
+      els.forEach((el) => el.remove());
+      const rc = rough.svg(svg);
+      els = [`M 20,2 L 6,2`, `M 6,2 L 6,${h - 2}`, `M 6,${h - 2} L 20,${h - 2}`].map((d) =>
+        rc.path(d, { ...ROUGH_DEFAULTS, strokeWidth: 2.5 }),
+      );
+      els.forEach((el) => svg.appendChild(el));
+    };
+    draw(height);
+    return { update: draw, destroy() { els.forEach((el) => el.remove()); } };
+  }
 </script>
 
 {#if $tutorialOverlayVisible}
@@ -136,88 +227,41 @@
   <div class="backdrop" aria-hidden="true"></div>
 
   <div class="overlay" aria-label="Welcome tutorial">
-    <!-- Tip 1: Hamburger menu -->
-    <div class="tip tip-hamburger">
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowHamburger}></svg>
-      <div class="label">Open <code>.md</code> files and settings here</div>
-    </div>
+    <svg class="arrows" aria-hidden="true" use:roughArrows={arrows}></svg>
 
-    <!-- Curved hand-drawn connector from Tip 1 down to Tip 2's icon. No
-         arrowhead — purely a visual link between the two related tips. -->
-    <svg
-      class="connector connector-tip1-tip2"
-      viewBox="0 0 56 60"
-      width="56"
-      height="60"
-      aria-hidden="true"
-      use:drawRough={connectorTip1to2}
-    ></svg>
+    {#each tips as t (t.id)}
+      <div class="tip" data-tip={t.id} bind:this={tipEls[t.id]} style={tipStyle(t)}>
+        {#if t.id === 'drop'}
+          <span class="icon" aria-hidden="true"><FileArrowDown size={26} weight="regular" /></span>
+        {/if}
+        <div class="label">
+          {#if t.id === 'tools' || t.id === 'remarks'}
+            {COPY[t.id].split('re.marks')[0]}re<span class="brand-dot">.</span>marks{COPY[t.id].split('re.marks')[1]}
+          {:else}
+            {COPY[t.id]}
+          {/if}
+        </div>
+      </div>
+    {/each}
 
-    <!-- Tip 2: Drag-drop hint -->
-    <div class="tip tip-drag">
-      <span class="icon" aria-hidden="true">
-        <FileArrowDown size={28} weight="regular" />
-      </span>
-      <div class="label">…or drop any <code>.md</code> file into the window</div>
-    </div>
-
-    <!-- Tip 3: Minimap bracket -->
-    <div class="bracket-row" aria-hidden="true">
-      <div class="bracket-label">Navigate long documents here</div>
-      <svg class="bracket" viewBox="0 0 24 200" preserveAspectRatio="none" aria-hidden="true" use:drawRough={bracketPaths}></svg>
-    </div>
-
-    <!-- Tip 4: Annotation tools (bottom-right) -->
-    <div class="tip tip-tools">
-      <div class="label">Add annotations using these tools</div>
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowTools}></svg>
-    </div>
-
-    <!-- Tip 5: Title bar drag area (top-center). Column layout so the
-         label sits BELOW the arrow; the arrow's head points up at the
-         centre of the title bar. -->
-    <div class="tip tip-titlebar">
-      <svg class="arrow" viewBox="0 0 30 60" width="30" height="60" aria-hidden="true" use:drawRough={arrowTitlebar}></svg>
-      <div class="label">Hold to drag the window from here</div>
-    </div>
-
-    <!-- Tip 6: Zoom pill (bottom-left). Arrow leads with its head pointing
-         DOWN-LEFT at the zoom pill; the label sits to the right of the
-         arrow as the visual continuation of the trail. -->
-    <div class="tip tip-zoom">
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowZoom}></svg>
-      <div class="label">Resize your view here</div>
-    </div>
-
-    <!-- Tip 7: Re.marks pill (bottom-left, immediately above zoom).
-         Diagonal down-left arrow points toward the pill. Stacked
-         above the zoom tip so the two tips don't visually crowd. -->
-    <div class="tip tip-remarks">
-      <svg class="arrow" viewBox="0 0 80 70" width="80" height="70" aria-hidden="true" use:drawRough={arrowRemarks}></svg>
-      <div class="label">Browse and jump to your re<span class="brand-dot">.</span>marks here</div>
-    </div>
-
-    <!-- Tip 8: Reader-mode button (right of the zoom controls). A sketchy
-         ring encircles the button and "Reader mode" arcs to the right
-         of it on a curved baseline. SVG-only tip — no rectangular
-         label. -->
-    <div class="tip tip-reader">
-      <svg class="reader-svg" viewBox="0 0 240 110" width="240" height="110" aria-hidden="true" use:drawRough={ringFocus}>
-        <defs>
-          <!-- Soft up-and-over arc starting just outside the ring's
-               upper-right edge, peaking close above, settling back
-               down a short distance to the right. Tight enough that
-               the text reads as a label belonging to the button
-               rather than floating away from it. -->
-          <path id="arc-focus-mode" d="M 100,53 Q 142,30 184,58" fill="none" />
-        </defs>
-        <text class="arc-text">
-          <textPath href="#arc-focus-mode" startOffset="50%" text-anchor="middle">
-            Reader mode
-          </textPath>
-        </text>
-      </svg>
-    </div>
+    {#if bracket}
+      <div
+        class="bracket-row"
+        data-tip="minimap"
+        style:top={`${bracket.top}px`}
+        style:height={`${bracket.bottom - bracket.top}px`}
+        style:right={`calc(100vw - ${bracket.x + 24}px)`}
+      >
+        <div class="bracket-label">{COPY.minimap}</div>
+        <svg
+          class="bracket"
+          viewBox={`0 0 24 ${bracket.bottom - bracket.top}`}
+          height={bracket.bottom - bracket.top}
+          aria-hidden="true"
+          use:roughBracket={bracket.bottom - bracket.top}
+        ></svg>
+      </div>
+    {/if}
 
     <!-- Stacked dismiss controls at bottom-centre. The pill button is
          the primary action (session-only dismiss, resets next launch);
@@ -238,6 +282,12 @@
   /* Suppress text selection on the entire app while the tutorial overlay
      is active. Applied globally because the article content lives in
      other Svelte component scopes. */
+  /* The tabs stay sharp above the blur, like the minimap: a tip points at
+     them. */
+  :global(body.tutorial-active .tabbar) {
+    z-index: 85;
+  }
+
   :global(body.tutorial-active),
   :global(body.tutorial-active *) {
     user-select: none;
@@ -330,76 +380,37 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
     line-height: 1.4;
   }
-  /* Re-style inline <code> back to monospace so things like ".md" stay
-     in the canonical mono treatment despite the handwritten surroundings. */
-  .label code {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: normal;
-    background: var(--bg-2);
-    color: var(--accent);
-    padding: 1px 4px;
-    border-radius: 3px;
-  }
-  .arrow {
-    color: var(--accent);
-    flex-shrink: 0;
-    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
-  }
   .icon {
     color: var(--accent);
     margin-top: 2px;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
-
-  /* Tip 1 — points at the hamburger (top-left). The arrow's tail sits
-     at the bottom-right of its SVG (the curve sweeps up-left to the
-     hamburger), so align-items: flex-end pulls the label down so it
-     sits visually anchored to the tail of the arrow. */
-  .tip-hamburger {
-    top: 70px;
-    left: 70px;
-    flex-direction: row;
-    align-items: flex-end;
-  }
-  /* Push only the label down to sit at/below the arrow's tail without
-     moving the arrow itself. position: relative shifts the rendering
-     without disturbing the flex layout. */
-  .tip-hamburger .label {
-    position: relative;
-    top: 25px;
-  }
-
-  /* Tip 2 — sits below and to the right of Tip 1's anchored label, in
-     the empty space to the right of where the watermark would be. */
-  .tip-drag {
-    top: 200px;
-    left: 250px;
-    flex-direction: row;
-    align-items: center;
-  }
-
-  /* Connector between Tip 1 and Tip 2 — hand-drawn J-hook curve, no
-     arrowhead. Drops from below Tip 1's lower edge, then sweeps right
-     to land at the file icon of Tip 2. Pure decoration. */
-  .connector-tip1-tip2 {
+  /* All the arrows, drawn into one sheet over the window. */
+  .arrows {
     position: fixed;
-    top: 165px;
-    left: 200px;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: visible;
     pointer-events: none;
     color: var(--accent);
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
+  .tip {
+    align-items: center;
+  }
+  .tip .label {
+    white-space: nowrap;
+    max-width: none;
+  }
+  .label .brand-dot {
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
 
-  /* Tip 3 — vertical bracket alongside the minimap. Minimap is at
-     right:16, top:52, bottom:110, so the bracket spans that region with
-     a small inset on each end. The label sits to the bracket's left. */
+  /* The minimap's bracket: alongside it, the label to its left. */
   .bracket-row {
     position: fixed;
-    top: 60px;
-    right: 162px;
-    bottom: 118px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -417,114 +428,10 @@
     white-space: nowrap;
   }
   .bracket {
-    height: 100%;
     width: 24px;
+    overflow: visible;
     color: var(--accent);
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
-  }
-
-  /* Tip 4 — annotation tools at bottom-right. Arrow tail sits at the
-     top-LEFT of its SVG (curve sweeps down-right to the tool rail), so
-     align-items: flex-start pulls the label up so it sits visually
-     anchored to the tail. */
-  .tip-tools {
-    bottom: 76px;
-    right: 220px;
-    flex-direction: row;
-    align-items: flex-start;
-  }
-  /* Pull only the label up to sit at/above the arrow's tail without
-     moving the arrow itself. */
-  .tip-tools .label {
-    position: relative;
-    top: -24px;
-  }
-
-  /* Tip 5 — title bar drag region. Stacked column: arrow on top
-     (pointing UP at the title bar centre), label below it, both
-     horizontally centred within the tip. transform-origin compensates
-     for the centring translateX so the hover scale anchors true. */
-  .tip-titlebar {
-    top: 50px;
-    left: 50%;
-    transform: translateX(-50%);
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  .tip-titlebar:hover {
-    transform: translateX(-50%) scale(1.06) rotate(-1.2deg);
-  }
-
-  /* Tip 6 — zoom pill at bottom-left. Arrow tail sits at the top-RIGHT
-     of its SVG (curve sweeps down-left to the zoom pill), so
-     align-items: flex-start pulls the label up so it sits visually
-     anchored to the tail. */
-  .tip-zoom {
-    bottom: 56px;
-    left: 130px;
-    flex-direction: row;
-    align-items: flex-start;
-  }
-  /* Pull only the label up to sit at/above the arrow's tail without
-     moving the arrow itself. */
-  .tip-zoom .label {
-    position: relative;
-    top: -24px;
-  }
-
-  /* Tip 7 — re.marks pill (just above the zoom pill at left:22, bottom:68,
-     ~85px wide → centre near screen (60, 83 from bottom)).
-
-     column-reverse so the LABEL ends up on top (clear of the zoom
-     tip's label band) and the SVG sits at the BOTTOM of the tip
-     element where its head can reach the pill. */
-  .tip-remarks {
-    bottom: 98px;
-    left: 72px;
-    flex-direction: column-reverse;
-    align-items: flex-start;
-    gap: 0;
-  }
-  .tip-remarks .label .brand-dot {
-    color: var(--accent);
-    font-family: var(--font-mono);
-  }
-
-  /* Tip 8 — reader-mode button (right of the zoom pill at left:144,
-     bottom:22, 38×38 → screen centre 163, 41 from bottom). Tip is
-     SVG-only: a sketchy ring around the button + "Reader mode" arcing
-     above it. The 140-wide tip starts at left:93 so its centre lines
-     up with the button's centre (93 + 70 = 163). Bottom 0 puts the
-     ring at the right vertical position. */
-  .tip-reader {
-    bottom: 0;
-    left: 93px;
-    /* The SVG carries everything; no .label child to align. */
-    color: var(--accent);
-  }
-  .tip-reader .reader-svg {
-    /* overflow visible so the rough.js stroke jitter (which extends
-       beyond the path bounding box) doesn't get clipped. */
-    overflow: visible;
-  }
-  /* "Reader mode" arc text — same colour as the ring, in the marketing
-     italic so it reads as hand-noted commentary rather than an
-     interface label. The slight letter-spacing gives the hand-drawn
-     curl a touch of casualness. */
-  .tip-reader .arc-text {
-    fill: var(--accent);
-    font-family: var(--font-sans);
-    font-size: 14px;
-    font-weight: 600;
-    font-style: italic;
-    letter-spacing: 0.04em;
-  }
-  /* Subtle drop shadow on the ring + text so it lifts off whatever
-     content is behind the backdrop. Applied to the SVG so both the
-     rendered <text> and the rough.js paths get the same lift. */
-  .tip-reader .reader-svg {
-    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5));
   }
 
   /* Bottom-centre stack: a purple text link for the permanent dismiss
