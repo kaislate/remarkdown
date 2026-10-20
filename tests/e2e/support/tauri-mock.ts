@@ -121,6 +121,11 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       // Off by default (no pre-release tag in specs); screenshot specs set
       // __E2E_APP_VERSION__ to show the window exactly as a build does.
       return (window as any).__E2E_APP_VERSION__ ?? null;
+    case 'plugin:clipboard-manager|write_text':
+      (window as any).__E2E_CLIPBOARD__ = (args as any)?.text ?? '';
+      return;
+    case 'plugin:clipboard-manager|read_text':
+      return (window as any).__E2E_CLIPBOARD__ ?? '';
     case 'default_app_status':
       return { supported: false, md: false, markdown: false };
     case 'load_settings':

@@ -14,11 +14,20 @@
   } from '../stores/annots';
   import { createAnchor, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
   import { addToast } from '../stores/toasts';
+  import { noteToOpen } from '../lib/note-actions';
   import { pinPosition } from '../lib/positioning';
   import NotePopover from './NotePopover.svelte';
   import type { Note } from '../lib/schema';
 
   let openPinId = $state<string | null>(null);
+
+  // A re.mark added elsewhere (the right-click menu) opens ready to write.
+  $effect(() => {
+    const id = $noteToOpen;
+    if (!id) return;
+    openPinId = id;
+    noteToOpen.set(null);
+  });
 
   // Drag state for moving pins. dragPinId is the note being dragged;
   // dragStart is the pointer's screen position when the press began;

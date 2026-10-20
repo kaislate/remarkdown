@@ -548,10 +548,8 @@ test('switching in and out, the old view dries away like ink', async ({ page }) 
   await page.keyboard.press('Escape');
   await expect(page.locator('body')).not.toHaveClass(/reader-mode/);
   expect(await page.evaluate(() => (window as any).__vt)).toBe(2);
-  // The old view is masked with a blotchy pattern that dries away.
-  const mask = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ink-mask'));
-  expect(mask).toContain('feTurbulence');
-  expect(mask).toContain('animate');
+  // The old view is masked by the ink worklet as it dries.
+  expect(await page.evaluate(() => document.documentElement.classList.contains('ink-worklet'))).toBe(true);
 });
 
 test('no ink transition under reduced motion', async ({ browser }) => {

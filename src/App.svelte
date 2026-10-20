@@ -37,6 +37,7 @@
   import ReaderMeta from './components/ReaderMeta.svelte';
   import ReaderContents from './components/ReaderContents.svelte';
   import InkLayer from './components/InkLayer.svelte';
+  import AppContextMenu from './components/AppContextMenu.svelte';
   import { doc } from './stores/doc';
   import TocButton from './components/TocButton.svelte';
   import NotesPanel from './components/NotesPanel.svelte';
@@ -62,6 +63,7 @@
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom } from './stores/ui';
   import { tool, setMode } from './stores/tool';
   import { readerMode, installReaderMode } from './stores/reader-mode';
+  import { loadInkWorklet } from './lib/ink-transition';
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import { editMode, toggleEditMode } from './stores/edit-mode';
@@ -116,6 +118,7 @@
   // Reader mode (body class + reader theme, Esc to leave, read-only
   // annotation tools) — see stores/reader-mode.ts.
   const disposeReaderMode = installReaderMode();
+  loadInkWorklet();
 
   // Reflect the edit-mode store on body so edit-mode.css can hide
   // annotation layers and apply edit mode styling.
@@ -406,6 +409,7 @@
 <EditModeToggle />
 <TocButton />
 <InkLayer />
+<AppContextMenu />
 <NotesPanel />
 <WelcomeDismiss />
 <OrphanPanel />
