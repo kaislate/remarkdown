@@ -237,8 +237,11 @@
 <style>
   .editor-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
+    /* Its buttons answer to its own width (the editor column), below. */
+    container-type: inline-size;
     padding: 6px 8px;
     background: var(--bg-1);
     border-bottom: 1px solid var(--glass-border);
@@ -366,8 +369,9 @@
   .style-quote .style-name { font-style: italic; border-left: 2px solid var(--fg-2); padding-left: 6px; }
   .menu-sep { height: 1px; margin: 4px 2px; background: var(--glass-border); }
   .toolbar-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--glass-border); }
-  /* Narrow windows: icons only. */
-  @media (max-width: 980px) {
+  /* A narrow editor column (a small window, tabs in a sidebar): icons
+     only, the names in their tooltips; narrower still, a second row. */
+  @container (max-width: 860px) {
     .toolbar-btn:not(.style-btn) .label { display: none; }
   }
 </style>

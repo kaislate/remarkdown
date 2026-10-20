@@ -163,13 +163,17 @@ const footnote = (state: MarkdownSerializerState, node: Node) => {
 
 // Maths and front matter go back out exactly as they came in: their text
 // is written raw, never escaped.
+// An empty formula (inserted, then left empty) isn't written: `$$` would
+// read back as the start of a formula block.
 const math_inline = (state: MarkdownSerializerState, node: Node) => {
+  if (!String(node.attrs.tex).trim()) return;
   const fence = node.attrs.display ? '$$' : '$';
   state.write(fence + String(node.attrs.tex) + fence);
 };
 
 const math_block = (state: MarkdownSerializerState, node: Node) => {
   const tex = String(node.attrs.tex);
+  if (!tex.trim()) return;
   if (node.attrs.oneLine && !tex.includes('\n')) {
     state.write(`$$${tex}$$`);
   } else {

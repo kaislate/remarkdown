@@ -160,6 +160,17 @@ describe('inserting', () => {
     expect(w.state.doc.child(1).type.name).toBe('math_block');
   });
 
+  it('a formula on an empty list line goes in the line (a list item must start with text)', () => {
+    const v = edit('- one\n- two\n', 'two', true);
+    v.dispatch(v.state.tr.delete(v.state.selection.from - 3, v.state.selection.from));
+    expect(() => apply(v, insertFormula())).not.toThrow();
+    let inline = 0;
+    v.state.doc.descendants((n) => void (n.type.name === 'math_inline' && inline++));
+    expect(inline).toBe(1);
+    // Left empty, it isn't written (`$$` would read back as a block).
+    expect(md(v)).not.toContain('$$');
+  });
+
   it('a picture at the cursor', () => {
     const v = edit('See here.\n', 'here', false);
     apply(v, insertImage('pics/cat%20one.png', 'cat one'));

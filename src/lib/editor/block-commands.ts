@@ -216,9 +216,12 @@ export function insertFormula(opened?: (pos: number) => void): Command {
     if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
     if (!dispatch) return true;
     const emptyPara = empty && $from.parent.type === nodes.paragraph && $from.parent.content.size === 0;
+    // A block only where one may stand (not as a list item's first line).
+    const blockFits =
+      $from.depth >= 1 && $from.node(-1).canReplaceWith($from.index(-1), $from.index(-1) + 1, nodes.math_block);
     let tr: Transaction;
     let pos: number;
-    if (emptyPara && $from.depth >= 1) {
+    if (emptyPara && blockFits) {
       pos = $from.before();
       tr = state.tr.replaceWith(pos, $from.after(), nodes.math_block.create({ tex: '' }));
     } else {
