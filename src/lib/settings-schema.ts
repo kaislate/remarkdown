@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ZOOM_LEVELS } from '../stores/ui';
 import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
 import { READER_THEMES } from './reader-themes';
+import { CURSOR_INK_STYLES } from './cursor-ink';
 
 // Schema version is incremented when an incompatible change is made to the
 // shape so a future loader can branch on it. Today the only version is 1.
@@ -55,9 +56,10 @@ export const SettingsSchema = z.object({
   // Where reader mode shows your place: the line at the top ("Chapter 3 ·
   // 6 min left") or a contents list on the left.
   readerNav: z.enum(['top', 'left']),
-  // The mouse leaves a trail of grey ink that soaks into the page and dries
-  // away (components/ReaderCursorInk.svelte).
-  readerCursorInk: z.boolean(),
+  // Grey ink from the mouse in reader mode, and in which style
+  // (lib/cursor-ink.ts): a spot leaking while it rests, a trail of drops,
+  // a fine pen line — or none.
+  readerCursorInk: z.enum(CURSOR_INK_STYLES),
   // Edge-style smooth scrolling for the mouse wheel and keys
   // (lib/smooth-scroll.ts).
   smoothScrolling: z.boolean(),
@@ -130,7 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readerTheme: 'default',
   readerMinimap: true,
   readerNav: 'left',
-  readerCursorInk: true,
+  readerCursorInk: 'leak',
   smoothScrolling: true,
   smoothScrollGlide: 'medium',
   tocGlide: true,

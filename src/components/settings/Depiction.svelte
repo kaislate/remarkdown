@@ -174,12 +174,18 @@
 
   {:else if name === 'cursor-ink'}
     {#each [12, 19, 26, 33, 40, 47, 54] as y, i (y)}<rect x="22" y={y} width={[44, 50, 46, 52, 40, 48, 44][i]} height="3" rx="1.5" class="ln" />{/each}
-    <g class="cursorink" class:off={value === false}>
+    {@const inkStyle = str(value, 'leak')}
+    {#if inkStyle === 'leak'}
+      <!-- The pointer rests and a spot spreads under it; it moves on and the spot dries. -->
+      <g class="leakspot"><circle cx="50" cy="36" r="13" class="cleak-front" /><circle cx="50" cy="36" r="11" class="cleak" /></g>
+    {:else if inkStyle === 'trail'}
       {#each [[30, 50], [38, 44], [46, 40], [55, 37], [64, 36], [73, 38]] as [x, y], k (k)}
         <circle cx={x} cy={y} r={k === 5 ? 4.5 : 2.2} class="cdrop" style:animation-delay={`${k * 0.26}s`} />
       {/each}
-    </g>
-    <path class="pointer" d="M0,0 L0,9 L2.4,6.8 L4.2,10.6 L5.6,10 L3.8,6.3 L7,6.3 Z" />
+    {:else if inkStyle === 'pen'}
+      <path d="M30,50 C40,40 50,44 58,38 S70,34 73,38" class="cpen" pathLength="100" />
+    {/if}
+    <path class="pointer" class:leaks={inkStyle === 'leak'} d="M0,0 L0,9 L2.4,6.8 L4.2,10.6 L5.6,10 L3.8,6.3 L7,6.3 Z" />
 
   {:else if name === 'restore'}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
@@ -358,8 +364,20 @@
   .playing .pointer { animation: inkpointer 2.6s ease-in-out infinite; }
   @keyframes inkpointer { 0% { transform: translate(30px, 50px); } 55%, 100% { transform: translate(73px, 38px); } }
   .cdrop { fill: var(--fg-2); opacity: 0.35; transform-box: fill-box; transform-origin: center; }
-  .cursorink.off { display: none; }
   .playing .cdrop { animation: cdrop 2.6s ease-out infinite; }
+  .cpen { fill: none; stroke: var(--fg-2); stroke-width: 1.6; stroke-linecap: round; opacity: 0.5; stroke-dasharray: 100; }
+  .playing .cpen { animation: cpen 2.6s ease-in-out infinite; }
+  @keyframes cpen { 0% { stroke-dashoffset: 100; opacity: 0.55; } 55% { stroke-dashoffset: 0; opacity: 0.5; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  .pointer.leaks { transform: translate(50px, 36px); }
+  .playing .pointer.leaks { animation: leakpointer 3.2s ease-in-out infinite; }
+  @keyframes leakpointer { 0%, 62% { transform: translate(50px, 36px); } 80%, 100% { transform: translate(80px, 26px); } }
+  .cleak, .cleak-front { transform-box: fill-box; transform-origin: center; }
+  .cleak { fill: var(--fg-2); opacity: 0.32; }
+  .cleak-front { fill: var(--fg-2); opacity: 0.12; }
+  .playing .leakspot { animation: leakdry 3.2s linear infinite; }
+  .playing .cleak, .playing .cleak-front { animation: leakgrow 3.2s cubic-bezier(0.1, 0.7, 0.3, 1) infinite; }
+  @keyframes leakgrow { 0%, 6% { transform: scale(0.1); } 62%, 100% { transform: scale(1); } }
+  @keyframes leakdry { 0%, 66% { opacity: 1; } 95%, 100% { opacity: 0; } }
   @keyframes cdrop { 0%, 8% { opacity: 0; transform: scale(0.4); } 14% { opacity: 0.5; } 45% { opacity: 0.45; transform: scale(1.2); } 100% { opacity: 0; transform: scale(1.35); } }
   .tabsrow { transition: opacity 0.3s ease, transform 0.3s ease; }
   .tabsrow.off { opacity: 0; transform: translateY(-4px); }

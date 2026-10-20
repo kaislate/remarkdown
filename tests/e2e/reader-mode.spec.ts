@@ -714,29 +714,63 @@ test('the menu over a reader page stands out on solid paper, not dimmed with the
   expect(dim).not.toBe('rgba(11, 10, 18, 0.6)');
 });
 
-test('the pointer leaves grey ink that soaks in and dries away (and not with the setting off)', async ({ page }) => {
+// Painted pixels on the pointer-ink canvas.
+const inkedPixels = (page: Page) => () => page.locator('canvas.cursor-ink').evaluate((c: HTMLCanvasElement) => {
+  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+  return n;
+});
+
+async function pickCursorInk(page: Page, label: string) {
+  await settingsDo(page, async () => {
+    const win = page.getByRole('dialog', { name: 'Settings' });
+    await win.getByRole('button', { name: 'Reading', exact: true }).click();
+    await win.locator('#setting-reader-cursor-ink').getByRole('radio', { name: label, exact: true }).click();
+  });
+}
+
+test('ink leaks from a resting pointer, spreading until it moves away, then dries', async ({ page }) => {
   await open(page, [A]);
   await enterReader(page);
   const ink = page.locator('canvas.cursor-ink');
   await expect(ink).toHaveCount(1);
-  const inked = () => ink.evaluate((c: HTMLCanvasElement) => {
-    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
-    let n = 0;
-    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
-    return n;
-  });
-  await page.mouse.move(300, 300);
-  await page.mouse.move(600, 360, { steps: 20 });
-  await expect.poll(inked).toBeGreaterThan(200);
   expect(await ink.evaluate((c) => getComputedStyle(c).pointerEvents)).toBe('none');
-  await expect.poll(inked, { timeout: 8000 }).toBe(0);
-  await page.keyboard.press('Escape');
-  await expect(ink).toHaveCount(0);
-  await settingsDo(page, async () => {
-    const win = page.getByRole('dialog', { name: 'Settings' });
-    await win.getByRole('button', { name: 'Reading', exact: true }).click();
-    await win.getByRole('switch', { name: 'Ink from the pointer' }).click();
-  });
+  const inked = inkedPixels(page);
+  await page.mouse.move(300, 300);
+  await page.mouse.move(420, 340, { steps: 10 });
+  // Moving: nothing yet. Resting: a spot that keeps growing.
+  expect(await inked()).toBe(0);
+  await expect.poll(inked).toBeGreaterThan(0);
+  await page.waitForTimeout(600);
+  const early = await inked();
+  await page.waitForTimeout(1500);
+  const later = await inked();
+  expect(later).toBeGreaterThan(early * 1.5);
+  // A wobble doesn't stop it…
+  await page.mouse.move(424, 342);
+  await page.waitForTimeout(400);
+  expect(await inked()).toBeGreaterThanOrEqual(later);
+  // …moving away does: it dries away (and a new rest starts a new spot).
+  await page.mouse.move(700, 500, { steps: 6 });
+  await page.mouse.move(700, 500);
+  await expect.poll(inked, { timeout: 4000 }).toBeLessThan(later);
+});
+
+test('the other ink styles: a trail of drops, a pen line, or none', async ({ page }) => {
+  await open(page, [A]);
+  const inked = inkedPixels(page);
+  for (const label of ['Trail', 'Pen']) {
+    await pickCursorInk(page, label);
+    await enterReader(page);
+    await page.mouse.move(300, 300);
+    await page.mouse.move(600, 360, { steps: 20 });
+    await expect.poll(inked, { message: label }).toBeGreaterThan(200);
+    await expect.poll(inked, { timeout: 8000, message: `${label} dries` }).toBe(0);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body')).not.toHaveClass(/reader-mode/);
+  }
+  await pickCursorInk(page, 'Off');
   await enterReader(page);
-  await expect(ink).toHaveCount(0);
+  await expect(page.locator('canvas.cursor-ink')).toHaveCount(0);
 });

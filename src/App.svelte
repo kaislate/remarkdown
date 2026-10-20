@@ -406,7 +406,7 @@
 {#if $readerMode && !$editMode && $doc}
   <ReaderMeta />
   {#if $settings.readerNav === 'left'}<ReaderContents />{/if}
-  {#if $settings.readerCursorInk}<ReaderCursorInk />{/if}
+  {#if $settings.readerCursorInk !== 'off'}<ReaderCursorInk style={$settings.readerCursorInk} />{/if}
 {/if}
 <EditModeToggle />
 <TocButton />

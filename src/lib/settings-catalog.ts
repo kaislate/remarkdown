@@ -142,8 +142,11 @@ export const OPTIONS: OptionDef[] = [
   },
   {
     id: 'setting-reader-cursor-ink', section: 'reading', title: 'Ink from the pointer', depiction: 'cursor-ink',
-    description: 'In reader mode, moving the mouse leaves a faint trail of grey ink that soaks into the paper and dries away.',
-    control: { type: 'switch', key: 'readerCursorInk' },
+    description: 'In reader mode, grey ink from the mouse soaks into the paper and dries away. Leak: rest the mouse and a spot spreads until you move on. Trail: drops along its path. Pen: a fine wet line.',
+    control: {
+      type: 'segmented', key: 'readerCursorInk',
+      options: [{ value: 'leak', label: 'Leak' }, { value: 'trail', label: 'Trail' }, { value: 'pen', label: 'Pen' }, { value: 'off', label: 'Off' }],
+    },
     keywords: 'reader mouse cursor pointer ink trail bleed paper animation',
   },
   {
