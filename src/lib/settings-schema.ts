@@ -55,6 +55,9 @@ export const SettingsSchema = z.object({
   // Where reader mode shows your place: the line at the top ("Chapter 3 ·
   // 6 min left") or a contents list on the left.
   readerNav: z.enum(['top', 'left']),
+  // The mouse leaves a trail of grey ink that soaks into the page and dries
+  // away (components/ReaderCursorInk.svelte).
+  readerCursorInk: z.boolean(),
   // Edge-style smooth scrolling for the mouse wheel and keys
   // (lib/smooth-scroll.ts).
   smoothScrolling: z.boolean(),
@@ -126,7 +129,8 @@ export const DEFAULT_SETTINGS: Settings = {
   minimapPopoutInFocusMode: false,
   readerTheme: 'default',
   readerMinimap: true,
-  readerNav: 'top',
+  readerNav: 'left',
+  readerCursorInk: true,
   smoothScrolling: true,
   smoothScrollGlide: 'medium',
   tocGlide: true,

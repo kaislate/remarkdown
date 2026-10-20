@@ -518,6 +518,11 @@ test('a quiet back arrow beside the menu button leaves reader mode', async ({ pa
 
 test('the window buttons stay, on one line with the meta line', async ({ page }) => {
   await open(page, [A]);
+  await settingsDo(page, async () => {
+    const win = page.getByRole('dialog', { name: 'Settings' });
+    await win.getByRole('button', { name: 'Reading', exact: true }).click();
+    await win.locator('#setting-reader-nav').getByRole('radio', { name: 'Line at the top' }).click();
+  });
   await enterReader(page);
   const mid = async (sel: string) => {
     const b = (await page.locator(sel).first().boundingBox())!;
@@ -707,4 +712,31 @@ test('the menu over a reader page stands out on solid paper, not dimmed with the
   // The page behind is dimmed lightly, in its own ink, not a dark wash.
   const dim = await page.locator('.menu-overlay').evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(dim).not.toBe('rgba(11, 10, 18, 0.6)');
+});
+
+test('the pointer leaves grey ink that soaks in and dries away (and not with the setting off)', async ({ page }) => {
+  await open(page, [A]);
+  await enterReader(page);
+  const ink = page.locator('canvas.cursor-ink');
+  await expect(ink).toHaveCount(1);
+  const inked = () => ink.evaluate((c: HTMLCanvasElement) => {
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+    return n;
+  });
+  await page.mouse.move(300, 300);
+  await page.mouse.move(600, 360, { steps: 20 });
+  await expect.poll(inked).toBeGreaterThan(200);
+  expect(await ink.evaluate((c) => getComputedStyle(c).pointerEvents)).toBe('none');
+  await expect.poll(inked, { timeout: 8000 }).toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(ink).toHaveCount(0);
+  await settingsDo(page, async () => {
+    const win = page.getByRole('dialog', { name: 'Settings' });
+    await win.getByRole('button', { name: 'Reading', exact: true }).click();
+    await win.getByRole('switch', { name: 'Ink from the pointer' }).click();
+  });
+  await enterReader(page);
+  await expect(ink).toHaveCount(0);
 });

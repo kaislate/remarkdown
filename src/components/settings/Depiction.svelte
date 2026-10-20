@@ -172,6 +172,15 @@
       <rect x="83" y="11" width="18" height="14" rx="2" class="mmbox" />
     </g>
 
+  {:else if name === 'cursor-ink'}
+    {#each [12, 19, 26, 33, 40, 47, 54] as y, i (y)}<rect x="22" y={y} width={[44, 50, 46, 52, 40, 48, 44][i]} height="3" rx="1.5" class="ln" />{/each}
+    <g class="cursorink" class:off={value === false}>
+      {#each [[30, 50], [38, 44], [46, 40], [55, 37], [64, 36], [73, 38]] as [x, y], k (k)}
+        <circle cx={x} cy={y} r={k === 5 ? 4.5 : 2.2} class="cdrop" style:animation-delay={`${k * 0.26}s`} />
+      {/each}
+    </g>
+    <path class="pointer" d="M0,0 L0,9 L2.4,6.8 L4.2,10.6 L5.6,10 L3.8,6.3 L7,6.3 Z" />
+
   {:else if name === 'restore'}
     <rect x="8" y="8" width="96" height="54" rx="4" class="page" />
     <rect x="8" y="8" width="96" height="10" rx="4" class="chrome" />
@@ -344,6 +353,14 @@
   @keyframes inkrun { 0%, 28% { opacity: 0; transform: none; } 32% { opacity: 1; transform: none; } 62% { opacity: 1; transform: translate(34px, -19px); } 70%, 100% { opacity: 0; transform: translate(34px, -19px); } }
   .playing .inkline { animation: inkline 2.6s ease-out infinite; }
   @keyframes inkline { 0%, 62% { opacity: 0; transform: scaleX(0); } 72% { opacity: 1; transform: scaleX(1); } 90% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
+  /* Ink from the pointer: drops land along its path, bleed out and dry. */
+  .pointer { fill: var(--fg-0); stroke: var(--bg-0); stroke-width: 0.8; transform: translate(73px, 38px); }
+  .playing .pointer { animation: inkpointer 2.6s ease-in-out infinite; }
+  @keyframes inkpointer { 0% { transform: translate(30px, 50px); } 55%, 100% { transform: translate(73px, 38px); } }
+  .cdrop { fill: var(--fg-2); opacity: 0.35; transform-box: fill-box; transform-origin: center; }
+  .cursorink.off { display: none; }
+  .playing .cdrop { animation: cdrop 2.6s ease-out infinite; }
+  @keyframes cdrop { 0%, 8% { opacity: 0; transform: scale(0.4); } 14% { opacity: 0.5; } 45% { opacity: 0.45; transform: scale(1.2); } 100% { opacity: 0; transform: scale(1.35); } }
   .tabsrow { transition: opacity 0.3s ease, transform 0.3s ease; }
   .tabsrow.off { opacity: 0; transform: translateY(-4px); }
   /* A lone tab is hidden at rest; playing, a second document opens and

@@ -8,6 +8,8 @@
   import { get } from 'svelte/store';
   import { tick } from 'svelte';
   import { activeModal, closeModal } from '../stores/modals';
+  import { doc } from '../stores/doc';
+  import { readerMode, enterReaderModeFromOnboarding } from '../stores/reader-mode';
   import { settings, updateSettings } from '../stores/settings';
   import type { Settings } from '../lib/settings-schema';
   import { PROFILES, type Profile } from '../lib/profiles';
@@ -18,24 +20,24 @@
 
   const isOpen = $derived($activeModal?.kind === 'onboarding');
 
-  let chosen = $state<Profile>(PROFILES[1]);
+  let chosen = $state<Profile>(PROFILES[0]);
   let step = $state<'pick' | 'customize'>('pick');
   let before: Settings | null = null;
   let cardEls: HTMLButtonElement[] = $state([]);
   let themeEls: HTMLButtonElement[] = $state([]);
 
   // Reader mode picks. The style follows the chosen layout (the Reader
-  // layout reads on Paper) until the user picks one themselves.
-  let readerTheme = $state<ReaderTheme>('default');
+  // layout, picked to begin with, reads on Textured) until the user picks
+  // one themselves.
+  let readerTheme = $state<ReaderTheme>('textured');
   let readerMinimap = $state(true);
   let themePicked = false;
 
   $effect(() => {
     if (isOpen) {
       step = 'pick';
-      chosen = PROFILES[1];
       themePicked = false;
-      readerTheme = get(settings).readerTheme;
+      choose(PROFILES[0]);
       readerMinimap = get(settings).readerMinimap;
     }
   });
@@ -67,10 +69,18 @@
   }
 
   function finish(apply: boolean) {
+    const chose = apply || step === 'customize';
     if (apply) updateSettings(picks());
     updateSettings({ onboardingCompleted: true });
     before = null;
-    closeModal();
+    // A layout that reads in reader mode goes straight into it: the
+    // dialog and the page dry away, slowly, into the reading page.
+    const s = get(settings);
+    if (chose && s.openInFocusMode && !s.openInEditMode && get(doc) && !get(readerMode)) {
+      enterReaderModeFromOnboarding(closeModal);
+    } else {
+      closeModal();
+    }
   }
 
   function customize() {

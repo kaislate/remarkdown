@@ -141,6 +141,12 @@ export const OPTIONS: OptionDef[] = [
     keywords: 'reader minimap map overview position',
   },
   {
+    id: 'setting-reader-cursor-ink', section: 'reading', title: 'Ink from the pointer', depiction: 'cursor-ink',
+    description: 'In reader mode, moving the mouse leaves a faint trail of grey ink that soaks into the paper and dries away.',
+    control: { type: 'switch', key: 'readerCursorInk' },
+    keywords: 'reader mouse cursor pointer ink trail bleed paper animation',
+  },
+  {
     id: 'setting-open-edit', section: 'reading', title: 'Always open documents ready to edit', depiction: 'edit-mode',
     description: 'Every file opens in edit mode, as if you had pressed Ctrl+E.',
     control: { type: 'switch', key: 'openInEditMode' },

@@ -19,7 +19,7 @@ import { activeModal } from './modals';
 import { reattachTarget } from './reattach';
 import { tool, setMode } from './tool';
 import { tick } from 'svelte';
-import { withInkTransition } from '../lib/ink-transition';
+import { withInkTransition, INK_DRY_MS } from '../lib/ink-transition';
 import type { Tool } from '../lib/schema';
 
 export const readerMode = activeProxy((s) => s.readerMode);
@@ -47,6 +47,18 @@ export function toggleReaderMode() {
 
 export function exitReaderMode() {
   if (get(readerMode)) setReaderMode(false);
+}
+
+// The way in straight after choosing the Reader layout on first launch:
+// the dialog (closed by `close`) and the normal view dry away together,
+// three times as slowly as a usual switch.
+export function enterReaderModeFromOnboarding(close: () => void): void {
+  if (get(editMode)) editMode.set(false);
+  void withInkTransition(async () => {
+    close();
+    readerMode.set(true);
+    await tick();
+  }, inkAllowed(), INK_DRY_MS * 3);
 }
 
 // Something on top of the page that Esc should close first: a modal, a

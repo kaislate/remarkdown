@@ -2,7 +2,8 @@
 //
 // Default visibility logic (the "auto" gate) follows the original
 // behaviour: show when the welcome doc is open AND the user hasn't
-// permanently dismissed it AND they haven't session-dismissed it.
+// permanently dismissed it AND they haven't session-dismissed it. Never
+// in reader mode, nor during the ink swap in or out of it.
 //
 // Two override flags layer on top:
 //   tutorialSessionDismissed — flipped by the "Got it" button or by
@@ -16,13 +17,19 @@
 import { derived, get, writable } from 'svelte/store';
 import { isWelcomeDocOpen } from './welcome';
 import { settings, updateSettings } from './settings';
+import { readerMode } from './reader-mode';
+import { inkSwapping } from '../lib/ink-transition';
 
 export const tutorialSessionDismissed = writable(false);
 export const tutorialForceShown = writable(false);
 
 export const tutorialOverlayVisible = derived(
-  [isWelcomeDocOpen, settings, tutorialSessionDismissed, tutorialForceShown],
-  ([$open, $settings, $sessionDismissed, $forced]) => {
+  [isWelcomeDocOpen, settings, tutorialSessionDismissed, tutorialForceShown, readerMode, inkSwapping],
+  ([$open, $settings, $sessionDismissed, $forced, $reading, $swapping]) => {
+    // Not over a page being read, nor while the ink is drying: someone
+    // who starts in reader mode (the Reader layout) meets the tutorial
+    // when they first come out of it, once the swap has finished.
+    if ($reading || $swapping) return false;
     if ($forced) return true;
     return $open && !$settings.welcomeTutorialDismissed && !$sessionDismissed;
   },

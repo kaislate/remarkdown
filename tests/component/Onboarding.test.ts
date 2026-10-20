@@ -42,13 +42,13 @@ describe('Onboarding', () => {
     render(Onboarding);
   }
 
-  it('offers three profiles with screenshots; Annotator is preselected', () => {
+  it('offers three profiles with screenshots; Reader is preselected', () => {
     show();
     expect(screen.getByRole('dialog', { name: /How do you want to use remarkdown/ })).toBeInTheDocument();
     const cards = within(screen.getByRole('radiogroup', { name: /How do you want/ })).getAllByRole('radio');
     expect(cards.map((c) => c.querySelector('h3')?.textContent)).toEqual(['Reader', 'Annotator', 'Writer']);
     for (const c of cards) expect(c.querySelector('img')?.getAttribute('alt')).toMatch(/remarkdown set up for/);
-    expect(cards[1]).toHaveAttribute('aria-checked', 'true');
+    expect(cards[0]).toHaveAttribute('aria-checked', 'true');
   });
 
   it('Continue applies the chosen profile and finishes', async () => {
@@ -121,9 +121,11 @@ describe('Onboarding', () => {
     it("follows the chosen layout's style until you pick one yourself", async () => {
       show();
       const checked = () => within(colours()).getAllByRole('radio').find((o) => o.getAttribute('aria-checked') === 'true')?.textContent?.trim();
+      expect(checked()).toBe('Textured');
+      await fireEvent.click(screen.getByRole('radio', { name: /Annotator/ }));
       expect(checked()).toBe('Default');
       await fireEvent.click(screen.getByRole('radio', { name: /Reader/ }));
-      expect(checked()).toBe('Paper');
+      expect(checked()).toBe('Textured');
       await fireEvent.click(within(colours()).getByRole('radio', { name: 'Night' }));
       await fireEvent.click(screen.getByRole('radio', { name: /Writer/ }));
       expect(checked()).toBe('Night');

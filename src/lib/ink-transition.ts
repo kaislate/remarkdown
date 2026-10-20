@@ -14,6 +14,8 @@
 // proportions (the map depends on those, not the size) paints it, nearly
 // invisible, at start-up, after every switch and after a resize.
 
+import { writable } from 'svelte/store';
+
 export const INK_DRY_MS = 1000;
 const WARM_MS = 700;
 
@@ -63,9 +65,16 @@ export function loadInkWorklet(): void {
     .catch(() => {});
 }
 
+// Is a swap running? (The welcome tutorial waits for the ink to dry.)
+export const inkSwapping = writable(false);
+
 // Runs `change` (which flips the mode) inside the ink transition when it
-// can, else straight away.
-export async function withInkTransition(change: () => void | Promise<void>, allowed: boolean): Promise<void> {
+// can, else straight away. `ms` is how long the ink takes to dry.
+export async function withInkTransition(
+  change: () => void | Promise<void>,
+  allowed: boolean,
+  ms: number = INK_DRY_MS,
+): Promise<void> {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!allowed || !doc || typeof doc.startViewTransition !== 'function') {
     await change();
@@ -73,10 +82,12 @@ export async function withInkTransition(change: () => void | Promise<void>, allo
   }
   const root = doc.documentElement;
   root.style.setProperty('--ink-seed', String(nextSeed));
-  root.style.setProperty('--ink-dry-ms', `${INK_DRY_MS}ms`);
+  root.style.setProperty('--ink-dry-ms', `${ms}ms`);
   root.classList.toggle('ink-worklet', workletReady);
+  inkSwapping.set(true);
   const vt = doc.startViewTransition(change);
   await vt.finished.catch(() => {});
+  inkSwapping.set(false);
   // The next switch gets a new pattern, built now while nothing's moving.
   nextSeed = 1 + Math.floor(Math.random() * 997);
   warm();

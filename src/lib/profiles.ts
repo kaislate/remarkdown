@@ -25,11 +25,11 @@ export const PROFILES: Profile[] = [
     id: 'reader',
     title: 'Reader',
     tagline: 'Just read. Files open full-screen with nothing but the page.',
-    bullets: ['Opens in reader mode', 'Paper colours, nothing on screen but the page', 'Annotation tools hidden'],
+    bullets: ['Opens in reader mode', 'Textured paper, nothing on screen but the page', 'Annotation tools hidden'],
     settings: {
       openInFocusMode: true,
       openInEditMode: false,
-      readerTheme: 'paper',
+      readerTheme: 'textured',
       hideAnnotationControls: true,
       marginaliaEnabled: false,
       tabPosition: 'top',

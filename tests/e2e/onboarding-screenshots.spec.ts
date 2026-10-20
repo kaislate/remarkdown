@@ -39,7 +39,7 @@ const ANNOTATIONS = [
 ];
 
 const PROFILE_SETTINGS: Record<string, Record<string, unknown>> = {
-  reader: { openInFocusMode: true, openInEditMode: false, readerTheme: 'paper', hideAnnotationControls: true, marginaliaEnabled: false, tabPosition: 'top' },
+  reader: { openInFocusMode: true, openInEditMode: false, readerTheme: 'textured', hideAnnotationControls: true, marginaliaEnabled: false, tabPosition: 'top' },
   annotator: { openInFocusMode: false, openInEditMode: false, hideAnnotationControls: false, marginaliaEnabled: true, tabPosition: 'top' },
   writer: { openInEditMode: true, openInFocusMode: false, hideAnnotationControls: true, marginaliaEnabled: false, openMode: 'tabs', tabPosition: 'left' },
 };

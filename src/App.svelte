@@ -36,6 +36,7 @@
   import ReaderModeLayer from './components/ReaderModeLayer.svelte';
   import ReaderMeta from './components/ReaderMeta.svelte';
   import ReaderContents from './components/ReaderContents.svelte';
+  import ReaderCursorInk from './components/ReaderCursorInk.svelte';
   import InkLayer from './components/InkLayer.svelte';
   import AppContextMenu from './components/AppContextMenu.svelte';
   import { doc } from './stores/doc';
@@ -405,6 +406,7 @@
 {#if $readerMode && !$editMode && $doc}
   <ReaderMeta />
   {#if $settings.readerNav === 'left'}<ReaderContents />{/if}
+  {#if $settings.readerCursorInk}<ReaderCursorInk />{/if}
 {/if}
 <EditModeToggle />
 <TocButton />
