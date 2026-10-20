@@ -42,3 +42,21 @@
   from { opacity: 1; filter: saturate(1); }
   to { opacity: 0; filter: saturate(0.15); }
 }
+
+/* Warming the next switch's pattern (lib/ink-transition.ts): a small,
+   all-but-invisible element in the window's proportions paints it over a
+   few frames, so the worklet has it ready. */
+.ink-warm {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 160px;
+  opacity: 0.004;
+  pointer-events: none;
+  z-index: 1;
+  background-image: paint(ink-dry);
+  --ink-t: 0.5;
+}
+.ink-warm.warming {
+  animation: ink-dry 600ms linear;
+}

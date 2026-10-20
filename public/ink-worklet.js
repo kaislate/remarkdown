@@ -12,13 +12,16 @@
 // so exactly that share of the old view has gone at every moment: it dries
 // away evenly. --ink-seed picks the pattern, so each switch is different.
 
-const CELLS = 180; // grid cells across the longer side
+const CELLS = 150; // grid cells across the longer side
 const SOAK_POINTS = 24;
 const cache = new Map();
 
+// Integer hash → 0..1 (fast; the map is built from ~100k of these).
 function hash(i, j, seed) {
-  const s = Math.sin(i * 127.1 + j * 311.7 + seed * 74.7) * 43758.5453;
-  return s - Math.floor(s);
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(seed, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 function valueNoise(x, y, seed) {
@@ -40,8 +43,8 @@ function fbm(x, y, seed) {
   let sum = 0;
   let amp = 0.5;
   let norm = 0;
-  for (let o = 0; o < 5; o++) {
-    sum += amp * valueNoise(x, y, seed + o * 13.1);
+  for (let o = 0; o < 4; o++) {
+    sum += amp * valueNoise(x, y, seed + o * 131);
     norm += amp;
     x *= 2.03;
     y *= 2.03;
@@ -50,7 +53,10 @@ function fbm(x, y, seed) {
   return sum / norm;
 }
 
-// The soak map for this seed and size, and its sorted values.
+// The soak map for this seed and grid, and its sorted values. Built once
+// per seed — ahead of time, by lib/ink-transition.ts painting a small
+// hidden element with the next switch's seed, so the switch itself never
+// waits for it.
 function soakMap(seed, gw, gh, aspect) {
   const key = `${seed}|${gw}x${gh}`;
   const hit = cache.get(key);
@@ -68,8 +74,8 @@ function soakMap(seed, gw, gh, aspect) {
       let x = (i / gw) * aspect;
       let y = j / gh;
       // Warp the page by noise, so the fronts finger and branch.
-      const wx = fbm(x * 3 + 3.1, y * 3 + 7.7, seed + 101) - 0.5;
-      const wy = fbm(x * 3 + 9.4, y * 3 + 1.3, seed + 211) - 0.5;
+      const wx = fbm(x * 3 + 3.1, y * 3 + 7.7, seed * 7 + 101) - 0.5;
+      const wy = fbm(x * 3 + 9.4, y * 3 + 1.3, seed * 7 + 211) - 0.5;
       x += wx * 0.7;
       y += wy * 0.7;
       let reach = Infinity;
@@ -78,7 +84,7 @@ function soakMap(seed, gw, gh, aspect) {
         reach = Math.min(reach, p.start + d / p.speed);
       }
       // Fibres: fine fractal roughness on the front.
-      reach += (fbm(x * 5, y * 5, seed + 307) - 0.5) * 0.16 + (fbm(x * 15, y * 15, seed + 401) - 0.5) * 0.14;
+      reach += (fbm(x * 5, y * 5, seed * 7 + 307) - 0.5) * 0.16 + (fbm(x * 15, y * 15, seed * 7 + 401) - 0.5) * 0.14;
       map[j * (gw + 1) + i] = reach;
     }
   }
@@ -98,7 +104,7 @@ registerPaint(
 
     paint(ctx, size, props) {
       const t = parseFloat(String(props.get('--ink-t'))) || 0;
-      const seed = parseFloat(String(props.get('--ink-seed'))) || 1;
+      const seed = Math.round(parseFloat(String(props.get('--ink-seed'))) || 1);
       const w = size.width;
       const h = size.height;
       if (t >= 1) return;
