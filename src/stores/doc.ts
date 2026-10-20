@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { docEpoch, orphanedAnnots } from './annots';
+import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
 import { openModal } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
@@ -98,6 +98,8 @@ export async function loadIntoSession(
     }
   }
   session.annots.set(parsedAnnotations);
+  // Undo steps belonged to the content as it was.
+  resetAnnotHistory(session);
 
   // New content invalidates anything captured from the previous render —
   // unless the tab is (back) in edit mode: then this is the late reload
@@ -207,5 +209,6 @@ export function clearDocument(): void {
   const session = get(activeSession);
   session.doc.set(null);
   session.annots.set([]);
+  resetAnnotHistory(session);
   docEpoch.update((e) => e + 1);
 }

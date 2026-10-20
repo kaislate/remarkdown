@@ -53,6 +53,7 @@
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
+  import { undoAnnot, redoAnnot } from './stores/annots';
   import { availableUpdate } from './stores/updates';
   import { openModal, activeModal } from './stores/modals';
   import { savesSettled, unresolvedConflict, askAboutConflict } from './lib/edit-save';
@@ -177,6 +178,30 @@
     toggleEditMode();
   }
 
+  // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo annotation changes —
+  // highlights, re.marks, drawings — when nothing is being typed in: the
+  // editor and text fields have their own undo.
+  function onAnnotUndoKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const redo = key === 'y' || (key === 'z' && e.shiftKey);
+    if (key !== 'z' && !redo) return;
+    if (get(editMode) || get(readerMode) || get(activeModal)) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    )) return;
+    e.preventDefault();
+    const what = redo ? redoAnnot() : undoAnnot();
+    addToast({
+      kind: 'info',
+      message: what ? `${redo ? 'Redone' : 'Undone'}: ${what}.` : `Nothing to ${redo ? 'redo' : 'undo'}.`,
+    });
+  }
+
   function onZoomKey(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key === '+' || e.key === '=') { e.preventDefault(); increaseZoom(); }
@@ -273,6 +298,7 @@
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
     window.addEventListener('keydown', onZoomKey);
+    window.addEventListener('keydown', onAnnotUndoKey);
     window.addEventListener('keydown', onToolShortcut);
     window.addEventListener('keydown', onReattachEsc);
     window.addEventListener('keydown', onTutorialKey);
@@ -379,6 +405,7 @@
     unsubEditMode();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', onZoomKey);
+      window.removeEventListener('keydown', onAnnotUndoKey);
       window.removeEventListener('keydown', onToolShortcut);
       window.removeEventListener('keydown', onReattachEsc);
       window.removeEventListener('keydown', onTutorialKey);

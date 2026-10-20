@@ -1,7 +1,7 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { resolveAnchor } from '../lib/anchoring';
 import type { Annotation, Drawing } from '../lib/schema';
-import { activeProxy } from './sessions';
+import { activeProxy, activeSession, type DocSession } from './sessions';
 
 export interface ResolvedAnnotation {
   annotation: Annotation;
@@ -17,21 +17,115 @@ export const currentViewerRoot = writable<HTMLElement | null>(null);
 // epoch increments when the rendered doc changes, forcing derived stores to re-resolve.
 export const docEpoch = writable(0);
 
+// ── undo / redo ──────────────────────────────────────────────────────
+// Each tab keeps the annotation lists from before its recent changes
+// (Ctrl+Z / Ctrl+Y outside the editor; App.svelte). Changes to one
+// annotation in quick succession — typing a re.mark, dragging a colour —
+// are one step. Loading the document (again) starts afresh.
+
+interface History {
+  undo: Annotation[][];
+  redo: Annotation[][];
+  // The last change, to merge quick edits of the same annotation.
+  last: { id: string; at: number } | null;
+}
+const HISTORY_LIMIT = 100;
+const MERGE_MS = 1200;
+const histories = new WeakMap<DocSession, History>();
+
+function historyOf(s: DocSession): History {
+  let h = histories.get(s);
+  if (!h) histories.set(s, (h = { undo: [], redo: [], last: null }));
+  return h;
+}
+
+// Called before every change: keeps the list as it was.
+function remember(mergeId: string | null): void {
+  const h = historyOf(get(activeSession));
+  const now = Date.now();
+  if (mergeId && h.last?.id === mergeId && now - h.last.at < MERGE_MS) {
+    h.last.at = now;
+    return;
+  }
+  h.undo.push(get(annots));
+  if (h.undo.length > HISTORY_LIMIT) h.undo.shift();
+  h.redo = [];
+  h.last = mergeId ? { id: mergeId, at: now } : null;
+}
+
+export function resetAnnotHistory(s: DocSession): void {
+  histories.delete(s);
+}
+
+export function canUndoAnnot(): boolean {
+  return historyOf(get(activeSession)).undo.length > 0;
+}
+
+export function canRedoAnnot(): boolean {
+  return historyOf(get(activeSession)).redo.length > 0;
+}
+
+// What a step did, in words, from the list before to the list after.
+export function describeChange(before: Annotation[], after: Annotation[]): string {
+  const name = (a: Annotation) => (a.type === 'highlight' ? 'highlight' : a.type === 'note' ? 're.mark' : 'drawing');
+  const ids = new Set(before.map((a) => a.id));
+  const added = after.filter((a) => !ids.has(a.id));
+  const kept = new Set(after.map((a) => a.id));
+  const removed = before.filter((a) => !kept.has(a.id));
+  const one = (verb: string, list: Annotation[]) =>
+    list.length === 1 ? `${verb} a ${name(list[0])}` : `${verb} ${list.length} annotations`;
+  if (added.length && !removed.length) return one('added', added);
+  if (removed.length && !added.length) return one('removed', removed);
+  const changed = after.find((a) => before.find((b) => b.id === a.id) !== a);
+  return changed ? `changed a ${name(changed)}` : 'changed annotations';
+}
+
+// Steps back (or forward) one change; returns what it undid / redid, or
+// null when there's nothing to.
+export function undoAnnot(): string | null {
+  const h = historyOf(get(activeSession));
+  const prev = h.undo.pop();
+  if (!prev) return null;
+  const now = get(annots);
+  h.redo.push(now);
+  h.last = null;
+  annots.set(prev);
+  return describeChange(prev, now);
+}
+
+export function redoAnnot(): string | null {
+  const h = historyOf(get(activeSession));
+  const next = h.redo.pop();
+  if (!next) return null;
+  const now = get(annots);
+  h.undo.push(now);
+  h.last = null;
+  annots.set(next);
+  return describeChange(now, next);
+}
+
 export function addAnnotation(a: Annotation): void {
+  remember(null);
+  // Changes to it straight after (a stroke finishing, a re.mark being
+  // written) belong to the same step.
+  historyOf(get(activeSession)).last = { id: a.id, at: Date.now() };
   annots.update((list) => [...list, a]);
 }
 
 export function updateAnnotation(id: string, mutate: (a: Annotation) => Annotation): void {
+  remember(id);
   annots.update((list) =>
     list.map((a) => (a.id === id ? { ...mutate(a), updatedAt: new Date().toISOString() } : a)),
   );
 }
 
 export function removeAnnotation(id: string): void {
+  remember(null);
   annots.update((list) => list.filter((a) => a.id !== id));
 }
 
 export function replaceAll(list: Annotation[]): void {
+  remember(null);
   annots.set(list);
 }
 

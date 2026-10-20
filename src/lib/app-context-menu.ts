@@ -6,7 +6,8 @@
 //   the editor     cut / copy / paste / select all, done editing
 //   a link         copy link address (go to section, for links inside)
 //   selected text  copy, highlight, add a re.mark, select all
-//   the page       edit, reader mode, show in folder, copy path, select all
+//   the page       undo / redo (annotations), edit, reader mode, show in
+//                  folder, copy path, select all
 //   anything else  (buttons, panels) nothing
 //
 // Menus that belong to a particular thing — a highlight, a drawing, a tab,
@@ -25,6 +26,9 @@ export interface ClickContext {
   href?: string;
   // The open document's file, if any.
   path?: string;
+  // Annotation changes that can be undone / redone.
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export interface MenuActions {
@@ -41,6 +45,8 @@ export interface MenuActions {
   leaveReader: () => void;
   showInFolder: (path: string) => void;
   copyPath: (path: string) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 // What a click on `target` is about.
@@ -107,10 +113,14 @@ export function menuFor(ctx: ClickContext, a: MenuActions): ContextMenuEntry[] |
       { label: 'Select all', hint: 'Ctrl+A', onSelect: a.selectAll },
     ];
   }
-  const items: ContextMenuEntry[] = [
+  const items: ContextMenuEntry[] = [];
+  if (ctx.canUndo) items.push({ label: 'Undo', hint: 'Ctrl+Z', onSelect: a.undo });
+  if (ctx.canRedo) items.push({ label: 'Redo', hint: 'Ctrl+Y', onSelect: a.redo });
+  if (items.length) items.push(sep);
+  items.push(
     { label: 'Edit', hint: 'Ctrl+E', onSelect: a.toggleEdit },
     { label: 'Reader mode', onSelect: a.enterReader },
-  ];
+  );
   if (ctx.path) {
     const path = ctx.path;
     items.push(sep, { label: 'Show in folder', onSelect: () => a.showInFolder(path) }, { label: 'Copy file path', onSelect: () => a.copyPath(path) });

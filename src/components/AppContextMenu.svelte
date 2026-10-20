@@ -15,6 +15,7 @@
   import { showInFolder, copyPath } from '../lib/file-actions';
   import { jumpToSection } from '../lib/section-jump';
   import { addToast } from '../stores/toasts';
+  import { undoAnnot, redoAnnot, canUndoAnnot, canRedoAnnot } from '../stores/annots';
   import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
   let menu = $state<{ x: number; y: number; items: ContextMenuEntry[] } | null>(null);
@@ -102,6 +103,14 @@
     leaveReader: () => exitReaderMode(),
     showInFolder: (path) => void showInFolder(path),
     copyPath: (path) => void copyPath(path),
+    undo: () => {
+      const what = undoAnnot();
+      if (what) addToast({ kind: 'info', message: `Undone: ${what}.` });
+    },
+    redo: () => {
+      const what = redoAnnot();
+      if (what) addToast({ kind: 'info', message: `Redone: ${what}.` });
+    },
   };
 
   function onContextMenu(e: MouseEvent): void {
@@ -130,7 +139,7 @@
     }
 
     const items = menuFor(
-      { kind, readerMode: get(readerMode), hasSelection, readOnly, href, path: get(doc)?.path },
+      { kind, readerMode: get(readerMode), hasSelection, readOnly, href, path: get(doc)?.path, canUndo: canUndoAnnot(), canRedo: canRedoAnnot() },
       actions,
     );
     menu = items ? { x: e.clientX, y: e.clientY, items } : null;

@@ -4,7 +4,7 @@ import { classify, menuFor, type ClickContext, type MenuActions } from '../../sr
 const actions = (): MenuActions => ({
   cut: vi.fn(), copy: vi.fn(), paste: vi.fn(), selectAll: vi.fn(), highlight: vi.fn(), addNote: vi.fn(),
   copyLink: vi.fn(), goToSection: vi.fn(), toggleEdit: vi.fn(), enterReader: vi.fn(), leaveReader: vi.fn(),
-  showInFolder: vi.fn(), copyPath: vi.fn(),
+  showInFolder: vi.fn(), copyPath: vi.fn(), undo: vi.fn(), redo: vi.fn(),
 });
 const labels = (ctx: ClickContext) => (menuFor(ctx, actions()) ?? []).map((i) => (i === 'separator' ? '—' : i.label));
 
@@ -55,6 +55,13 @@ describe('the menu for it', () => {
     expect(labels({ kind: 'page', readerMode: false, hasSelection: false, path: 'C:\\d\\a.md' })).toEqual([
       'Edit', 'Reader mode', '—', 'Show in folder', 'Copy file path', '—', 'Select all',
     ]);
+  });
+
+  it('undo and redo come first when there are annotation changes to undo or redo', () => {
+    expect(labels({ kind: 'page', readerMode: false, hasSelection: false, canUndo: true })).toEqual([
+      'Undo', '—', 'Edit', 'Reader mode', '—', 'Select all',
+    ]);
+    expect(labels({ kind: 'page', readerMode: false, hasSelection: false, canUndo: true, canRedo: true }).slice(0, 3)).toEqual(['Undo', 'Redo', '—']);
   });
 
   it('links: copy the address, or go to a section inside the document', () => {
