@@ -18,19 +18,35 @@ import { settings } from './settings';
 import { activeModal } from './modals';
 import { reattachTarget } from './reattach';
 import { tool, setMode } from './tool';
+import { tick } from 'svelte';
+import { withInkTransition } from '../lib/ink-transition';
 import type { Tool } from '../lib/schema';
 
 export const readerMode = activeProxy((s) => s.readerMode);
+
+// The ink-drying swap (lib/ink-transition.ts) — not under reduced motion,
+// nor on the e-ink theme, which has no motion at all.
+function inkAllowed(): boolean {
+  if (get(settings).readerTheme === 'eink') return false;
+  return !(typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
+}
+
+function setReaderMode(on: boolean): void {
+  void withInkTransition(async () => {
+    readerMode.set(on);
+    await tick(); // the new view is drawn before the ink starts drying
+  }, inkAllowed());
+}
 
 export function toggleReaderMode() {
   // Reader mode is for reading: leave edit mode first (the normal way —
   // its pending save is flushed and the page reloads from disk).
   if (!get(readerMode) && get(editMode)) editMode.set(false);
-  readerMode.update((v) => !v);
+  setReaderMode(!get(readerMode));
 }
 
 export function exitReaderMode() {
-  readerMode.set(false);
+  if (get(readerMode)) setReaderMode(false);
 }
 
 // Something on top of the page that Esc should close first: a modal, a

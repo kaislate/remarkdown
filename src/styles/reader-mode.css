@@ -11,7 +11,6 @@
 
 /* ── 1. No chrome ─────────────────────────────────────────────────────── */
 
-body.reader-mode .menu-root,
 body.reader-mode .titlebar-drag,
 body.reader-mode .tab-haze,
 body.reader-mode .tab-sidebar,
@@ -72,6 +71,39 @@ body.reader-mode.reader-minimap .viewport-indicator {
   body.reader-mode.reader-minimap .scroll {
     padding-right: 172px;
   }
+}
+
+/* The menu stays exactly where it always is — just its three lines, no
+   box, as quiet as the back arrow beside it — so going in and out it
+   only loses or regains its box. The wordmark and tag fade away. */
+body.reader-mode .hamburger {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  opacity: 0.6;
+}
+body.reader-mode .hamburger .bar {
+  background: var(--fg-2);
+}
+body.reader-mode .hamburger:hover,
+body.reader-mode .hamburger:focus-visible,
+body.reader-mode .hamburger[aria-expanded='true'] {
+  opacity: 1;
+  transform: none;
+  background: var(--glass-fill);
+  border-color: transparent;
+  box-shadow: none;
+}
+body.reader-mode .hamburger:hover .bar,
+body.reader-mode .hamburger[aria-expanded='true'] .bar {
+  background: var(--fg-0);
+}
+body.reader-mode .wordmark,
+body.reader-mode .pre-tag {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* The window buttons stay, muted to the page's ink, on one line with the

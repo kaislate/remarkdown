@@ -9,12 +9,18 @@
   //   - an invisible band along the top edge that still moves the window
   //     (the title bar is hidden with the rest of the chrome; the window
   //     buttons stay, muted, on the same line);
-  //   - a quiet back arrow top-left, the other way out besides Esc;
+  //   - a quiet back arrow beside the menu button (which stays, boxless —
+  //     reader-mode.css), the other way out besides Esc;
   //   - a short hint on entry saying how to get out.
   import { onMount } from 'svelte';
+  import { fly, fade } from 'svelte/transition';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
   import { readerMode, exitReaderMode } from '../stores/reader-mode';
+
+  function reducedMotion(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
 
   let hint = $state(false);
   let hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -98,6 +104,8 @@
     aria-label="Leave reader mode"
     title="Leave reader mode (Esc)"
     onclick={exitReaderMode}
+    in:fly={{ x: -10, duration: reducedMotion() ? 0 : 280, delay: reducedMotion() ? 0 : 120 }}
+    out:fade={{ duration: reducedMotion() ? 0 : 160 }}
   >
     <ArrowLeft size={16} weight="bold" />
   </button>
@@ -120,15 +128,17 @@
     background: transparent;
   }
 
-  /* Top-left, centred on the same line as the window buttons (38px tall)
-     and the meta line. Faint at rest, in the page's own ink. */
+  /* Just right of the menu button (14–52px), centred on it. Faint at
+     rest, in the page's own ink. */
   .reader-back {
     position: fixed;
-    top: 5px;
-    left: 10px;
+    top: 19px;
+    left: 58px;
     width: 28px;
     height: 28px;
-    z-index: 60;
+    /* Above the menu's row (z:130, which spans the faded wordmark this
+       sits over), below the window buttons. */
+    z-index: 135;
     display: grid;
     place-items: center;
     padding: 0;

@@ -50,7 +50,7 @@ ${LONG}
 
 // Every chrome element reader mode must remove.
 const CHROME = [
-  '.menu-root',
+  '.wordmark',
   '.titlebar-drag',
   '.controls-aura',
   '.tabbar',
@@ -101,6 +101,8 @@ async function pickReaderTheme(page: Page, theme: string) {
 async function enterReader(page: Page) {
   await page.locator('.reader-mode-toggle').click();
   await expect(page.locator('body')).toHaveClass(/reader-mode/);
+  // …and the old view has finished drying away (the ink transition).
+  await expect.poll(() => page.evaluate(() => document.documentElement.matches(':active-view-transition'))).toBe(false);
 }
 
 // Selection → highlight, like a user dragging with the highlighter.
@@ -174,6 +176,7 @@ test('hides every piece of chrome and keeps an invisible drag band', async ({ pa
     await expect(page.locator(sel).first(), `${sel} before`).toBeVisible();
   }
   await enterReader(page);
+  await page.waitForTimeout(1200); // the ink has dried; the wordmark has faded
   for (const sel of CHROME) {
     const els = page.locator(sel);
     const n = await els.count();
@@ -472,22 +475,48 @@ test.describe('screenshots', () => {
   }
 });
 
-test('a quiet back arrow top-left leaves reader mode', async ({ page }) => {
+test('the menu button stays, in the same place, without its box', async ({ page }) => {
+  await open(page, [A]);
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  const before = (await menu.boundingBox())!;
+  await enterReader(page);
+  await page.waitForTimeout(1300); // the ink has dried and the box has faded
+  const after = (await menu.boundingBox())!;
+  expect(after).toEqual(before);
+  const look = await menu.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { bg: cs.backgroundColor, border: cs.borderTopColor, shadow: cs.boxShadow, opacity: Number(cs.opacity) };
+  });
+  expect(look.bg).toBe('rgba(0, 0, 0, 0)');
+  expect(look.border).toBe('rgba(0, 0, 0, 0)');
+  expect(look.shadow).toBe('none');
+  expect(look.opacity).toBeLessThan(0.8);
+  // It still opens the menu; Esc closes the menu first, then reader mode.
+  await menu.click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.locator('body')).toHaveClass(/reader-mode/);
+});
+
+test('a quiet back arrow beside the menu button leaves reader mode', async ({ page }) => {
   await open(page, [A]);
   await enterReader(page);
   const back = page.getByRole('button', { name: 'Leave reader mode' });
   await expect(back).toBeVisible();
+  await page.waitForTimeout(1300);
   const r = (await back.boundingBox())!;
-  expect(r.x).toBeLessThan(24);
-  expect(r.y).toBeLessThan(12);
+  const m = (await page.getByRole('button', { name: 'Menu', exact: true }).boundingBox())!;
+  expect(r.x).toBeGreaterThan(m.x + m.width);
+  expect(Math.abs(r.y + r.height / 2 - (m.y + m.height / 2))).toBeLessThanOrEqual(1.5);
   // Subtle at rest.
   expect(Number(await back.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.8);
   await back.click();
   await expect(page.locator('body')).not.toHaveClass(/reader-mode/);
-  await expect(page.locator('.menu-root')).toBeVisible();
+  await expect(back).toHaveCount(0);
 });
 
-test('the window buttons stay, in line with the back arrow and the meta line', async ({ page }) => {
+test('the window buttons stay, on one line with the meta line', async ({ page }) => {
   await open(page, [A]);
   await enterReader(page);
   const mid = async (sel: string) => {
@@ -497,12 +526,44 @@ test('the window buttons stay, in line with the back arrow and the meta line', a
   for (const name of ['Minimize', 'Maximize', 'Close']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
-  const arrow = await mid('.reader-back');
-  expect(Math.abs((await mid('.titlebar-controls .ctrl.close')) - arrow)).toBeLessThanOrEqual(1.5);
-  expect(Math.abs((await mid('.reader-meta .left')) - arrow)).toBeLessThanOrEqual(2);
+  expect(Math.abs((await mid('.titlebar-controls .ctrl.close')) - (await mid('.reader-meta .left')))).toBeLessThanOrEqual(2);
   // They work from reader mode and don't take it away.
   await page.getByRole('button', { name: 'Maximize', exact: true }).click();
   await expect(page.locator('body')).toHaveClass(/reader-mode/);
+});
+
+async function countViewTransitions(page: Page) {
+  await page.evaluate(() => {
+    (window as any).__vt = 0;
+    const orig = document.startViewTransition.bind(document);
+    (document as any).startViewTransition = (cb: () => void) => { (window as any).__vt++; return orig(cb); };
+  });
+}
+
+test('switching in and out, the old view dries away like ink', async ({ page }) => {
+  await open(page, [A]);
+  await countViewTransitions(page);
+  await enterReader(page);
+  await page.waitForTimeout(1100);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('body')).not.toHaveClass(/reader-mode/);
+  expect(await page.evaluate(() => (window as any).__vt)).toBe(2);
+  // The old view is masked with a blotchy pattern that dries away.
+  const mask = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ink-mask'));
+  expect(mask).toContain('feTurbulence');
+  expect(mask).toContain('animate');
+});
+
+test('no ink transition under reduced motion', async ({ browser }) => {
+  const ctx = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 1100, height: 780 } });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  await page.evaluate(([a, doc]) => (window as any).__E2E_SEED_DOC__(a, doc), [A, DOC]);
+  await open(page, [A]);
+  await countViewTransitions(page);
+  await enterReader(page);
+  expect(await page.evaluate(() => (window as any).__vt)).toBe(0);
+  await ctx.close();
 });
 
 // The reader minimap's box stands for exactly the visible part of the page:

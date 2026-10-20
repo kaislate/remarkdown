@@ -7,6 +7,7 @@
   import './styles/cursors.css';
   import './styles/scrollbars.css';
   import './styles/reader-mode.css';
+  import './styles/ink-transition.css';
   import './styles/edit-mode.css';
   import './styles/tabs-layout.css';
   import Viewer from './components/Viewer.svelte';

@@ -308,9 +308,10 @@
     flex-shrink: 0;
     transition:
       transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-      border-color 0.2s ease,
-      box-shadow 0.2s ease,
-      background 0.2s ease;
+      border-color 0.35s ease,
+      box-shadow 0.35s ease,
+      background 0.35s ease,
+      opacity 0.35s ease;
   }
   .hamburger:hover {
     transform: scale(1.05);
@@ -335,6 +336,8 @@
     /* Accommodate the wider 'remarkdown' shape on hover so the rest of
        the chrome doesn't reflow when the morph plays. */
     white-space: nowrap;
+    /* Fades out in reader mode (reader-mode.css). */
+    transition: opacity 0.35s ease;
   }
   .wordmark .seg {
     display: inline-block;

@@ -1,0 +1,27 @@
+/* The ink-drying swap between reader mode and the normal view
+   (lib/ink-transition.ts). The new view sits still underneath; the old
+   one, on top, loses its colour and dries away through the blotchy mask. */
+
+::view-transition-group(root) {
+  animation-duration: var(--ink-dry-ms, 900ms);
+}
+::view-transition-new(root) {
+  animation: none;
+  z-index: 0;
+}
+/* On top (by default the new view is painted over the old one and fades
+   in; here it waits underneath while the old one dries away). */
+::view-transition-old(root) {
+  z-index: 1;
+  animation: ink-dry var(--ink-dry-ms, 900ms) ease-in forwards;
+  -webkit-mask-image: var(--ink-mask);
+  mask-image: var(--ink-mask);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+@keyframes ink-dry {
+  from { filter: saturate(1); }
+  to { filter: saturate(0.15) brightness(1.04); }
+}
