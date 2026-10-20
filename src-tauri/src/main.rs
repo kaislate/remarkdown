@@ -42,6 +42,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
+            commands::open_image_dialog,
             commands::read_document,
             commands::write_sidecar,
             commands::write_document,

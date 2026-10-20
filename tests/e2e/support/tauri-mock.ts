@@ -34,6 +34,10 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const path = (window as any).__E2E_DIALOG_PATH__ ?? null;
       return path;
     }
+    case 'open_image_dialog': {
+      (window as any).__E2E_IMAGE_DIALOG_START__ = (args as any)?.startDir ?? null;
+      return (window as any).__E2E_IMAGE_PICK__ ?? null;
+    }
     case 'read_document': {
       const path = args?.path as string;
       const doc = getDoc(path);

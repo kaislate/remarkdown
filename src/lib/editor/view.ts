@@ -25,10 +25,12 @@ import { isMermaidFence } from '../mermaid-fence';
 import { createMermaidSourceGuard, diagramKeymap } from './mermaid-source-guard';
 import { TaskItemNodeView } from './task-item-node-view';
 import { FootnoteNodeView } from './footnote-node-view';
-import { MathInlineView, MathBlockView, FrontMatterView } from './source-node-views';
+import { MathInlineView, MathBlockView, FrontMatterView, ImageView } from './source-node-views';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 import { tabInTable } from './table-commands';
 import { createTableActionsPlugin } from './table-actions-plugin';
+import { blockInputRules, blockStyleKeys } from './block-commands';
+import { undoInputRule } from 'prosemirror-inputrules';
 
 // Insert N spaces at the cursor, but only if the cursor is inside a
 // code_block. Outside code_blocks this returns false and the chained
@@ -109,6 +111,9 @@ export function createEditorView(
   initialMarkdown: string,
   onChange: (markdown: string) => void,
   restoredState?: EditorState,
+  // Turns a picture's src (relative to the document) into a URL the
+  // window can load; Editor.svelte passes one for the document's folder.
+  resolveImage?: (src: string) => string,
 ): EditorView {
 
   const baseKeys = {
@@ -152,6 +157,10 @@ export function createEditorView(
       // mermaid-source-guard.ts. The keymap must precede baseKeymap.
       createMermaidSourceGuard(),
       keymap(diagramKeymap),
+      // Text styles: shortcuts, and `# `, `- `, `> `… typed at a line's start
+      // (Backspace straight after undoes the change).
+      blockInputRules(),
+      keymap({ ...blockStyleKeys, Backspace: undoInputRule }),
       keymap(baseKeys),
       keymap(baseKeymap),
       createCodeBlockHighlightPlugin(),
@@ -195,6 +204,7 @@ export function createEditorView(
       math_inline: (node, editorView, getPos) => new MathInlineView(node, editorView, getPos),
       math_block: (node, editorView, getPos) => new MathBlockView(node, editorView, getPos),
       front_matter: (node, editorView, getPos) => new FrontMatterView(node, editorView, getPos),
+      image: (node, editorView, getPos) => new ImageView(node, editorView, getPos, resolveImage),
     },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);

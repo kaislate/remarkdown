@@ -6,15 +6,23 @@
   import Asterisk from 'phosphor-svelte/lib/Asterisk';
   import FlowArrow from 'phosphor-svelte/lib/FlowArrow';
   import CaretDown from 'phosphor-svelte/lib/CaretDown';
+  import ImageIcon from 'phosphor-svelte/lib/Image';
+  import MathOperations from 'phosphor-svelte/lib/MathOperations';
+  import Minus from 'phosphor-svelte/lib/Minus';
+  import { BLOCK_STYLES, type BlockStyle } from '../lib/editor/block-commands';
 
   import MermaidDiagramThumb from './MermaidDiagramThumb.svelte';
   import type { StarterKind } from '../lib/editor/mermaid-commands';
 
-  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'footnote' | 'mermaid' | 'sequence' | 'diagram' | 'image';
+  type ToolbarAction = 'callout' | 'code' | 'tasks' | 'table' | 'footnote' | 'mermaid' | 'sequence' | 'diagram' | 'image' | 'formula' | 'divider';
 
   interface Props {
     // 'diagram' comes with the kind of diagram to insert.
     onInsert: (action: ToolbarAction, diagram?: StarterKind) => void;
+    // The style of the block the cursor is in (null: not a text style —
+    // code, a diagram…), and the way to change it.
+    blockStyle?: BlockStyle | null;
+    onBlockStyle?: (style: BlockStyle) => void;
   }
 
   // The diagram menu: a picture and a plain name for each kind the
@@ -31,19 +39,75 @@
     { kind: 'mindmap', label: 'Mind map', hint: 'Ideas branching from one centre', action: 'diagram-mindmap' },
     { kind: 'kanban', label: 'Board (kanban)', hint: 'Cards in columns', action: 'diagram-kanban' },
   ];
-  let { onInsert }: Props = $props();
+  let { onInsert, blockStyle = 'paragraph', onBlockStyle = () => {} }: Props = $props();
 
-  // After clicking a dropdown option, close the <details> menu so it
-  // doesn't stay pinned open. Browsers don't auto-close <details> on
-  // a click inside their own content (only on the summary toggle), so
-  // we flip `open` ourselves.
+  const styleLabel = $derived(BLOCK_STYLES.find((s) => s.style === blockStyle)?.label ?? 'Text style');
+
+  // After clicking a dropdown option, close the <details> menus so they
+  // don't stay pinned open. Browsers don't auto-close <details> on a
+  // click inside their own content (only on the summary toggle), so we
+  // flip `open` ourselves.
   function closeMenu() {
-    const details = document.querySelector<HTMLDetailsElement>('.toolbar-dropdown');
-    if (details) details.open = false;
+    for (const d of document.querySelectorAll<HTMLDetailsElement>('.toolbar-dropdown')) d.open = false;
+  }
+
+  // Opening one menu closes the other.
+  function onToggle(e: Event) {
+    const opened = e.currentTarget as HTMLDetailsElement;
+    if (!opened.open) return;
+    for (const d of document.querySelectorAll<HTMLDetailsElement>('.toolbar-dropdown')) if (d !== opened) d.open = false;
   }
 </script>
 
 <div class="editor-toolbar" role="toolbar" aria-label="Editor toolbar">
+  <details class="toolbar-dropdown style-dropdown" ontoggle={onToggle}>
+    <summary
+      class="toolbar-btn style-btn"
+      data-action="style-menu"
+      title="Text style: headings, lists, quotes"
+      aria-label={`Text style: ${styleLabel}`}
+      onmousedown={(e) => e.preventDefault()}
+    >
+      <span class="label style-label">{styleLabel}</span>
+      <CaretDown size={10} weight="bold" />
+    </summary>
+    <div class="toolbar-dropdown-menu style-menu" role="menu">
+      {#each BLOCK_STYLES as s (s.style)}
+        <button
+          type="button"
+          class="toolbar-dropdown-item style-item style-{s.style}"
+          class:current={blockStyle === s.style}
+          data-style={s.style}
+          role="menuitemradio"
+          aria-checked={blockStyle === s.style}
+          onmousedown={(e) => e.preventDefault()}
+          onclick={() => {
+            onBlockStyle(s.style);
+            closeMenu();
+          }}
+        >
+          <span class="style-name">{s.label}</span>
+          <span class="style-keys">{s.keys}</span>
+        </button>
+      {/each}
+      <div class="menu-sep" role="separator"></div>
+      <button
+        type="button"
+        class="toolbar-dropdown-item style-item"
+        data-action="divider"
+        role="menuitem"
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => {
+          onInsert('divider');
+          closeMenu();
+        }}
+      >
+        <span class="style-name"><Minus size={14} /> Divider line</span>
+        <span class="style-keys">---</span>
+      </button>
+    </div>
+  </details>
+  <span class="toolbar-sep" aria-hidden="true"></span>
   <button
     class="toolbar-btn"
     type="button"
@@ -104,7 +168,31 @@
     <Asterisk size={18} weight="regular" />
     <span class="label">Footnote</span>
   </button>
-  <details class="toolbar-dropdown">
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="image"
+    title="Insert a picture"
+    aria-label="Insert a picture"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('image')}
+  >
+    <ImageIcon size={18} weight="regular" />
+    <span class="label">Picture</span>
+  </button>
+  <button
+    class="toolbar-btn"
+    type="button"
+    data-action="formula"
+    title="Insert a formula (select text first to turn it into one)"
+    aria-label="Insert a formula"
+    onmousedown={(e) => e.preventDefault()}
+    onclick={() => onInsert('formula')}
+  >
+    <MathOperations size={18} weight="regular" />
+    <span class="label">Formula</span>
+  </button>
+  <details class="toolbar-dropdown" ontoggle={onToggle}>
     <summary
       class="toolbar-btn"
       data-action="diagram-menu"
@@ -249,5 +337,24 @@
   .toolbar-dropdown-item:hover {
     background: var(--bg-2);
     color: var(--fg-0);
+  }
+  /* Text style: the current style's name, and a menu that shows each
+     style the way it will look. */
+  .style-btn { min-width: 118px; justify-content: space-between; }
+  .style-label { font-weight: 600; }
+  .style-menu { min-width: 230px; }
+  .style-item { justify-content: space-between; gap: 16px; }
+  .style-item.current { color: var(--accent); }
+  .style-name { display: inline-flex; align-items: center; gap: 6px; }
+  .style-keys { color: var(--fg-2); font-size: 11px; }
+  .style-h1 .style-name { font-size: 17px; font-weight: 700; }
+  .style-h2 .style-name { font-size: 15px; font-weight: 700; }
+  .style-h3 .style-name { font-size: 13px; font-weight: 700; }
+  .style-quote .style-name { font-style: italic; border-left: 2px solid var(--fg-2); padding-left: 6px; }
+  .menu-sep { height: 1px; margin: 4px 2px; background: var(--glass-border); }
+  .toolbar-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--glass-border); }
+  /* Narrow windows: icons only. */
+  @media (max-width: 980px) {
+    .toolbar-btn:not(.style-btn) .label { display: none; }
   }
 </style>

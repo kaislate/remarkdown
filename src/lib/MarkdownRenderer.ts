@@ -9,6 +9,7 @@ import { calloutsPlugin } from './markdown-it-callouts';
 import { frontMatterPlugin } from './markdown-it-frontmatter';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
 import { isMermaidFence } from './mermaid-fence';
+import { resolveImageSrc } from './image-paths';
 
 export interface RenderResult {
   html: string;
@@ -126,36 +127,13 @@ export interface RenderOptions {
   toAssetUrl?: (absolutePath: string) => string;
 }
 
-function isAbsoluteUrl(src: string): boolean {
-  return (
-    /^(https?:|asset:|data:|file:)/i.test(src) ||
-    src.startsWith('/') ||
-    /^[A-Za-z]:[\\/]/.test(src) // Windows drive-letter absolute paths
-  );
-}
-
-function joinPath(baseDir: string, rel: string): string {
-  // Minimal POSIX-style join (our stored paths are normalized to forward slashes).
-  const parts = (baseDir + '/' + rel).split('/').filter(Boolean);
-  const stack: string[] = [];
-  for (const p of parts) {
-    if (p === '.') continue;
-    if (p === '..') stack.pop();
-    else stack.push(p);
-  }
-  return '/' + stack.join('/');
-}
-
 function rewriteImageSrcs(html: string, opts: RenderOptions): string {
   if (!opts.baseDir || !opts.toAssetUrl) return html;
   const { baseDir, toAssetUrl } = opts;
-  return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (m, pre, src, post) => {
-    if (isAbsoluteUrl(src)) return m;
-    // Decode percent-encoded backslashes (markdown-it encodes \ as %5C) then normalize to forward slash.
-    const normalized = src.replace(/%5C/gi, '/').replace(/\\/g, '/');
-    const abs = joinPath(baseDir, normalized);
-    return `<img${pre}src="${toAssetUrl(abs)}"${post}>`;
-  });
+  // markdown-it encodes a backslash as %5C; resolveImageSrc decodes it.
+  return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (_m, pre, src, post) =>
+    `<img${pre}src="${resolveImageSrc(src, baseDir, toAssetUrl)}"${post}>`,
+  );
 }
 
 export async function render(markdown: string, options: RenderOptions = {}): Promise<RenderResult> {

@@ -14,6 +14,11 @@ export async function openFileDialog(): Promise<string | null> {
   return result;
 }
 
+// A picture for the editor's Image button; starts in the document's folder.
+export async function openImageDialog(startDir?: string): Promise<string | null> {
+  return await invoke<string | null>('open_image_dialog', { startDir: startDir ?? null });
+}
+
 export async function readDocument(path: string): Promise<ReadDocumentResult> {
   // Rust returns fields with snake_case by default in tauri 2.x unless configured.
   // We remap once here so the rest of the frontend sees camelCase only.

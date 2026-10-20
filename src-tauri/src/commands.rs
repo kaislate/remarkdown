@@ -42,6 +42,27 @@ pub async fn open_file_dialog(app: tauri::AppHandle) -> Result<Option<String>, C
     }
 }
 
+/// Picks a picture to put in a document (the editor's Image button).
+#[tauri::command]
+pub async fn open_image_dialog(app: tauri::AppHandle, start_dir: Option<String>) -> Result<Option<String>, CommandError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Choose a picture")
+        .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"]);
+    if let Some(dir) = start_dir {
+        dialog = dialog.set_directory(dir);
+    }
+    dialog.pick_file(move |path| {
+        let _ = tx.send(path.map(|p| p.to_string()));
+    });
+    match rx.await {
+        Ok(path) => Ok(path),
+        Err(_) => Err(CommandError::Io("dialog closed unexpectedly".into())),
+    }
+}
+
 fn sidecar_path_for(md_path: &Path) -> PathBuf {
     let mut s = md_path.as_os_str().to_owned();
     s.push(".remarkdown.json");

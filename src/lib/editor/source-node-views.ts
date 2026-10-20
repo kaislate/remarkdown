@@ -206,3 +206,42 @@ export class FrontMatterView extends SourceNodeView {
     this.dom.title = 'Document details — click to change';
   }
 }
+
+// A picture: shown as it will read (its file found next to the document);
+// clicking it lets the user describe it — the words a screen reader says
+// and the reader shows if the file goes missing — or take it out.
+export class ImageView extends SourceNodeView {
+  protected title = 'Picture description';
+  protected placeholder = 'What the picture shows';
+  protected hint = 'Read aloud by screen readers';
+  constructor(
+    node: PMNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+    private resolve: (src: string) => string = (s) => s,
+  ) {
+    super(node, view, getPos, 'span', 'editor-image');
+    this.render(); // again, now that `resolve` is set
+  }
+  protected text() {
+    return String(this.node.attrs.alt ?? '');
+  }
+  protected attrsFor(text: string) {
+    return { alt: text.replace(/\n+/g, ' ').trim() };
+  }
+  protected render() {
+    // Before the subclass's own fields exist (the first render runs in
+    // the base constructor), fall back to the src as written.
+    const resolve = this.resolve ?? ((s: string) => s);
+    let img = this.dom.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.draggable = false;
+      this.dom.appendChild(img);
+    }
+    img.src = resolve(String(this.node.attrs.src));
+    img.alt = this.text();
+    if (this.node.attrs.title) img.title = String(this.node.attrs.title);
+    this.dom.title = 'Picture — click to describe it';
+  }
+}

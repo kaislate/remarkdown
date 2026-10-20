@@ -235,14 +235,14 @@ describe('MarkdownRenderer.render (regression fixes)', () => {
     expect(html).not.toMatch(/class="language-c\+\+"/);
   });
 
-  it('leaves a Windows drive-letter image path untouched (treats as absolute)', async () => {
+  it('loads a Windows drive-letter image path as it is, not joined to the document folder', async () => {
     const md = '![x](C:/Users/me/img.png)';
     const { html } = await render(md, {
       baseDir: '/tmp/doc',
       toAssetUrl: (p) => `asset://${p}`,
     });
-    // The drive-letter path is NOT joined to baseDir — it's left as-is so Tauri/webview can resolve.
-    expect(html).toContain('src="C:/Users/me/img.png"');
+    // Absolute: through the asset protocol (the window can't load a bare C:/ path), never joined to baseDir.
+    expect(html).toContain('src="asset://C:/Users/me/img.png"');
     expect(html).not.toContain('/tmp/doc/C:');
   });
 

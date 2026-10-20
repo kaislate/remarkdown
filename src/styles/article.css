@@ -987,3 +987,9 @@ body.reattach-mode .reader-mode-toggle {
   text-decoration: underline wavy;
 }
 .md-rendered .math-empty { font-family: var(--font-sans); font-size: 0.85em; color: var(--fg-2); font-style: italic; }
+
+/* Pictures in the editor: click to describe one. */
+.ProseMirror .editor-image { cursor: pointer; }
+.ProseMirror .editor-image img { max-width: 100%; border-radius: 4px; }
+.ProseMirror .editor-image.ProseMirror-selectednode img,
+.ProseMirror .editor-image:hover img { outline: 2px solid var(--accent); outline-offset: 2px; }
