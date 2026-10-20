@@ -90,6 +90,11 @@ export const DrawingShapeSchema = z.discriminatedUnion('kind', [
     points: z.array(z.tuple([z.number(), z.number()])),
     color: z.string(),
     width: z.number(),
+    // What the stroke was tidied into (drawing-recognize.ts): an arrow
+    // (points: tail, tip) or a bracket (hook, spine top, spine bottom,
+    // hook). Optional, so a version that doesn't know it still reads the
+    // drawing as a line through its points.
+    drawn: z.enum(['arrow', 'bracket']).optional(),
   }),
   z.object({
     kind: z.literal('freehand-legacy'),

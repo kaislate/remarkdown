@@ -93,9 +93,10 @@ export function hitTestDrawing(d: Drawing, x: number, y: number, root: HTMLEleme
       if (!block) return false;
       const r = block.getBoundingClientRect();
       const rem = remPx();
-      return d.shape.points.some(([xEm, yEm]) =>
-        Math.hypot((r.left + xEm * rem) - x, (r.top + yEm * rem) - y) <= tol,
-      );
+      const pts = d.shape.points.map(([xEm, yEm]) => [r.left + xEm * rem, r.top + yEm * rem] as const);
+      // Along the line between its points (an arrow or bracket has few).
+      if (pts.length === 1) return Math.hypot(pts[0][0] - x, pts[0][1] - y) <= tol;
+      return pts.some((p, i) => i > 0 && lineHit(pts[i - 1][0], pts[i - 1][1], p[0], p[1], x, y, tol));
     }
     case 'freehand-legacy': {
       const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchorBlock}"]`);

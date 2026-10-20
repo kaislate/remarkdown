@@ -290,9 +290,9 @@ export const OPTIONS: OptionDef[] = [
   },
   {
     id: 'setting-auto-transform', section: 'drawing', title: 'Tidy up shapes', depiction: 'shapes',
-    description: 'Turn rough circles, boxes and underlines into clean shapes.',
+    description: 'Turn rough circles, boxes, underlines, arrows and brackets into clean shapes.',
     control: { type: 'switch', key: 'autoTransformDrawings' },
-    keywords: 'recognize recognise circle rectangle underline',
+    keywords: 'recognize recognise circle rectangle underline arrow bracket',
   },
   {
     id: 'setting-drawing-roughness', section: 'drawing', title: 'Hand-drawn look', depiction: 'roughness',
