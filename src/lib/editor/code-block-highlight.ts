@@ -27,17 +27,42 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark'],
+      themes: ['github-dark', 'github-light'],
       langs: [...SUPPORTED_LANGUAGES],
     });
   }
   return highlighterPromise;
 }
 
-// TODO(Phase 2b follow-up): per-block memoization to avoid re-tokenizing
-// untouched blocks. Debounce is the current perf strategy; for very large
-// docs with many code blocks, memoizing by (node, lang) would skip work.
-//
+// Tokens per (language, text), so an edit only tokenizes the block it
+// changed — the others come from here. Bounded: the oldest go first.
+type Tokens = ReturnType<Highlighter['codeToTokensWithThemes']>;
+const tokenCache = new WeakMap<Highlighter, Map<string, Tokens>>();
+const TOKEN_CACHE_LIMIT = 300;
+
+function tokensFor(hl: Highlighter, lang: string, text: string): Tokens {
+  let cache = tokenCache.get(hl);
+  if (!cache) tokenCache.set(hl, (cache = new Map()));
+  const key = `${lang}\u0000${text}`;
+  const hit = cache.get(key);
+  if (hit) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit;
+  }
+  // resolveLanguage returns either a SUPPORTED_LANGUAGES entry or 'text'
+  // (a Shiki SpecialLanguage); values are validated at runtime. Both
+  // colourings, as in the reader: dark by default, the light one
+  // (--shiki-light) swapped in by article.css on light pages.
+  const tokens = hl.codeToTokensWithThemes(text, {
+    lang: lang as BundledLanguage | SpecialLanguage,
+    themes: { dark: 'github-dark', light: 'github-light' },
+  });
+  cache.set(key, tokens);
+  if (cache.size > TOKEN_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
+  return tokens;
+}
+
 // Note: we sum tok.content.length manually rather than reading tok.offset.
 // Shiki's TokenBase.offset is documented as "relative to the input code"
 // but the per-line semantics are ambiguous in practice; the manual sum is
@@ -46,19 +71,15 @@ function getHighlighter(): Promise<Highlighter> {
 export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
   const decs: Decoration[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.name !== 'code_block') return false; // don't descend
+    // Into lists, quotes and callouts (code can sit in them); not into
+    // paragraphs and headings, which can't hold code blocks.
+    if (node.type.name !== 'code_block') return !node.isTextblock;
     const lang = resolveLanguage(String(node.attrs.language || ''));
     const text = node.textContent;
     if (!text) return false;
     let tokens;
     try {
-      // resolveLanguage returns either a SUPPORTED_LANGUAGES entry or 'text'
-      // (a Shiki SpecialLanguage). The union covers both cases so the cast
-      // doesn't lie to the compiler; values are validated at runtime.
-      tokens = hl.codeToTokensBase(text, {
-        lang: lang as BundledLanguage | SpecialLanguage,
-        theme: 'github-dark',
-      });
+      tokens = tokensFor(hl, lang, text);
     } catch (err) {
       if (import.meta.env.DEV) {
         console.warn('codeBlockHighlight: tokenize failed', { lang, err });
@@ -76,9 +97,14 @@ export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
         if (len === 0) continue;
         const start = pos + 1 + offset;
         const end = start + len;
-        if (tok.color) {
+        const dark = tok.variants.dark?.color;
+        const light = tok.variants.light?.color;
+        if (dark) {
           decs.push(
-            Decoration.inline(start, end, { style: `color: ${tok.color}` }),
+            Decoration.inline(start, end, {
+              class: 'shiki-tok',
+              style: `color: ${dark}${light ? `; --shiki-light: ${light}` : ''}`,
+            }),
           );
         }
         offset += len;

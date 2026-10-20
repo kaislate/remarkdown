@@ -1073,3 +1073,22 @@ body.reattach-mode .reader-mode-toggle {
 .ProseMirror .editor-image img { max-width: 100%; border-radius: 4px; }
 .ProseMirror .editor-image.ProseMirror-selectednode img,
 .ProseMirror .editor-image:hover img { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Code colours follow the page: GitHub's dark colouring on dark pages
+   (the default the highlighter writes), its light one on light pages —
+   the light app theme, and the light reader themes. On those, code sits
+   on the page's own shade rather than a white box. */
+:is(
+  :root[data-theme='light'] body:not(.reader-mode),
+  :root[data-theme='light'] body.reader-mode[data-reader-theme='default'],
+  body.reader-mode:is([data-reader-theme='paper'], [data-reader-theme='textured'], [data-reader-theme='sepia'])
+) :is(.md-rendered pre.shiki, .md-rendered pre.shiki span, .md-rendered .shiki-tok) {
+  color: var(--shiki-light) !important;
+}
+:is(
+  :root[data-theme='light'] body:not(.reader-mode),
+  :root[data-theme='light'] body.reader-mode[data-reader-theme='default'],
+  body.reader-mode:is([data-reader-theme='paper'], [data-reader-theme='textured'], [data-reader-theme='sepia'])
+) .md-rendered pre.shiki {
+  background-color: var(--bg-2) !important;
+}

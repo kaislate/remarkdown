@@ -90,10 +90,10 @@ describe('code-block highlight plugin', () => {
     // because buildDecorations sums tok.content.length manually rather than
     // trusting tok.offset; the stub mirrors that contract.
     const fakeHl = {
-      codeToTokensBase: (text: string) => {
+      codeToTokensWithThemes: (text: string) => {
         return text.split('\n').map((line) =>
           line.length > 0
-            ? [{ content: line, color: '#ff0000', offset: 0 }]
+            ? [{ content: line, offset: 0, variants: { dark: { color: '#ff0000' }, light: { color: '#990000' } } }]
             : [],
         );
       },
@@ -109,6 +109,27 @@ describe('code-block highlight plugin', () => {
     expect(decs[0].to).toBe(3);
     expect(decs[1].from).toBe(4);
     expect(decs[1].to).toBe(6);
+    // Both colourings: dark shown, light ready for light pages.
+    expect((decs[0] as unknown as { type: { attrs: Record<string, string> } }).type.attrs).toEqual({
+      class: 'shiki-tok',
+      style: 'color: #ff0000; --shiki-light: #990000',
+    });
+  });
+
+  it('colours code inside callouts and lists too, and only tokenizes a block again when it changed', () => {
+    const calls: string[] = [];
+    const fakeHl = {
+      codeToTokensWithThemes: (text: string) => {
+        calls.push(text);
+        return [[{ content: text, offset: 0, variants: { dark: { color: '#f00' }, light: { color: '#900' } } }]];
+      },
+    } as unknown as Highlighter;
+    const md = '> [!note]\n> ```js\n> one\n> ```\n\n- item\n\n  ```js\n  two\n  ```\n';
+    expect(buildDecorations(parseMarkdownToDoc(md), fakeHl).find().length).toBe(2);
+    expect(calls).toEqual(['one', 'two']);
+    // The same blocks again: from the cache. A changed one: tokenized.
+    buildDecorations(parseMarkdownToDoc(md.replace('two', 'three')), fakeHl);
+    expect(calls).toEqual(['one', 'two', 'three']);
   });
 });
 

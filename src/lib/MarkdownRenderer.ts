@@ -58,7 +58,7 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark'],
+      themes: ['github-dark', 'github-light'],
       langs: [...SUPPORTED_LANGUAGES],
     });
   }
@@ -74,7 +74,13 @@ async function highlightFences(html: string): Promise<string> {
     // resolveLanguage handles case-folding, alias lookup, and unknown-lang
     // fallback to 'text' so the same matrix the editor uses applies here.
     const resolvedLang = resolveLanguage(lang);
-    return highlighter.codeToHtml(raw, { lang: resolvedLang, theme: 'github-dark' });
+    // Both colourings, dark by default; on light pages article.css swaps
+    // in the light one (--shiki-light).
+    return highlighter.codeToHtml(raw, {
+      lang: resolvedLang,
+      themes: { dark: 'github-dark', light: 'github-light' },
+      defaultColor: 'dark',
+    });
   });
 }
 
