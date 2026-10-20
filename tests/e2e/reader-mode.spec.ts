@@ -686,3 +686,25 @@ test('textured paper: a grained page that scrolls with the text, and ink that ha
   await diagramsSettled(page, 'light');
 });
 
+
+test('the menu over a reader page stands out on solid paper, not dimmed with the page', async ({ page }) => {
+  await settingsDo(page, () => pickReaderTheme(page, 'paper'));
+  await open(page, [A]);
+  await enterReader(page);
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await page.waitForTimeout(400);
+  const look = await menu.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { bg: cs.backgroundColor, onTop: el.contains(top) };
+  });
+  // Opaque: the dimmed page doesn't show through it.
+  expect(look.bg).toBe('rgb(243, 239, 230)');
+  expect(look.onTop).toBe(true);
+  // The page behind is dimmed lightly, in its own ink, not a dark wash.
+  const dim = await page.locator('.menu-overlay').evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(dim).not.toBe('rgba(11, 10, 18, 0.6)');
+});

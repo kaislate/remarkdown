@@ -106,6 +106,20 @@ body.reader-mode .pre-tag {
   pointer-events: none;
 }
 
+/* The menu over a reader page sits on the page's own paper. (The reader
+   themes' glass is all but clear, so the dimmed page showed through it and
+   the menu looked dimmed along with everything else.) The dim behind it is
+   a light veil of the page's own ink rather than the app's dark wash. */
+body.reader-mode .menu-root .popover {
+  background: var(--bg-1);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+body.reader-mode .menu-overlay {
+  background-color: color-mix(in srgb, var(--fg-0) 22%, transparent);
+}
+
 /* The window buttons stay, muted to the page's ink, on one line with the
    back arrow and the meta line. Their hover glow still says what they do. */
 body.reader-mode .titlebar-controls .ctrl {
