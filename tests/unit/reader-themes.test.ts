@@ -7,17 +7,17 @@ import {
 } from '../../src/lib/reader-themes';
 
 describe('reader themes', () => {
-  it('offers the five themes, default first', () => {
-    expect(READER_THEMES).toEqual(['default', 'paper', 'sepia', 'night', 'eink']);
+  it('offers the six themes, default first', () => {
+    expect(READER_THEMES).toEqual(['default', 'paper', 'textured', 'sepia', 'night', 'eink']);
     expect(READER_THEMES.map((t) => READER_THEME_LABELS[t])).toEqual([
-      'Default', 'Paper', 'Sepia', 'Night', 'E-ink',
+      'Default', 'Paper', 'Textured', 'Sepia', 'Night', 'E-ink',
     ]);
   });
 
   it('default follows the app theme; the others have a fixed tone', () => {
     expect(readerThemeTone('default', 'dark')).toBe('dark');
     expect(readerThemeTone('default', 'light')).toBe('light');
-    for (const t of ['paper', 'sepia', 'eink'] as const) {
+    for (const t of ['paper', 'textured', 'sepia', 'eink'] as const) {
       expect(readerThemeTone(t, 'dark')).toBe('light');
       expect(readerThemeTone(t, 'light')).toBe('light');
     }

@@ -115,7 +115,7 @@ describe('reader-mode settings', () => {
   });
 
   it('accepts each reader theme', () => {
-    for (const t of ['default', 'paper', 'sepia', 'night', 'eink'] as const) {
+    for (const t of ['default', 'paper', 'textured', 'sepia', 'night', 'eink'] as const) {
       expect(parseSettings(JSON.stringify({ readerTheme: t })).readerTheme).toBe(t);
     }
   });

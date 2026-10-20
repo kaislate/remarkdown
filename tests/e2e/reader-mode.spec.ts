@@ -84,7 +84,7 @@ async function settingsDo(page: Page, fn: () => Promise<void>) {
   await expect(page.locator('.settings-window')).toHaveCount(0);
 }
 
-const READER_THEME_LABEL: Record<string, string> = { default: 'Default', paper: 'Paper', sepia: 'Sepia', night: 'Night', eink: 'E-ink' };
+const READER_THEME_LABEL: Record<string, string> = { default: 'Default', paper: 'Paper', textured: 'Textured', sepia: 'Sepia', night: 'Night', eink: 'E-ink' };
 
 // Inside settingsDo: pick the app theme / reader theme in the Settings window.
 async function pickAppTheme(page: Page, app: 'dark' | 'light') {
@@ -443,6 +443,7 @@ test.describe('screenshots', () => {
     { name: 'default-dark', app: 'dark', theme: 'default', tone: 'dark' },
     { name: 'default-light', app: 'light', theme: 'default', tone: 'light' },
     { name: 'paper', app: 'dark', theme: 'paper', tone: 'light' },
+    { name: 'textured', app: 'dark', theme: 'textured', tone: 'light' },
     { name: 'sepia', app: 'dark', theme: 'sepia', tone: 'light' },
     { name: 'night', app: 'light', theme: 'night', tone: 'dark' },
     { name: 'eink', app: 'dark', theme: 'eink', tone: 'light' },
@@ -604,5 +605,25 @@ test('the minimap arrow works in reader mode too', async ({ page }) => {
   await page.getByRole('button', { name: 'Show minimap' }).click();
   await expect.poll(onScreen).toBe(true);
   await expect(page.locator('body')).toHaveClass(/reader-mode/);
+});
+
+test('textured paper: a grained page that scrolls with the text, and ink that has soaked in a little', async ({ page }) => {
+  await settingsDo(page, () => pickReaderTheme(page, 'textured'));
+  await open(page, [A]);
+  await enterReader(page);
+  const scroll = page.locator('.scroll');
+  // Paper grain on the page itself, moving with it.
+  const bg = await scroll.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { image: cs.backgroundImage, attach: cs.backgroundAttachment };
+  });
+  expect(bg.image).toContain('feTurbulence');
+  expect(bg.attach.split(',')[0].trim()).toBe('local');
+  // Blue-black ink with a slight bleed.
+  const p = page.locator('.viewer p').first();
+  await expect(p).toHaveCSS('color', 'rgb(38, 42, 56)');
+  expect(await p.evaluate((el) => getComputedStyle(el).textShadow)).not.toBe('none');
+  // A light page: diagrams are drawn light.
+  await diagramsSettled(page, 'light');
 });
 

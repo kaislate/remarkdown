@@ -42,9 +42,14 @@
 >
   <defs>
     <clipPath id={clip}><rect x="1" y="1" width="118" height="74" rx="6" /></clipPath>
+    <filter id={`${clip}-grain`} x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
+      <feColorMatrix values="0 0 0 0 0.36  0 0 0 0 0.29  0 0 0 0 0.19  0 0 0 0.22 0" />
+    </filter>
   </defs>
   <g clip-path={`url(#${clip})`}>
     <rect x="0" y="0" width="120" height="76" style:fill={sw.page} />
+    {#if theme === 'textured'}<rect x="0" y="0" width="120" height="76" filter={`url(#${clip}-grain)`} />{/if}
     <g class="column">
       <g class="lines">
         {#each ROWS as r, i (i)}

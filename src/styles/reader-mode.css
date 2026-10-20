@@ -198,6 +198,26 @@ body.reader-mode[data-reader-theme='paper'] {
   --glass-fill: rgba(34, 32, 28, 0.03);
   --danger: #b42318;
 }
+/* Textured paper: a cream page with grain and soft mottling, written in
+   blue-black iron-gall ink that has bled into it a little; red-brown ink
+   for links and marks. */
+body.reader-mode[data-reader-theme='textured'] {
+  color-scheme: light;
+  --bg-0: #f1e9d8;
+  --bg-1: #e9dfca;
+  --bg-2: #e2d6bd;
+  --fg-0: #1d2130;
+  --reader-body: #262a38;
+  --fg-1: #262a38;
+  --fg-2: #7d7363;
+  --accent: #8a3324;
+  --accent-soft: rgba(138, 51, 36, 0.22);
+  --glass-border: rgba(40, 34, 24, 0.16);
+  --glass-fill: rgba(40, 34, 24, 0.04);
+  --danger: #8a3324;
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.36  0 0 0 0 0.29  0 0 0 0 0.19  0 0 0 0.11 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --paper-mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.43  0 0 0 0 0.25  0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
+}
 body.reader-mode[data-reader-theme='sepia'] {
   color-scheme: light;
   --bg-0: #f3e7cf;
@@ -247,12 +267,35 @@ body.reader-mode[data-reader-theme='eink'] {
 body.reader-mode:not([data-reader-theme='default']) {
   background: var(--bg-0);
 }
+/* Textured: the grain is on the page and scrolls with it, like paper; the
+   window behind (seen only through the fade at the top) has the same. */
+body.reader-mode[data-reader-theme='textured'] {
+  background: var(--paper-grain), var(--paper-mottle), var(--bg-0);
+}
+body.reader-mode[data-reader-theme='textured'] .scroll {
+  background-image: var(--paper-grain), var(--paper-mottle);
+  background-attachment: local, local;
+}
+/* Ink: a hair of bleed around every letter (a soft shadow in the ink's own
+   colour, and the faintest stroke), so it reads as written into the paper
+   rather than printed on a screen. */
+body.reader-mode[data-reader-theme='textured'] :is(.viewer, .minimap-content).md-rendered {
+  text-shadow:
+    0 0 0.6px rgba(29, 33, 48, 0.55),
+    0 0.3px 1.4px rgba(29, 33, 48, 0.18);
+  -webkit-text-stroke: 0.15px rgba(29, 33, 48, 0.35);
+}
 
 /* The theme's highlighter ink replaces the default yellow (the other
    pens keep their colours). E-ink has no colour: every pen is grey. */
 body.reader-mode[data-reader-theme='paper'] ::highlight(rmd-hl-0) {
   background-color: rgba(255, 214, 102, 0.45);
   text-decoration-color: rgba(214, 160, 40, 0.65);
+  text-shadow: none;
+}
+body.reader-mode[data-reader-theme='textured'] ::highlight(rmd-hl-0) {
+  background-color: rgba(230, 178, 60, 0.4);
+  text-decoration-color: rgba(176, 120, 40, 0.6);
   text-shadow: none;
 }
 body.reader-mode[data-reader-theme='sepia'] ::highlight(rmd-hl-0) {
@@ -284,31 +327,31 @@ body.reader-mode:not([data-reader-theme='default']) :is(.viewer, .minimap-conten
 /* Callouts: the stock colours are pastel, made for a dark page. Light
    reader pages (including Default over the light app theme) get the same
    hues, deep enough to read on paper. */
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-note, .callout-info) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-note, .callout-info) {
   border-left-color: #2f6fb5;
   color: #2f6fb5;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-tip, .callout-hint, .callout-success, .callout-done) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-tip, .callout-hint, .callout-success, .callout-done) {
   border-left-color: #2e7d4f;
   color: #2e7d4f;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-question, .callout-help, .callout-faq) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-question, .callout-help, .callout-faq) {
   border-left-color: #946b00;
   color: #946b00;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-warning, .callout-caution, .callout-attention) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-warning, .callout-caution, .callout-attention) {
   border-left-color: #b0551a;
   color: #b0551a;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-failure, .callout-fail, .callout-missing, .callout-danger, .callout-error, .callout-bug) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-failure, .callout-fail, .callout-missing, .callout-danger, .callout-error, .callout-bug) {
   border-left-color: #b42318;
   color: #b42318;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) .callout-example {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) .callout-example {
   border-left-color: #6f45b8;
   color: #6f45b8;
 }
-:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-quote, .callout-cite, .callout-abstract, .callout-summary, .callout-tldr) {
+:is(:root[data-theme='light'] body.reader-mode[data-reader-theme='default'], body.reader-mode[data-reader-theme='paper'], body.reader-mode[data-reader-theme='textured'], body.reader-mode[data-reader-theme='sepia']) :is(.callout-quote, .callout-cite, .callout-abstract, .callout-summary, .callout-tldr) {
   border-left-color: #6b665c;
   color: #6b665c;
 }

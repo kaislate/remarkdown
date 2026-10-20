@@ -5,12 +5,13 @@
 // drawn (mermaid has a light and a dark theme, see mermaid-runtime.ts).
 import type { AppTheme } from './mermaid-runtime';
 
-export const READER_THEMES = ['default', 'paper', 'sepia', 'night', 'eink'] as const;
+export const READER_THEMES = ['default', 'paper', 'textured', 'sepia', 'night', 'eink'] as const;
 export type ReaderTheme = (typeof READER_THEMES)[number];
 
 export const READER_THEME_LABELS: Record<ReaderTheme, string> = {
   default: 'Default',
   paper: 'Paper',
+  textured: 'Textured',
   sepia: 'Sepia',
   night: 'Night',
   eink: 'E-ink',
@@ -22,6 +23,7 @@ export const READER_THEME_LABELS: Record<ReaderTheme, string> = {
 export const READER_THEME_SWATCHES: Record<ReaderTheme, { page: string; ink: string; accent: string }> = {
   default: { page: 'var(--bg-0)', ink: 'var(--fg-1)', accent: 'var(--accent)' },
   paper: { page: '#fbf9f4', ink: '#3d3a33', accent: '#5b51c8' },
+  textured: { page: '#f1e9d8', ink: '#262a38', accent: '#8a3324' },
   sepia: { page: '#f3e7cf', ink: '#4f4130', accent: '#8a5524' },
   night: { page: '#121417', ink: '#a9a59c', accent: '#c9a25e' },
   eink: { page: '#f2f2f0', ink: '#222222', accent: '#111111' },

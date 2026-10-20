@@ -112,7 +112,7 @@ describe('Onboarding', () => {
     it('offers every reader style with a moving picture of it, and the minimap switch (on)', () => {
       show();
       const opts = within(colours()).getAllByRole('radio');
-      expect(opts.map((o) => o.textContent?.trim())).toEqual(['Default', 'Paper', 'Sepia', 'Night', 'E-ink']);
+      expect(opts.map((o) => o.textContent?.trim())).toEqual(['Default', 'Paper', 'Textured', 'Sepia', 'Night', 'E-ink']);
       for (const o of opts) expect(o.querySelector('svg.reader-style-preview.playing')).not.toBeNull();
       expect(minimap()).toBeChecked();
       expect(document.querySelector('.minimap-pick svg.reader-style-preview.with-map')).not.toBeNull();
