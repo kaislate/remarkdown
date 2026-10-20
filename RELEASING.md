@@ -122,6 +122,11 @@ git push origin main v0.5.0
 
 ### 5. Create the GitHub release
 
+The release notes are the version's section of [CHANGELOG.md](CHANGELOG.md)
+(written before the release, and committed with the version bump): copy that
+section into a file and pass it with `--notes-file` instead of `--notes`. The
+in-app update window shows these notes.
+
 For STABLE releases (NSIS + MSI):
 ```bash
 gh release create v0.5.0 \
