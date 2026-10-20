@@ -347,24 +347,12 @@
     transform: scale(1.04);
   }
 
-  /* Handwritten font stack for tutorial copy. Prefers a system print-
-     handwriting font on each platform; falls through to popular Google-
-     fonts handwritten faces in case the user has them locally; finally
-     to Comic Sans / generic cursive. Inline <code> elements are
-     re-overridden back to monospace below. */
+  /* Handwritten tutorial copy (--font-hand, styles/theme.css). Inline
+     <code> elements are re-overridden back to monospace below. */
   .label,
   .bracket-label,
   .dismiss-tutorial {
-    font-family:
-      'Segoe Print',
-      'Patrick Hand',
-      'Architects Daughter',
-      'Kalam',
-      'Indie Flower',
-      'Comic Sans MS',
-      'Bradley Hand',
-      'Marker Felt',
-      cursive;
+    font-family: var(--font-hand);
     font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.01em;

@@ -10,6 +10,10 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-serif: 'Charter', 'Georgia', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  /* Handwriting, for the welcome tutorial and the first-run picks: a
+     system print-handwriting face on each platform, then popular
+     handwritten faces the user may have, then Comic Sans / cursive. */
+  --font-hand: 'Segoe Print', 'Patrick Hand', 'Architects Daughter', 'Kalam', 'Indie Flower', 'Comic Sans MS', 'Bradley Hand', 'Marker Felt', cursive;
 
   /* X-cursor overlay animation tokens. */
   --animation-fast:     0.3s cubic-bezier(0.7, 0, 0.3, 1);

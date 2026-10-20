@@ -20,7 +20,12 @@
 
   const isOpen = $derived($activeModal?.kind === 'onboarding');
 
-  let chosen = $state<Profile>(PROFILES[0]);
+  // The picks a first launch starts on, marked "(Recommended)" in
+  // handwriting beside them.
+  const RECOMMENDED_PROFILE: Profile['id'] = 'reader';
+  const RECOMMENDED_THEME: ReaderTheme = 'textured';
+
+  let chosen = $state<Profile>(PROFILES.find((p) => p.id === RECOMMENDED_PROFILE)!);
   let step = $state<'pick' | 'customize'>('pick');
   let before: Settings | null = null;
   let cardEls: HTMLButtonElement[] = $state([]);
@@ -37,7 +42,7 @@
     if (isOpen) {
       step = 'pick';
       themePicked = false;
-      choose(PROFILES[0]);
+      choose(PROFILES.find((p) => p.id === RECOMMENDED_PROFILE)!);
       readerMinimap = get(settings).readerMinimap;
     }
   });
@@ -146,7 +151,7 @@
               onkeydown={(e) => onCardKeydown(e, i)}
             >
               <img src={p.screenshot} alt={`remarkdown set up for ${p.title.toLowerCase()}s`} />
-              <h3>{p.title}</h3>
+              <h3>{p.title}{#if p.id === RECOMMENDED_PROFILE}<span class="recommended">(Recommended)</span>{/if}</h3>
               <p>{p.tagline}</p>
               <ul>
                 {#each p.bullets as b (b)}<li>{b}</li>{/each}
@@ -171,6 +176,7 @@
                 >
                   <ReaderStylePreview theme={t} />
                   <span>{READER_THEME_LABELS[t]}</span>
+                  {#if t === RECOMMENDED_THEME}<span class="recommended">(Recommended)</span>{/if}
                 </button>
               {/each}
             </div>
@@ -290,6 +296,19 @@
     color: var(--fg-2);
   }
   .options { display: flex; flex-direction: column; gap: 10px; }
+  /* "(Recommended)", jotted beside the defaults (--font-hand). */
+  .recommended {
+    display: inline-block;
+    margin-left: 8px;
+    font: 600 13px var(--font-hand);
+    color: var(--accent);
+    transform: rotate(-3deg);
+  }
+  .theme .recommended {
+    display: block;
+    margin: -4px 0 0;
+    font-size: 11.5px;
+  }
 
   /* Reader mode picks: the five page styles, then the minimap switch with
      its own picture (in the style picked to its left). */
