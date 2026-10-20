@@ -44,12 +44,12 @@ function collectBlocks(md: string): Block[] {
   return out;
 }
 
-// The blocks the visual editor can't edit (yet) — everything else in
-// the corpus must be editable. (Editability is the controller
-// registry's own answer: mermaid/registry.ts.)
+// The blocks the visual editor can't edit (they're changed through
+// their text) — everything else in the corpus must be editable.
+// (Editability is the controller registry's own answer:
+// mermaid/registry.ts.)
 const NOT_EDITABLE = new Set([
-  'journey', 'gitgraph', 'quadrant', 'sankey', 'xychart', 'block', 'c4-context', 'requirement',
-  'architecture', 'packet', 'radar', 'invalid-diagram', 'invalid-unknown-type',
+  'gitgraph', 'block', 'c4-context', 'requirement', 'architecture', 'invalid-diagram', 'invalid-unknown-type',
 ]);
 
 describe('mermaid corpus (edit-mode pipeline)', () => {

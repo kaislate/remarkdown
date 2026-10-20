@@ -1,5 +1,5 @@
 // Which controller edits which diagram type. A type with no entry here
-// renders read-only with the "coming soon" note. The second function is
+// is changed through its text (mermaid/text-panel.ts). The second function is
 // the same parse the controller's load() does, so "is this diagram
 // editable?" has one answer everywhere (see canEditDiagram).
 import { registerController } from './controller';
@@ -23,6 +23,13 @@ import { parseClass } from './class-parser';
 import { parseEr } from './er-parser';
 import { parseMindmap } from './mindmap-parser';
 import { parseKanban } from './kanban-parser';
+import { JourneyController, QuadrantController, XyChartController, SankeyController, PacketController, RadarController } from './data-controllers';
+import { parseJourney } from './journey-data';
+import { parseQuadrant } from './quadrant-data';
+import { parseXyChart } from './xychart-data';
+import { parseSankey } from './sankey-data';
+import { parsePacket } from './packet-data';
+import { parseRadar } from './radar-data';
 
 registerController('flowchart', (host) => new FlowchartController(host), (src) => parseMermaid(src).ok);
 registerController('sequence', (host) => new SequenceController(host), (src) => parseSequence(src).ok);
@@ -34,3 +41,10 @@ registerController('class', (host) => new ClassController(host), (src) => parseC
 registerController('er', (host) => new ErController(host), (src) => parseEr(src).ok);
 registerController('mindmap', (host) => new MindmapController(host), (src) => parseMindmap(src).ok);
 registerController('kanban', (host) => new KanbanController(host), (src) => parseKanban(src).ok);
+// The data diagrams: edited as tables (data-controller.ts).
+registerController('journey', (host) => new JourneyController(host), (src) => parseJourney(src) !== null);
+registerController('quadrant', (host) => new QuadrantController(host), (src) => parseQuadrant(src) !== null);
+registerController('xychart', (host) => new XyChartController(host), (src) => parseXyChart(src) !== null);
+registerController('sankey', (host) => new SankeyController(host), (src) => parseSankey(src) !== null);
+registerController('packet', (host) => new PacketController(host), (src) => parsePacket(src) !== null);
+registerController('radar', (host) => new RadarController(host), (src) => parseRadar(src) !== null);

@@ -217,7 +217,7 @@ export class MermaidNodeView implements NodeView {
 
   // Popover hosts are `position: absolute; inset: 0` inside the
   // wrapper, so anchors are in WRAPPER coordinates.
-  private anchor(el: Element | null, placement: 'right' | 'center'): Point {
+  private anchor(el: Element | null, placement: 'right' | 'center' | 'below'): Point {
     if (!el || typeof (el as SVGGraphicsElement).getBoundingClientRect !== 'function') return { x: 0, y: 0 };
     const rect = (el as SVGGraphicsElement).getBoundingClientRect();
     const wrapperRect = this.dom.getBoundingClientRect?.() ?? { left: 0, top: 0 };
@@ -227,6 +227,7 @@ export class MermaidNodeView implements NodeView {
         y: (rect.top + rect.bottom) / 2 - wrapperRect.top,
       };
     }
+    if (placement === 'below') return { x: rect.left - wrapperRect.left, y: rect.bottom - wrapperRect.top + 6 };
     return { x: rect.right - wrapperRect.left + 8, y: rect.top - wrapperRect.top };
   }
 

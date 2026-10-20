@@ -109,6 +109,7 @@ describe('EditorToolbar', () => {
     const tiles = Array.from(container.querySelectorAll<HTMLButtonElement>('.toolbar-diagram-tile'));
     expect(tiles.map((t) => t.textContent?.trim())).toEqual([
       'Flowchart', 'Sequence', 'Pie chart', 'Timeline', 'Gantt chart', 'States', 'Classes', 'Database (ER)', 'Mind map', 'Board (kanban)',
+      'Bar & line chart', 'Journey', 'Quadrant', 'Radar', 'Flows (Sankey)', 'Packet',
     ]);
     for (const t of tiles) expect(t.querySelector('svg'), t.textContent ?? '').not.toBeNull();
     expect(container.querySelector('.toolbar-dropdown-menu')!.textContent).not.toMatch(/-->|\[\*\]|%%|erDiagram/);

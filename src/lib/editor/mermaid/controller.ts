@@ -40,8 +40,8 @@ export interface DiagramHost {
   // it are UI events, not editor input, and PM ignores its mutations.
   createUiHost(className: string): HTMLElement;
   // Where to put a popover for `el`, in wrapper coordinates: to its
-  // right ('right') or at its centre ('center').
-  anchor(el: Element | null, placement: 'right' | 'center'): Point;
+  // right ('right'), at its centre ('center') or under it ('below').
+  anchor(el: Element | null, placement: 'right' | 'center' | 'below'): Point;
   // The one document-level Escape handler (connect / pick modes);
   // null removes it.
   setEscapeHandler(handler: (() => void) | null): void;

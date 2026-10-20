@@ -14,6 +14,12 @@ import { CLASS_STARTER } from './mermaid/class-parser';
 import { ER_STARTER } from './mermaid/er-parser';
 import { MINDMAP_STARTER } from './mermaid/mindmap-parser';
 import { KANBAN_STARTER } from './mermaid/kanban-parser';
+import { JOURNEY_STARTER } from './mermaid/journey-data';
+import { QUADRANT_STARTER } from './mermaid/quadrant-data';
+import { XYCHART_STARTER } from './mermaid/xychart-data';
+import { SANKEY_STARTER } from './mermaid/sankey-data';
+import { PACKET_STARTER } from './mermaid/packet-data';
+import { RADAR_STARTER } from './mermaid/radar-data';
 
 export const DIAGRAM_STARTERS = {
   flowchart: 'flowchart TD\n',
@@ -26,6 +32,12 @@ export const DIAGRAM_STARTERS = {
   er: ER_STARTER,
   mindmap: MINDMAP_STARTER,
   kanban: KANBAN_STARTER,
+  journey: JOURNEY_STARTER,
+  quadrant: QUADRANT_STARTER,
+  xychart: XYCHART_STARTER,
+  sankey: SANKEY_STARTER,
+  packet: PACKET_STARTER,
+  radar: RADAR_STARTER,
 } as const;
 
 export type StarterKind = keyof typeof DIAGRAM_STARTERS;

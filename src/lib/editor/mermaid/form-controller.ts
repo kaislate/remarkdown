@@ -55,6 +55,9 @@ export abstract class FormController<M, S extends { kind: string }> implements D
   protected abstract content(sel: S, model: M): FormContent | null;
   protected abstract bar(model: M): ActionsBarState;
   protected abstract isEmpty(model: M): EmptyState | null;
+  // Where a popover opened from the actions bar goes: beside its button,
+  // or under the bar (when it would cover the buttons beside it).
+  protected barPlacement: 'right' | 'below' = 'right';
 
   // ── lifecycle ──────────────────────────────────────────────────────
 
@@ -126,7 +129,7 @@ export abstract class FormController<M, S extends { kind: string }> implements D
       return;
     }
     const anchor = el ?? this.host.dom.querySelector(`.mermaid-actions-bar [data-action="${this.barAnchor(sel)}"]`);
-    const { x, y } = this.host.anchor(anchor, 'right');
+    const { x, y } = this.host.anchor(anchor, el ? 'right' : this.barPlacement);
     this.form.show({
       visible: true,
       x,

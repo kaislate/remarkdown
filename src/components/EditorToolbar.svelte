@@ -38,6 +38,12 @@
     { kind: 'er', label: 'Database (ER)', hint: 'Tables and how they connect', action: 'diagram-er' },
     { kind: 'mindmap', label: 'Mind map', hint: 'Ideas branching from one centre', action: 'diagram-mindmap' },
     { kind: 'kanban', label: 'Board (kanban)', hint: 'Cards in columns', action: 'diagram-kanban' },
+    { kind: 'xychart', label: 'Bar & line chart', hint: 'Numbers across a few categories', action: 'diagram-xychart' },
+    { kind: 'journey', label: 'Journey', hint: 'Steps of an experience, and how each felt', action: 'diagram-journey' },
+    { kind: 'quadrant', label: 'Quadrant', hint: 'Things placed on two scales', action: 'diagram-quadrant' },
+    { kind: 'radar', label: 'Radar', hint: 'Scores on several measures, compared', action: 'diagram-radar' },
+    { kind: 'sankey', label: 'Flows (Sankey)', hint: 'How amounts flow from one thing to another', action: 'diagram-sankey' },
+    { kind: 'packet', label: 'Packet', hint: 'The fields of a message, bit by bit', action: 'diagram-packet' },
   ];
   let { onInsert, blockStyle = 'paragraph', onBlockStyle = () => {} }: Props = $props();
 
@@ -251,6 +257,10 @@
        the left and right of the toolbar where they don't overlap. */
     z-index: 51;
   }
+  /* An open menu sits above the minimap (z-index 85), which it can reach. */
+  .editor-toolbar:has(details[open]) {
+    z-index: 95;
+  }
   .toolbar-btn {
     display: inline-flex;
     align-items: center;
@@ -319,6 +329,9 @@
   }
   /* The diagram menu is a grid of pictured tiles. */
   .toolbar-diagram-menu {
+    /* Opens leftwards: the button sits towards the right of the toolbar. */
+    left: auto;
+    right: 0;
     display: grid;
     grid-template-columns: repeat(2, minmax(120px, 1fr));
     gap: 2px;

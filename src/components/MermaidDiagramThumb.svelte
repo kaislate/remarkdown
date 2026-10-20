@@ -36,6 +36,24 @@
   {:else if kind === 'mindmap'}
     <ellipse cx="22" cy="15" rx="7" ry="4.5" /><path d="M15 14L7 7M15 16L7 23M29 14l8-7M29 16l8 7" />
     <circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="24" r="2.5" /><circle cx="38" cy="6" r="2.5" /><circle cx="38" cy="24" r="2.5" />
+  {:else if kind === 'journey'}
+    <path d="M3 22c6-12 10-12 14-4s8 6 12-6 8-6 12 2" /><circle cx="3" cy="22" r="1.6" fill="currentColor" /><circle cx="17" cy="18" r="1.6" fill="currentColor" />
+    <circle cx="29" cy="12" r="1.6" fill="currentColor" /><circle cx="41" cy="14" r="1.6" fill="currentColor" /><path d="M3 28h38" stroke-dasharray="2 2" />
+  {:else if kind === 'quadrant'}
+    <rect x="6" y="2" width="34" height="26" /><path d="M23 2v26M6 15h34" /><circle cx="14" cy="8" r="1.8" fill="currentColor" />
+    <circle cx="31" cy="11" r="1.8" fill="currentColor" /><circle cx="28" cy="22" r="1.8" fill="currentColor" />
+  {:else if kind === 'xychart'}
+    <path d="M4 2v26h38" /><rect x="8" y="16" width="5" height="12" fill="currentColor" opacity="0.35" stroke="none" />
+    <rect x="17" y="10" width="5" height="18" fill="currentColor" opacity="0.35" stroke="none" /><rect x="26" y="13" width="5" height="15" fill="currentColor" opacity="0.35" stroke="none" />
+    <rect x="35" y="6" width="5" height="22" fill="currentColor" opacity="0.35" stroke="none" /><path d="M10 14l9-7 9 4 9-7" />
+  {:else if kind === 'sankey'}
+    <rect x="2" y="4" width="4" height="22" fill="currentColor" opacity="0.5" stroke="none" /><rect x="38" y="2" width="4" height="10" fill="currentColor" opacity="0.5" stroke="none" />
+    <rect x="38" y="16" width="4" height="12" fill="currentColor" opacity="0.5" stroke="none" /><path d="M6 6c16 0 16-2 32-2M6 13c16 0 16-4 32-4M6 18c16 0 16 0 32 0M6 25c16 0 16 2 32 2" />
+  {:else if kind === 'packet'}
+    <rect x="2" y="4" width="40" height="9" /><path d="M14 4v9M30 4v9" /><rect x="2" y="17" width="40" height="9" /><path d="M22 17v9" />
+  {:else if kind === 'radar'}
+    <path d="M22 2l12 9-5 15H15l-5-15z" /><path d="M22 15V2M22 15l12-4M22 15l7 11M22 15l-7 11M22 15l-12-4" opacity="0.5" />
+    <path d="M22 6l8 6-4 9h-8l-3-9z" fill="currentColor" opacity="0.3" />
   {:else}
     <rect x="2" y="2" width="12" height="26" rx="1.5" /><rect x="16" y="2" width="12" height="26" rx="1.5" /><rect x="30" y="2" width="12" height="26" rx="1.5" />
     <rect x="4" y="6" width="8" height="5" rx="1" fill="currentColor" opacity="0.35" /><rect x="4" y="13" width="8" height="5" rx="1" fill="currentColor" opacity="0.35" />
