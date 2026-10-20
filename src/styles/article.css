@@ -931,3 +931,59 @@ body.reattach-mode .reader-mode-toggle {
   stroke-width: 2px !important;
 }
 /* ── end kanban editing ── */
+
+/* ─── Document details (front matter) ────────────────────────────────
+   The settings block some files start with (lib/markdown-it-frontmatter
+   .ts): folded away in the reader as "Document details", a quiet card in
+   the editor that opens its text when clicked. */
+.md-rendered .front-matter {
+  margin: 0 0 1.4em;
+  padding: 0.5em 0.85em;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg-0) 3%, transparent);
+  font-family: var(--font-sans);
+  font-size: 0.82em;
+  color: var(--fg-2);
+}
+.md-rendered .front-matter summary,
+.md-rendered .front-matter-summary {
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.md-rendered .front-matter dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2em 1em;
+  margin: 0.5em 0 0.1em;
+}
+.md-rendered .front-matter dt { color: var(--fg-2); }
+.md-rendered .front-matter dd { margin: 0; color: var(--fg-1); overflow-wrap: anywhere; }
+.md-rendered .front-matter-block { cursor: pointer; }
+.md-rendered .front-matter-block:hover,
+.md-rendered .front-matter-block.ProseMirror-selectednode { border-color: var(--accent); }
+
+/* ─── Formulas in the editor ─────────────────────────────────────────
+   Drawn as in the reader; click to change (lib/editor/source-node-views.ts). */
+.ProseMirror .math-inline,
+.ProseMirror .math-block {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+.ProseMirror .math-block { display: block; text-align: center; margin: 1em 0; padding: 0.2em 0; }
+.ProseMirror .math-inline:hover,
+.ProseMirror .math-block:hover,
+.ProseMirror .math-inline.ProseMirror-selectednode,
+.ProseMirror .math-block.ProseMirror-selectednode {
+  background: var(--accent-soft);
+  outline: none;
+}
+.md-rendered .math-error {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--danger, #d05050);
+  text-decoration: underline wavy;
+}
+.md-rendered .math-empty { font-family: var(--font-sans); font-size: 0.85em; color: var(--fg-2); font-style: italic; }

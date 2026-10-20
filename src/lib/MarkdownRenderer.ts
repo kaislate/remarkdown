@@ -6,6 +6,7 @@ import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
 import { getSingletonHighlighter, type Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
+import { frontMatterPlugin } from './markdown-it-frontmatter';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
 import { isMermaidFence } from './mermaid-fence';
 
@@ -26,7 +27,8 @@ const md = new MarkdownIt({
   .use(katex.default ?? katex)
   .use(subPlugin)
   .use(supPlugin)
-  .use(calloutsPlugin);
+  .use(calloutsPlugin)
+  .use(frontMatterPlugin);
 
 // Mermaid fences become diagram placeholders at markdown-it's fence
 // renderer, BEFORE Shiki sees the html. Deciding here (from the token's

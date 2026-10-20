@@ -25,6 +25,7 @@ import { isMermaidFence } from '../mermaid-fence';
 import { createMermaidSourceGuard, diagramKeymap } from './mermaid-source-guard';
 import { TaskItemNodeView } from './task-item-node-view';
 import { FootnoteNodeView } from './footnote-node-view';
+import { MathInlineView, MathBlockView, FrontMatterView } from './source-node-views';
 import { createCodeBlockHighlightPlugin } from './code-block-highlight';
 import { tabInTable } from './table-commands';
 import { createTableActionsPlugin } from './table-actions-plugin';
@@ -191,6 +192,9 @@ export function createEditorView(
         new TaskItemNodeView(node, editorView, getPos),
       footnote: (node, editorView, getPos) =>
         new FootnoteNodeView(node, editorView, getPos),
+      math_inline: (node, editorView, getPos) => new MathInlineView(node, editorView, getPos),
+      math_block: (node, editorView, getPos) => new MathBlockView(node, editorView, getPos),
+      front_matter: (node, editorView, getPos) => new FrontMatterView(node, editorView, getPos),
     },
     dispatchTransaction(tr: Transaction) {
       const newState = view.state.apply(tr);

@@ -21,6 +21,8 @@ import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
 import footnotePlugin from 'markdown-it-footnote';
 import { footnoteAttachBodyPlugin } from './parser-footnote';
+import katexPlugin from '@vscode/markdown-it-katex';
+import { frontMatterPlugin } from '../markdown-it-frontmatter';
 import { editorSchema } from './schema';
 import type { Node } from 'prosemirror-model';
 import type Token from 'markdown-it/lib/token.mjs';
@@ -36,6 +38,18 @@ md.use(subPlugin);
 md.use(supPlugin);
 md.use(footnotePlugin);
 md.use(footnoteAttachBodyPlugin);
+// Maths and front matter are tokenised the reader's way, so the editor
+// sees exactly what the reader shows — and keeps their text as written.
+md.use((katexPlugin as unknown as { default?: typeof katexPlugin }).default ?? katexPlugin);
+md.use(frontMatterPlugin);
+// The katex plugin labels `$$…$$` within a line `math_block` too; inside
+// a paragraph that's inline maths shown on its own line.
+md.core.ruler.push('math-inline-display', (state) => {
+  for (const t of state.tokens) {
+    for (const c of t.children ?? []) if (c.type === 'math_block') c.type = 'math_inline_block';
+  }
+  return false;
+});
 
 // Rename `blockquote_open`/`blockquote_close` tokens to `callout_open`/
 // `callout_close` whenever calloutsPlugin marked them. We track a stack
@@ -88,6 +102,16 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
     noCloseToken: true,
     getAttrs: (tok: Token) => ({ language: (tok.info || '').trim() }),
   },
+  // The marker (`-`, `*`, `+`) is kept; tightness as prosemirror-markdown
+  // works it out (no blank lines between items).
+  bullet_list: {
+    block: 'bullet_list',
+    getAttrs: (tok: Token, tokens: Token[], i: number) => {
+      let j = i;
+      while (++j < tokens.length) if (tokens[j].type !== 'list_item_open') break;
+      return { tight: j < tokens.length ? tokens[j].hidden : false, bullet: tok.markup || '*' };
+    },
+  },
   list_item: {
     block: 'list_item',
     getAttrs: (tok: Token) => {
@@ -116,6 +140,30 @@ const editorMarkdownParser = new MarkdownParser(editorSchema, md, {
   // Footnote: markdown-it-footnote emits `footnote_ref` tokens; our
   // core rule (parser-footnote.ts) attaches `meta.body` so we can
   // store the definition's text alongside the label here.
+  math_inline: {
+    node: 'math_inline',
+    noCloseToken: true,
+    getAttrs: (tok: Token) => ({ tex: tok.content, display: false }),
+  },
+  // `$$…$$` inside a line of text.
+  math_inline_block: {
+    node: 'math_inline',
+    noCloseToken: true,
+    getAttrs: (tok: Token) => ({ tex: tok.content, display: true }),
+  },
+  math_block: {
+    node: 'math_block',
+    noCloseToken: true,
+    getAttrs: (tok: Token) => {
+      const oneLine = !!tok.map && tok.map[1] - tok.map[0] === 1;
+      return { tex: tok.content.replace(/\n$/, ''), oneLine };
+    },
+  },
+  front_matter: {
+    node: 'front_matter',
+    noCloseToken: true,
+    getAttrs: (tok: Token) => ({ content: tok.content, close: tok.markup || '---' }),
+  },
   footnote_ref: {
     node: 'footnote',
     getAttrs: (tok: Token) => ({
