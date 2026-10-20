@@ -126,7 +126,7 @@ What changed in each version of remarkdown, newest first. The same notes appear 
 
 - 120+ commits since 0.7.0.
 - Every diagram parser is checked against mermaid's own reading of the diagram, and every edit is property-tested: the lines you didn't touch stay byte-identical, and mermaid can still draw the result.
-- 2,330 unit and component tests, 166 Playwright end-to-end tests, Rust tests.
+- 2,331 unit and component tests, 166 Playwright end-to-end tests, 26 Rust tests.
 
 ### ⬇️ Installers
 
