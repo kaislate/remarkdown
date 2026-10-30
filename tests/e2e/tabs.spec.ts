@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { chooseSetting } from './support/settings';
+import { editorMod } from './support/webkit';
 
 // Tabs keep every open document fully alive: switching back must restore
 // the exact scroll position, the editor (with its undo history), and never
@@ -86,7 +87,7 @@ test('edits and undo history survive a tab switch; edit mode is per tab', async 
   await expect(surface).toBeVisible();
   await expect(surface).toContainText('begin. zzz');
   await surface.focus();
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press(`${await editorMod(page)}+z`);
   await expect(surface).not.toContainText('zzz');
 });
 

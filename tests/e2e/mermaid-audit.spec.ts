@@ -7,6 +7,7 @@
 // block-beta label overflow, sequence `critical` label spill, radar
 // title clipping, C4 relation label colour.
 import { chooseSetting } from './support/settings';
+import { withoutPaintWorklet } from './support/webkit';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -29,7 +30,8 @@ async function shot(loc: { screenshot: (o: { path: string }) => Promise<unknown>
 }
 
 interface Logs { errors: string[]; warnings: string[] }
-function captureConsole(page: Page): Logs {
+async function captureConsole(page: Page): Promise<Logs> {
+  await withoutPaintWorklet(page);
   const logs: Logs = { errors: [], warnings: [] };
   page.on('console', (m) => {
     if (m.type() === 'error') logs.errors.push(m.text());
@@ -193,7 +195,7 @@ test.describe.configure({ timeout: 300_000 });
 test.describe('mermaid — reader mode', () => {
   for (const theme of ['dark', 'light'] as const) {
     test(`renders every corpus block (${theme})`, async ({ page }) => {
-      const logs = captureConsole(page);
+      const logs = await captureConsole(page);
       await page.goto('/');
       await page.evaluate(() => (window as any).__E2E_CLEAR_ALL__?.());
       if (theme === 'light') await setTheme(page, 'light');
@@ -246,7 +248,7 @@ test.describe('mermaid — reader mode', () => {
   }
 
   test('switching theme re-renders diagrams already on screen', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page, 'dark');
     const dark = await measureReader(page);
@@ -268,7 +270,7 @@ test.describe('mermaid — reader mode', () => {
   });
 
   test('switching documents / reopening: no leftovers, no stale renders', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page);
     const first = await measureReader(page);
@@ -304,7 +306,7 @@ test.describe('mermaid — reader mode', () => {
   });
 
   test('minimap mirrors diagrams with unique ids; highlights decline diagram text', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page);
     await page.waitForTimeout(500);
@@ -497,7 +499,7 @@ const FIX_NOTE = 'You can fix it by changing its text.Fix the diagram text';
 
 test.describe('mermaid — edit mode', () => {
   test('every block: diagram (never raw code), friendly notes, untouched sources survive a save', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page);
     await enterEditMode(page);
@@ -572,7 +574,7 @@ test.describe('mermaid — edit mode', () => {
   ];
 
   test('visual edits change only what was edited, and the result renders', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page);
     await enterEditMode(page);
@@ -648,7 +650,7 @@ test.describe('mermaid — edit mode', () => {
   });
 
   test('a popover rich-text field takes a real click and real typing (bold included)', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     const md = '# T\n\n## rich\n\n```mermaid\nflowchart LR\n    A[Start] --> B[End]\n```\n\nAfter.\n';
     await seedAndOpen(page, '/e2e/rich.md', md);
     await enterEditMode(page);
@@ -669,7 +671,7 @@ test.describe('mermaid — edit mode', () => {
   });
 
   test('every diagram kind in the toolbar menu arrives drawn and editable', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     const kinds = ['pie', 'timeline', 'gantt', 'state', 'class', 'er', 'mindmap', 'kanban'];
     // Inserting takes the place of the paragraph the caret is in.
     await seedAndOpen(page, '/e2e/insert.md', `# Insert\n\n${kinds.map((k) => `Slot ${k}.`).join('\n\n')}\n`);
@@ -705,7 +707,7 @@ test.describe('mermaid — edit mode', () => {
   });
 
   test('a sequence group box opens from its frame and is renamed in place', async ({ page }) => {
-    const logs = captureConsole(page);
+    const logs = await captureConsole(page);
     await seedAndOpen(page, CORPUS_PATH, CORPUS_MD);
     await waitReaderDiagramsSettled(page);
     await enterEditMode(page);

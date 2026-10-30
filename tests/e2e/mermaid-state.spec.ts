@@ -4,6 +4,7 @@
 // markdown, the result still renders, and connect mode adds a
 // transition. Helpers copied from mermaid-audit.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
+import { withoutPaintWorklet } from './support/webkit';
 
 async function clickMenuItem(page: Page, name: RegExp): Promise<void> {
   await page.getByRole('button', { name: /menu/i }).click();
@@ -108,6 +109,7 @@ const MD = `# State test\n\n## machine\n\n\`\`\`mermaid\n${SOURCE}\n\`\`\`\n\nED
 test.describe.configure({ timeout: 180_000 });
 
 test('state diagrams: every target edits through its popover, only intended lines change', async ({ page }) => {
+  await withoutPaintWorklet(page);
   const errors: string[] = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));

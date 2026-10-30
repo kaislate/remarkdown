@@ -80,12 +80,15 @@ test('the left column steps down on a Mac; the top tabs stay on their line', asy
       expect(m.top - w.top, `${sel} steps down`).toBe(MAC_INSET);
       expect(m.left, `${sel} keeps its column`).toBe(w.left);
     }
-    // The contents popover opens beside its button, wherever that is.
+    // The contents popover opens beside its button, wherever that is. (The
+    // button is measured before the click: under the pointer it grows a
+    // little, and how far it has grown depends on when it's measured.)
+    const macButton = await rect(mac, '.toc-button');
     for (const p of [win, mac]) await p.locator('.toc-button').click();
     await expect(mac.locator('.toc-popover')).toBeVisible();
     await expect(win.locator('.toc-popover')).toBeVisible();
     expect((await rect(mac, '.toc-popover')).top - (await rect(win, '.toc-popover')).top).toBe(MAC_INSET);
-    expect((await rect(mac, '.toc-popover')).top).toBe((await rect(mac, '.toc-button')).top);
+    expect((await rect(mac, '.toc-popover')).top).toBe(macButton.top);
 
     // The tabs keep their place.
     expect(await rect(mac, '[role="tab"]')).toEqual(await rect(win, '[role="tab"]'));

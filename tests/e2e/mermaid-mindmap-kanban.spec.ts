@@ -3,6 +3,7 @@
 // markdown changes only the intended lines and the diagram still
 // renders. (Helpers copied from mermaid-audit.spec.ts.)
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { withoutPaintWorklet } from './support/webkit';
 
 const PATH = '/e2e/mindmap-kanban.md';
 
@@ -31,7 +32,8 @@ const DOC = `# Boards\n\n## mm\n\n\`\`\`mermaid\n${MINDMAP}\n\`\`\`\n\n## kb\n\n
 
 const FALLBACK_NOTE = 'This diagram is changed through its text.';
 
-function captureErrors(page: Page): string[] {
+async function captureErrors(page: Page): Promise<string[]> {
+  await withoutPaintWorklet(page);
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
@@ -151,7 +153,7 @@ test.describe.configure({ timeout: 180_000 });
 
 test.describe('mermaid — mindmap and kanban editing', () => {
   test('both are visually editable: no "coming soon" note', async ({ page }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await seedAndOpen(page, PATH, DOC);
     await enterEditMode(page);
     for (const i of [0, 1]) {
@@ -163,7 +165,7 @@ test.describe('mermaid — mindmap and kanban editing', () => {
   });
 
   test('mindmap: rename, add child, indent with Tab, delete a branch', async ({ page }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await seedAndOpen(page, PATH, DOC);
     await enterEditMode(page);
     const mm = block(page, 0);
@@ -213,7 +215,7 @@ test.describe('mermaid — mindmap and kanban editing', () => {
   });
 
   test('kanban: rename a column, edit a card, move it, add a column', async ({ page }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await seedAndOpen(page, PATH, DOC);
     await enterEditMode(page);
     const kb = block(page, 1);

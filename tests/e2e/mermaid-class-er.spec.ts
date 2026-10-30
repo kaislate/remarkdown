@@ -3,6 +3,7 @@
 // markdown changes only the intended lines and the diagram still
 // renders. Helpers copied from mermaid-audit.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
+import { withoutPaintWorklet } from './support/webkit';
 
 const PATH = '/e2e/class-er.md';
 const CLASS_SRC = [
@@ -29,7 +30,8 @@ const MD = `# Class and ER\n\n## class-edit\n\n\`\`\`mermaid\n${CLASS_SRC}\n\`\`
 
 test.describe.configure({ timeout: 300_000 });
 
-function captureErrors(page: Page): string[] {
+async function captureErrors(page: Page): Promise<string[]> {
+  await withoutPaintWorklet(page);
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
@@ -244,7 +246,7 @@ const STEPS: Step[] = [
 ];
 
 test('class and ER diagrams: every kind of target edits through its popover', async ({ page }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await seedAndOpen(page, PATH, MD);
   await enterEditMode(page);
   for (const heading of ['class-edit', 'er-edit'] as const) {
@@ -284,7 +286,7 @@ test('class and ER diagrams: every kind of target edits through its popover', as
 });
 
 test('connect mode, and adding from the toolbars (class and ER)', async ({ page }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await seedAndOpen(page, PATH, MD);
   await enterEditMode(page);
   const b = block(page, 'class-edit');
