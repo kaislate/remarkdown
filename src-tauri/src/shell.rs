@@ -6,6 +6,7 @@ use std::path::Path;
 /// Explorer's argument for "open the folder with this file selected".
 /// Explorer parses its own command line: the path must follow `/select,`
 /// inside quotes, so it's passed raw rather than through Rust's quoting.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 pub fn explorer_select_arg(path: &str) -> String {
     format!("/select,\"{}\"", path.replace('/', "\\"))
 }
