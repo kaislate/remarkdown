@@ -79,27 +79,36 @@ pub fn reveal_in_folder(path: String) -> Result<(), CommandError> {
         cmd.spawn().map_err(|e| CommandError::Io(e.to_string()))?;
         Ok(())
     }
+    // gdbus waits for the file manager's answer: about a second when D-Bus
+    // has to start Nautilus, and up to its ~25 s timeout when a stuck name
+    // owner holds the call. A sync command runs on the main thread, so that
+    // wait would freeze the window; it happens on a thread of its own instead.
     #[cfg(not(any(windows, target_os = "macos")))]
     {
-        let p = Path::new(&path);
-        if p.is_file() {
-            let shown = std::process::Command::new("gdbus")
-                .args(show_items_args(&file_uri(p)))
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if shown {
-                return Ok(());
+        let p = std::path::PathBuf::from(path);
+        std::thread::spawn(move || {
+            if p.is_file() {
+                let shown = std::process::Command::new("gdbus")
+                    .args(show_items_args(&file_uri(&p)))
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if shown {
+                    return;
+                }
             }
-        }
-        // No file manager on the bus (or the file is gone): just open the folder.
-        let dir = if p.is_dir() { Some(p) } else { p.parent() };
-        if let Some(dir) = dir {
-            std::process::Command::new("xdg-open")
-                .arg(dir)
-                .spawn()
-                .map_err(|e| CommandError::Io(e.to_string()))?;
-        }
+            // No file manager on the bus (or the file is gone): just open the folder.
+            let dir = if p.is_dir() { Some(p.as_path()) } else { p.parent() };
+            if let Some(dir) = dir {
+                match std::process::Command::new("xdg-open").arg(dir).spawn() {
+                    // Waited on so it's reaped rather than left a zombie.
+                    Ok(mut child) => {
+                        let _ = child.wait();
+                    }
+                    Err(e) => eprintln!("[remarkdown] could not open the folder: {e}"),
+                }
+            }
+        });
         Ok(())
     }
 }
