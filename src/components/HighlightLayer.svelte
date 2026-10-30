@@ -8,6 +8,7 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { caretFromPoint } from '../lib/caret';
   import { highlightSelection } from '../lib/highlight-selection';
   import type { Highlight } from '../lib/schema';
 
@@ -58,13 +59,13 @@
     const target = e.target as Node | null;
     if (!target || !root.contains(target)) return;
 
-    const cp = (document as any).caretPositionFromPoint?.(e.clientX, e.clientY);
-    if (!cp || !cp.offsetNode) return;
+    const cp = caretFromPoint(e.clientX, e.clientY);
+    if (!cp) return;
 
     // Find which resolved highlight's range contains the caret position.
     for (const r of get(resolvedAnnots)) {
       if (r.annotation.type !== 'highlight') continue;
-      if (rangeContains(r.range, cp.offsetNode, cp.offset)) {
+      if (rangeContains(r.range, cp.node, cp.offset)) {
         e.preventDefault();
         menuForId = r.annotation.id;
         menuPos = { x: e.clientX, y: e.clientY };
@@ -87,11 +88,11 @@
     const target = e.target as HTMLElement | null;
     // Defer to NoteLayer for note pin clicks.
     if (target?.closest?.('.note-pin')) return;
-    const cp = (document as any).caretPositionFromPoint?.(e.clientX, e.clientY);
-    if (!cp || !cp.offsetNode) return;
+    const cp = caretFromPoint(e.clientX, e.clientY);
+    if (!cp) return;
     for (const r of get(resolvedAnnots)) {
       if (r.annotation.type !== 'highlight') continue;
-      if (rangeContains(r.range, cp.offsetNode, cp.offset)) {
+      if (rangeContains(r.range, cp.node, cp.offset)) {
         e.preventDefault();
         e.stopPropagation();
         removeAnnotation(r.annotation.id);

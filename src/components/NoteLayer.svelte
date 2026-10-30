@@ -12,6 +12,7 @@
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { caretFromPoint } from '../lib/caret';
   import { createAnchor, DIAGRAM_ANNOTATION_HINT } from '../lib/anchoring';
   import { addToast } from '../stores/toasts';
   import { noteToOpen } from '../lib/note-actions';
@@ -196,11 +197,11 @@
     }
 
     let range: Range | null = null;
-    const cp = (document as any).caretPositionFromPoint?.(clientX, clientY);
-    if (cp && cp.offsetNode && cp.offsetNode.nodeType === Node.TEXT_NODE) {
+    const cp = caretFromPoint(clientX, clientY);
+    if (cp && cp.node.nodeType === Node.TEXT_NODE) {
       const { startNode, startOffset, endNode, endOffset } = expandToWordBoundary(
         block,
-        cp.offsetNode as Text,
+        cp.node as Text,
         cp.offset as number,
       );
       // If we ended up at a degenerate (collapsed) range — clicked on
@@ -210,7 +211,7 @@
         startNode === endNode &&
         startOffset === endOffset
       ) {
-        const tn = cp.offsetNode as Text;
+        const tn = cp.node as Text;
         range = document.createRange();
         range.setStart(tn, 0);
         range.setEnd(tn, Math.min(tn.data.length, 8));
@@ -253,27 +254,27 @@
     const root = get(currentViewerRoot);
     if (!root) return false;
 
-    // Temporarily hide pin elements so caretPositionFromPoint can see the
+    // Temporarily hide pin elements so caretFromPoint can see the
     // text underneath — otherwise the caret query returns the pin itself.
     const pinEls = Array.from(document.querySelectorAll<HTMLElement>('.note-pin'));
     const visibilities = pinEls.map((el) => el.style.visibility);
     pinEls.forEach((el) => { el.style.visibility = 'hidden'; });
 
-    let cp: any;
+    let cp: ReturnType<typeof caretFromPoint>;
     try {
-      cp = (document as any).caretPositionFromPoint?.(clientX, clientY);
+      cp = caretFromPoint(clientX, clientY);
     } finally {
       pinEls.forEach((el, i) => { el.style.visibility = visibilities[i]; });
     }
 
-    if (!cp || !cp.offsetNode || cp.offsetNode.nodeType !== Node.TEXT_NODE) return false;
+    if (!cp || cp.node.nodeType !== Node.TEXT_NODE) return false;
 
     // Verify the text node is inside the article root and find the
     // containing block so the word-boundary walk has a scope.
-    let n: Node | null = cp.offsetNode;
+    let n: Node | null = cp.node;
     while (n && n !== root) n = n.parentNode;
     if (n !== root) return false;
-    const block = (cp.offsetNode as Node).parentElement?.closest<HTMLElement>('[data-block-id]');
+    const block = (cp.node as Node).parentElement?.closest<HTMLElement>('[data-block-id]');
     if (!block) return false;
     // Dropping a pin onto a diagram: snap back rather than anchor to
     // diagram text (see rangeTouchesDiagram).
@@ -284,12 +285,12 @@
 
     const { startNode, startOffset, endNode, endOffset } = expandToWordBoundary(
       block,
-      cp.offsetNode as Text,
+      cp.node as Text,
       cp.offset as number,
     );
     let range: Range;
     if (startNode === endNode && startOffset === endOffset) {
-      const tn = cp.offsetNode as Text;
+      const tn = cp.node as Text;
       range = document.createRange();
       range.setStart(tn, 0);
       range.setEnd(tn, Math.min(tn.data.length, 8));
