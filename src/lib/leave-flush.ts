@@ -34,3 +34,18 @@ export async function installMacBlurFlush(): Promise<(() => void) | null> {
     })();
   });
 }
+
+// A close held open by an unresolved conflict asks about it in this window.
+// A Mac quit (⌘Q) closes every window, including ones behind others or down
+// in the Dock, where that question would wait unseen; so on a Mac the window
+// comes forward first. Windows and Linux are left as they were.
+export async function bringForwardOnMac(): Promise<void> {
+  if (!isMac()) return;
+  try {
+    const win = getCurrentWindow();
+    await win.unminimize();
+    await win.setFocus();
+  } catch (err) {
+    console.error('[remarkdown] could not bring the window forward:', err);
+  }
+}

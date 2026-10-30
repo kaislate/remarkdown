@@ -57,7 +57,7 @@
   import { availableUpdate } from './stores/updates';
   import { openModal, activeModal } from './stores/modals';
   import { unresolvedConflict, askAboutConflict } from './lib/edit-save';
-  import { settlePendingSaves, installMacBlurFlush } from './lib/leave-flush';
+  import { settlePendingSaves, installMacBlurFlush, bringForwardOnMac } from './lib/leave-flush';
   import { activeSession } from './stores/sessions';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
@@ -324,6 +324,7 @@
           const waiting = unresolvedConflict();
           if (waiting) {
             event.preventDefault();
+            await bringForwardOnMac();
             if (get(activeSession) !== waiting) await activateSession(waiting.id);
             askAboutConflict(waiting);
             return;

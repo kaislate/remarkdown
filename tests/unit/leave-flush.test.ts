@@ -9,8 +9,11 @@ const onFocusChanged = vi.fn(async (cb: (e: { payload: boolean }) => void) => {
   focusHandler = cb;
   return () => {};
 });
+const calls: string[] = [];
+const unminimize = vi.fn(async () => { calls.push('unminimize'); });
+const setFocus = vi.fn(async () => { calls.push('setFocus'); });
 vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ onFocusChanged }),
+  getCurrentWindow: () => ({ onFocusChanged, unminimize, setFocus }),
 }));
 vi.mock('../../src/stores/tabs', () => ({ runBeforeSwitch: vi.fn(async () => {}) }));
 vi.mock('../../src/stores/session-persist', () => ({ flushSessionNow: vi.fn(async () => {}) }));
@@ -18,12 +21,13 @@ vi.mock('../../src/stores/session-persist', () => ({ flushSessionNow: vi.fn(asyn
 import { runBeforeSwitch } from '../../src/stores/tabs';
 import { flushSessionNow } from '../../src/stores/session-persist';
 import { setPlatformForTests } from '../../src/lib/platform';
-import { installMacBlurFlush, settlePendingSaves } from '../../src/lib/leave-flush';
+import { bringForwardOnMac, installMacBlurFlush, settlePendingSaves } from '../../src/lib/leave-flush';
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   focusHandler = null;
+  calls.length = 0;
   vi.clearAllMocks();
 });
 
@@ -73,5 +77,33 @@ describe('settlePendingSaves', () => {
     await settlePendingSaves();
     expect(runBeforeSwitch).toHaveBeenCalledOnce();
     expect(flushSessionNow).not.toHaveBeenCalled();
+  });
+});
+
+// When a close is held open by an unresolved conflict, a Mac window behind
+// others or in the Dock would ask its question where nobody sees it.
+describe('bringForwardOnMac', () => {
+  it('on a Mac, unminimizes the window and then focuses it', async () => {
+    setPlatformForTests('macos');
+    await bringForwardOnMac();
+    expect(calls).toEqual(['unminimize', 'setFocus']);
+  });
+
+  it('does nothing on Windows or Linux', async () => {
+    for (const os of ['windows', 'linux'] as const) {
+      setPlatformForTests(os);
+      await bringForwardOnMac();
+    }
+    expect(unminimize).not.toHaveBeenCalled();
+    expect(setFocus).not.toHaveBeenCalled();
+  });
+
+  it('a failure is logged, never thrown', async () => {
+    setPlatformForTests('macos');
+    unminimize.mockRejectedValueOnce(new Error('no window'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(bringForwardOnMac()).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 });
