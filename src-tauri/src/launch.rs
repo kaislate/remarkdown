@@ -326,6 +326,7 @@ mod tests {
 
         let desktop = include_str!("../linux/remarkdown.desktop");
         assert!(desktop.lines().any(|l| l == "Exec={{exec}} %F"));
+        assert!(desktop.lines().any(|l| l == "MimeType={{mime_type}};"));
     }
 
     #[test]

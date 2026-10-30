@@ -59,6 +59,10 @@ jobs:
 
       - run: npm run check
 
+      # tauri::generate_context!() needs the built frontend (../dist, which is
+      # gitignored) to exist, even just to compile the tests.
+      - run: npm run build
+
       - name: cargo test
         working-directory: src-tauri
         run: cargo test

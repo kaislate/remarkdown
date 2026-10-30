@@ -1,4 +1,4 @@
-# Upstream tauri-bundler template (tauri-cli-v2.12.4) with %F on Exec so file managers pass the file.
+# Upstream tauri-bundler template (tauri-cli-v2.12.4) with %F on Exec so file managers pass the file, and a trailing ; on MimeType (the bundler joins types with ; but adds none after the last, and the spec wants one).
 [Desktop Entry]
 Categories={{categories}}
 {{#if comment}}
@@ -11,5 +11,5 @@ Name={{name}}
 Terminal=false
 Type=Application
 {{#if mime_type}}
-MimeType={{mime_type}}
+MimeType={{mime_type}};
 {{/if}}
