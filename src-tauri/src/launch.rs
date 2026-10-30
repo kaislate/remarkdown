@@ -204,8 +204,24 @@ mod tests {
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("a.md"), "x").unwrap();
         let plain = extract_open_paths(&["exe".into(), "a.md".into()], dir.path());
-        let dotted = extract_open_paths(&["exe".into(), r".\a.md".into()], dir.path());
+        let dotted = extract_open_paths(&["exe".into(), "./a.md".into()], dir.path());
         let parent = extract_open_paths(&["exe".into(), "sub/../a.md".into()], dir.path());
+        assert_eq!(plain.len(), 1);
+        assert_eq!(dotted, plain);
+        assert_eq!(parent, plain);
+    }
+
+    // A backslash only separates on Windows. On a Mac or Linux it's part of
+    // the file name, so `.\a.md` there names a different, missing file.
+    #[cfg(windows)]
+    #[test]
+    fn backslash_dot_segments_resolve_to_the_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let plain = extract_open_paths(&["exe".into(), "a.md".into()], dir.path());
+        let dotted = extract_open_paths(&["exe".into(), r".\a.md".into()], dir.path());
+        let parent = extract_open_paths(&["exe".into(), r"sub\..\a.md".into()], dir.path());
         assert_eq!(plain.len(), 1);
         assert_eq!(dotted, plain);
         assert_eq!(parent, plain);
