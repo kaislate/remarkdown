@@ -197,6 +197,20 @@
     background: transparent;
   }
 
+  /* On a Mac the window has its own buttons (the traffic lights, top-left,
+     tauri.macos.conf.json) and resizes from any edge, so ours, their aura
+     and the grip go — and with nothing in the top-right corner, the drag
+     strip runs all the way across. The strip can stay where it starts:
+     the traffic lights are native and sit above the page anyway. */
+  :global(body.platform-macos) .titlebar-controls,
+  :global(body.platform-macos) .controls-aura,
+  :global(body.platform-macos) .resize-grip {
+    display: none;
+  }
+  :global(body.platform-macos) .titlebar-drag {
+    right: 0;
+  }
+
 
   /* The aura is a soft conical gradient that slowly sweeps across the
      top-right corner. Behind the controls (z:170) but above the minimap

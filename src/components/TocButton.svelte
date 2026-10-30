@@ -172,7 +172,7 @@
      this button (top:106 = 60 + 38 + 8 gap), Reader toggle (top:152). */
   .toc-button {
     position: fixed;
-    top: 106px;
+    top: calc(106px + var(--chrome-inset-top));
     left: 14px;
     width: 38px;
     height: 38px;
@@ -210,7 +210,7 @@
      kiss the pill. Top-aligned with the button. */
   .toc-popover {
     position: fixed;
-    top: 106px;
+    top: calc(106px + var(--chrome-inset-top));
     left: 60px;
     z-index: 110;
     width: min(340px, calc(100vw - 80px));

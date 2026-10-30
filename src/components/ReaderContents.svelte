@@ -144,10 +144,10 @@
      but its text, in the reader theme's ink. */
   .reader-contents {
     position: fixed;
-    top: 56px;
+    top: calc(56px + var(--chrome-inset-top));
     left: 28px;
     width: 200px;
-    max-height: calc(100vh - 112px);
+    max-height: calc(100vh - 112px - var(--chrome-inset-top));
     z-index: 52;
     display: flex;
     flex-direction: column;

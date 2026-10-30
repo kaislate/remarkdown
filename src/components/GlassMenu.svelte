@@ -283,7 +283,9 @@
 <style>
   .menu-root {
     position: fixed;
-    top: 14px;
+    /* On a Mac the whole left column steps down below the traffic lights
+       (--chrome-inset-top, theme.css); elsewhere the inset is 0. */
+    top: calc(14px + var(--chrome-inset-top));
     left: 14px;
     /* Above the left-hand round buttons (edit / contents / focus at
        z:100–110) and MenuOverlay (z:125), below the window controls

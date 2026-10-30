@@ -466,7 +466,7 @@
 <style>
   .saved-pulse {
     position: fixed;
-    top: 18px;
+    top: calc(18px + var(--chrome-inset-top));
     left: 64px;
     font-family: var(--font-sans);
     font-size: 11px;

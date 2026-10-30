@@ -22,6 +22,15 @@
   --cursor-size: clamp(3.5rem, 4vw, 4.5rem);
   --cursor-icon-size: clamp(1.1rem, 1.5vw, 1.6rem);
   --cursor-pressed-scale: 1.5;
+
+  /* How far the top-left column (menu button and wordmark, the round
+     buttons under it, the tab sidebar) steps down to clear the window's
+     own buttons. Only a Mac has any there: the traffic lights, which
+     tauri.macos.conf.json places in the top-left corner. */
+  --chrome-inset-top: 0px;
+}
+body.platform-macos {
+  --chrome-inset-top: 28px;
 }
 
 @media (prefers-reduced-motion: reduce) {

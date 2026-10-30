@@ -21,7 +21,7 @@
      increments (38 button height + 8 gap). */
   .edit-mode-toggle {
     position: fixed;
-    top: 60px;
+    top: calc(60px + var(--chrome-inset-top));
     left: 14px;
     width: 38px;
     height: 38px;

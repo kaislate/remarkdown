@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatShortcut } from '../lib/shortcuts';
+  import { isMac } from '../lib/platform';
   import { onDestroy, tick } from 'svelte';
   import {
     tutorialOverlayVisible,
@@ -81,6 +82,11 @@
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
   }
 
+  // On a Mac the window buttons are the native traffic lights in the
+  // top-left corner (tauri.macos.conf.json), outside the page, so there is
+  // nothing to measure: this is where they sit.
+  const MAC_TRAFFIC_LIGHTS: Rect = { left: 8, top: 8, width: 72, height: 28, right: 80, bottom: 36 };
+
   function measure(): Anchors {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -98,7 +104,7 @@
       reader: box('.reader-mode-toggle'),
       tabsTop: active && end ? { active, end } : undefined,
       tabsLeft: last && sidebar ? { last, sidebar } : undefined,
-      controls: box('.titlebar-controls'),
+      controls: isMac() ? MAC_TRAFFIC_LIGHTS : box('.titlebar-controls'),
       minimap: box('.minimap'),
       tools: box('.rail'),
       remarks: box('.notes-pill-wrap'),

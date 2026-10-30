@@ -691,7 +691,7 @@
      open, below the hamburger menu (z:130). */
   .tab-sidebar {
     position: fixed;
-    top: 60px;
+    top: calc(60px + var(--chrome-inset-top));
     left: 0;
     bottom: 0;
     width: 52px;

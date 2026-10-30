@@ -63,6 +63,16 @@ describe('placing the tutorial tips', () => {
     expect(drag.point!.x).toBe((482 + 1148) / 2);
   });
 
+  it("on a Mac the window buttons are top-left: they don't cut the drag strip short", () => {
+    const a = base();
+    a.controls = rect(8, 8, 72, 28);
+    a.tabsTop = { active: rect(354, 4, 96, 30), end: rect(456, 6, 26, 26) };
+    const drag = placeTips(a).tips.find((t) => t.id === 'drag')!;
+    expect(drag.point!.x).toBe((482 + 1280) / 2);
+    delete a.tabsTop;
+    expect(placeTips(a).tips.find((t) => t.id === 'drag')!.point!.x).toBe(640);
+  });
+
   it('labels never cover one another, and stay in the window', () => {
     const boxes = [
       { id: 'menu' as const, box: rect(124, 40, 260, 34), nudge: 'down' as const },

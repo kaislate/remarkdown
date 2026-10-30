@@ -96,6 +96,13 @@ pub fn take_pending_opens(app: AppHandle) -> Vec<String> {
     app.state::<PendingOpens>().take()
 }
 
+/// Where a Mac window's traffic lights sit (logical px from the top-left),
+/// the same in every window: tauri.macos.conf.json places the first
+/// window's there too (a test keeps the two in step). The page's left
+/// column steps down by --chrome-inset-top (theme.css) to clear them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const MAC_TRAFFIC_LIGHTS: (f64, f64) = (15.0, 20.0);
+
 /// Opens `path` in a new top-level window ("new window per file" mode).
 /// The path reaches the new webview through an init-script global rather
 /// than the URL, so Windows paths need no URL encoding. Must be async:
@@ -104,11 +111,22 @@ pub fn take_pending_opens(app: AppHandle) -> Vec<String> {
 pub async fn open_document_window(app: AppHandle, path: String) -> Result<(), CommandError> {
     let label = next_window_label();
     let path_js = serde_json::to_string(&path).map_err(|e| CommandError::Io(e.to_string()))?;
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
         .title("remarkdown")
         .inner_size(1100.0, 780.0)
-        .min_inner_size(600.0, 400.0)
-        .decorations(false)
+        .min_inner_size(600.0, 400.0);
+    // A Mac window keeps its own traffic lights, over the page in the
+    // top-left corner, like the first window (tauri.macos.conf.json);
+    // everywhere else the window is frameless and the page draws its own.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(MAC_TRAFFIC_LIGHTS.0, MAC_TRAFFIC_LIGHTS.1));
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    builder
         .initialization_script(format!("window.__RMD_OPEN__ = {path_js};"))
         .build()
         .map_err(|e| CommandError::Io(e.to_string()))?;
@@ -182,6 +200,58 @@ mod tests {
         let b = next_window_label();
         assert_ne!(a, b);
         assert!(a.starts_with("doc-"));
+    }
+
+    // RFC 7396, the way Tauri lays tauri.macos.conf.json over tauri.conf.json:
+    // objects merge key by key, anything else (arrays included) is replaced.
+    fn merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+        let Some(patch) = patch.as_object() else {
+            *target = patch.clone();
+            return;
+        };
+        if !target.is_object() {
+            *target = serde_json::Value::Object(Default::default());
+        }
+        let t = target.as_object_mut().unwrap();
+        for (k, v) in patch {
+            if v.is_null() {
+                t.remove(k);
+            } else {
+                merge_patch(t.entry(k.clone()).or_insert(serde_json::Value::Null), v);
+            }
+        }
+    }
+
+    // Only a Mac build ever reads tauri.macos.conf.json, so it's checked
+    // here, on every OS: it must still be a valid config once merged, keep
+    // the window exactly as everywhere else bar the title bar (the window
+    // list is replaced whole, so a forgotten field would silently go), and
+    // put the traffic lights where document windows put them.
+    #[test]
+    fn mac_config_is_the_same_window_with_the_traffic_lights() {
+        let base: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let mac: serde_json::Value = serde_json::from_str(include_str!("../tauri.macos.conf.json")).unwrap();
+        let mut merged = base.clone();
+        merge_patch(&mut merged, &mac);
+
+        let config: tauri::Config = serde_json::from_value(merged.clone()).unwrap();
+        let w = &config.app.windows[0];
+        assert!(w.decorations);
+        assert_eq!(w.title_bar_style, tauri::TitleBarStyle::Overlay);
+        assert!(w.hidden_title);
+        let p = w.traffic_light_position.as_ref().unwrap();
+        assert_eq!((p.x, p.y), MAC_TRAFFIC_LIGHTS);
+        assert_eq!(config.bundle.macos.signing_identity.as_deref(), Some("-"));
+        assert_eq!(config.bundle.macos.minimum_system_version.as_deref(), Some("12.0"));
+
+        let mut window = merged["app"]["windows"][0].as_object().unwrap().clone();
+        for k in ["titleBarStyle", "hiddenTitle", "trafficLightPosition"] {
+            window.remove(k);
+        }
+        window.insert("decorations".into(), false.into());
+        assert_eq!(serde_json::Value::Object(window), base["app"]["windows"][0]);
+        // Nothing else in the app section changes.
+        assert_eq!(merged["app"]["security"], base["app"]["security"]);
     }
 
     #[test]

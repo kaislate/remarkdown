@@ -19,7 +19,7 @@
      (top:60), ToC (top:106), this Reader toggle (top:152 = 106 + 38 + 8). */
   .reader-mode-toggle {
     position: fixed;
-    top: 152px;
+    top: calc(152px + var(--chrome-inset-top));
     left: 14px;
     width: 38px;
     height: 38px;
