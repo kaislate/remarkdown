@@ -1,9 +1,9 @@
 import { writable, get } from 'svelte/store';
 import type { Settings } from '../lib/settings-schema';
-import { DEFAULT_SETTINGS, parseSettings } from '../lib/settings-schema';
+import { defaultSettings, parseSettings } from '../lib/settings-schema';
 import { loadSettingsJson, saveSettingsJson, windowLabel } from '../lib/tauri-api';
 
-export const settings = writable<Settings>(DEFAULT_SETTINGS);
+export const settings = writable<Settings>(defaultSettings());
 
 // Load persisted settings on startup. Failures (no Tauri host, IO error,
 // malformed file) fall back to defaults silently — settings should never
@@ -23,8 +23,8 @@ export async function refreshSettings(): Promise<void> {
     // replace the user's settings: keep what's in use, or on a first load
     // use the defaults without saving them over the unreadable file.
     if (loadedOnce) return;
-    lastSavedJson = serialize(DEFAULT_SETTINGS);
-    settings.set(DEFAULT_SETTINGS);
+    lastSavedJson = serialize(defaultSettings());
+    settings.set(defaultSettings());
   }
 }
 
@@ -106,7 +106,7 @@ export function updateSettings(patch: Partial<Settings>): void {
 }
 
 export function resetSettings(): void {
-  settings.set(DEFAULT_SETTINGS);
+  settings.set(defaultSettings());
 }
 
 export function getSettings(): Settings {
