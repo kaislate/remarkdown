@@ -1,4 +1,5 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import type { OS } from './platform';
 
 export interface ReadDocumentResult {
   path: string;
@@ -173,4 +174,9 @@ export async function makeDefaultApp(): Promise<void> {
 // Opens the file's folder in Explorer with the file selected.
 export async function revealInFolder(path: string): Promise<void> {
   await invoke('reveal_in_folder', { path });
+}
+
+// Which OS and kind of desktop we're on; see platform.ts for the cached view.
+export async function desktopEnv(): Promise<{ os: OS; tiling: boolean }> {
+  return await invoke<{ os: OS; tiling: boolean }>('desktop_env');
 }

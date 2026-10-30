@@ -2,6 +2,11 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import { flushSave } from './lib/save';
 import { installE2EBridge } from './lib/e2e-debug-bridge';
+import { initPlatform } from './lib/platform';
+
+// Settle which OS we're on before the first paint, so shortcuts and chrome
+// are right from the start.
+await initPlatform();
 
 const app = mount(App, { target: document.getElementById('app')! });
 

@@ -2,6 +2,7 @@
 
 mod commands;
 mod default_app;
+mod desktop_env;
 mod fresh_start;
 mod launch;
 mod reading_progress;
@@ -67,6 +68,7 @@ fn main() {
             default_app::default_app_status,
             default_app::make_default_app,
             shell::reveal_in_folder,
+            desktop_env::desktop_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
