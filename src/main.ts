@@ -1,3 +1,4 @@
+import '@fontsource/patrick-hand/400.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
 import { flushSave } from './lib/save';

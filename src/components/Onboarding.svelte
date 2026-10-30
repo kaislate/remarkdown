@@ -222,6 +222,7 @@
     display: grid;
     place-items: center;
     background: rgba(0, 0, 0, 0.55);
+    -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
   }
   .onboarding {

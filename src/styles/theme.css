@@ -9,7 +9,7 @@
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-serif: 'Charter', 'Georgia', serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, Menlo, 'JetBrainsMono Nerd Font', 'Noto Sans Mono', 'DejaVu Sans Mono', monospace;
   /* Handwriting, for the welcome tutorial and the first-run picks: a
      system print-handwriting face on each platform, then popular
      handwritten faces the user may have, then Comic Sans / cursive. */
