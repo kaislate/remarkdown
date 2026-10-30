@@ -1,5 +1,10 @@
 import type { Locator, Page } from '@playwright/test';
 
+// Whether the page runs in WebKit (the `webkit` project).
+export function isWebKit(page: Page): boolean {
+  return page.context().browser()?.browserType().name() === 'webkit';
+}
+
 // Playwright's WebKit turns on the CSS Paint API, an experimental feature
 // Safari and the system WebKit leave off, and it reports a bare "Script
 // error." the first time a page starts a paint worklet, even an empty one.
@@ -7,7 +12,7 @@ import type { Locator, Page } from '@playwright/test';
 // loads: the app then does what it does on a Mac or Linux (the reader-mode
 // swap fades, lib/ink-transition.ts) and every error counted is its own.
 export async function withoutPaintWorklet(page: Page): Promise<void> {
-  if (page.context().browser()?.browserType().name() !== 'webkit') return;
+  if (!isWebKit(page)) return;
   await page.addInitScript(() => {
     Object.defineProperty(CSS, 'paintWorklet', { value: undefined, configurable: true });
   });

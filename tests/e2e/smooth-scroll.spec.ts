@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { isWebKit } from './support/webkit';
 
 // Edge-style smooth scrolling, in a real browser: a wheel notch sets the
 // page gliding — most of the way in the first moments, then easing to a
@@ -10,10 +11,10 @@ const DOC = '# Long\n\n' + Array.from({ length: 80 }, (_, i) => `Paragraph ${i +
 // One mouse-wheel notch as the engine reports it: Chromium (Windows) 100px;
 // WebKit its own 40px line step, with wheelDeltaY -120 saying it's a whole
 // notch. WebKit runs as on Linux, where the glide is on from the start.
-const notch = (browserName: string) => (browserName === 'webkit' ? 40 : 100);
+const notch = (page: Page) => (isWebKit(page) ? 40 : 100);
 
-async function open(page: Page, browserName: string) {
-  if (browserName === 'webkit') {
+async function open(page: Page) {
+  if (isWebKit(page)) {
     await page.addInitScript(() => { (window as any).__E2E_PLATFORM__ = { os: 'linux', tiling: false }; });
   }
   await page.goto('/');
@@ -29,8 +30,8 @@ async function open(page: Page, browserName: string) {
 const top = (page: Page) => page.locator('.scroll').evaluate((el) => el.scrollTop);
 const step = (page: Page) => page.locator('.scroll').evaluate((el) => Math.max(16, el.clientHeight / 8));
 
-test('a wheel notch glides 1/8 of the page, fast at first then easing to a stop', async ({ page, browserName }) => {
-  await open(page, browserName);
+test('a wheel notch glides 1/8 of the page, fast at first then easing to a stop', async ({ page }) => {
+  await open(page);
   const want = await step(page);
   // Sample the glide every frame from inside the page.
   const samples = page.evaluate(() => new Promise<number[]>((resolve) => {
@@ -43,7 +44,7 @@ test('a wheel notch glides 1/8 of the page, fast at first then easing to a stop'
     };
     requestAnimationFrame(tick);
   }));
-  await page.mouse.wheel(0, notch(browserName));
+  await page.mouse.wheel(0, notch(page));
   const s = await samples;
   const end = s[s.length - 1];
   expect(Math.abs(end - want)).toBeLessThanOrEqual(1);
@@ -58,29 +59,29 @@ test('a wheel notch glides 1/8 of the page, fast at first then easing to a stop'
   expect(Math.max(...s)).toBeLessThanOrEqual(end + 0.5);
 });
 
-test('quick notches add up into one glide', async ({ page, browserName }) => {
-  await open(page, browserName);
+test('quick notches add up into one glide', async ({ page }) => {
+  await open(page);
   const want = await step(page);
-  await page.mouse.wheel(0, notch(browserName));
+  await page.mouse.wheel(0, notch(page));
   await page.waitForTimeout(40);
-  await page.mouse.wheel(0, notch(browserName));
+  await page.mouse.wheel(0, notch(page));
   await page.waitForTimeout(40);
-  await page.mouse.wheel(0, notch(browserName));
+  await page.mouse.wheel(0, notch(page));
   await expect.poll(() => top(page)).toBeGreaterThan(want * 3 - 1);
   await page.waitForTimeout(300);
   expect(Math.abs((await top(page)) - want * 3)).toBeLessThanOrEqual(1);
 });
 
-test('Page Down glides most of a page', async ({ page, browserName }) => {
-  await open(page, browserName);
+test('Page Down glides most of a page', async ({ page }) => {
+  await open(page);
   await page.locator('.viewer p').nth(2).click();
   const h = await page.locator('.scroll').evaluate((el) => el.clientHeight);
   await page.keyboard.press('PageDown');
   await expect.poll(async () => Math.abs((await top(page)) - h * 0.875)).toBeLessThanOrEqual(1);
 });
 
-test('turned off, the wheel scrolls the usual way', async ({ page, browserName }) => {
-  await open(page, browserName);
+test('turned off, the wheel scrolls the usual way', async ({ page }) => {
+  await open(page);
   await page.evaluate(() => (window as any).__E2E_SETTINGS__({ smoothScrolling: false }));
   const want = await step(page);
   await page.mouse.wheel(0, 100);

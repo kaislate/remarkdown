@@ -66,7 +66,7 @@ test('Text style shows where the cursor is and turns a line into a heading, a li
   expect(saved).toContain('$e^{i\\pi} + 1 = 0$');
 });
 
-test('typing # at the start of a line makes a heading; Ctrl+Alt+0 makes it normal text again', async ({ page }) => {
+test('typing # at the start of a line makes a heading; Mod+Alt+0 makes it normal text again', async ({ page }) => {
   await page.locator('.edit-mode-toggle').click();
   await clickInto(page, 'A plain line');
   await page.keyboard.press('Enter');

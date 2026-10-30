@@ -45,7 +45,8 @@
       return;
     }
     target?.focus?.();
-    if (savedRange) {
+    // Not if what it was in has gone (the editor redrew that paragraph).
+    if (savedRange?.startContainer.isConnected && savedRange.endContainer.isConnected) {
       const sel = window.getSelection();
       sel?.removeAllRanges();
       sel?.addRange(savedRange);

@@ -182,10 +182,13 @@ export function wheelPixels(e: WheelLike, height: number, byNotch = false): numb
 
 // A mouse wheel's notch (animated) rather than a touchpad's or a
 // free-spinning wheel's fine-grained movement (already smooth). Windows
-// reports notches as multiples of the classic wheel delta.
-export function isWheelNotch(e: WheelLike): boolean {
+// reports notches as multiples of the classic wheel delta. Counted by
+// notch (WebKit, see wheelPixels) only whole ticks of 120 are: there ±40
+// or ±80 is a part of a tick, from a high-resolution wheel or a touchpad,
+// and counting it as a whole notch would jump 2.5 times as far.
+export function isWheelNotch(e: WheelLike, byNotch = false): boolean {
   if (e.deltaMode !== 0) return true;
-  if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) return e.wheelDeltaY % 40 === 0;
+  if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) return e.wheelDeltaY % (byNotch ? WHEEL_DELTA : 40) === 0;
   return Math.abs(e.deltaY) >= 33;
 }
 
@@ -276,7 +279,7 @@ export function installSmoothScroll(el: HTMLElement, opts: SmoothScrollOptions):
   function onWheel(e: WheelEvent): void {
     if (!opts.enabled() || e.defaultPrevented) return;
     if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || e.deltaY === 0) return;
-    if (!isWheelNotch(e as WheelEvent & WheelLike)) return;
+    if (!isWheelNotch(e as WheelEvent & WheelLike, opts.wheelByNotch)) return;
     if (innerScrollerTakes(e.target, Math.sign(e.deltaY))) return;
     if (glideBy(wheelPixels(e, el.clientHeight, opts.wheelByNotch))) e.preventDefault();
   }
