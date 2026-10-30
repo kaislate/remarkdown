@@ -308,6 +308,26 @@ mod tests {
         assert_eq!(merged["app"]["security"], base["app"]["security"]);
     }
 
+    // Likewise for Linux: the merged config must parse, both package types
+    // must point at the launcher template, and that template must pass the
+    // file (%F), or file managers would open the app without it.
+    #[test]
+    fn linux_config_points_deb_and_rpm_at_a_launcher_that_passes_the_file() {
+        let base: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let linux: serde_json::Value = serde_json::from_str(include_str!("../tauri.linux.conf.json")).unwrap();
+        let mut merged = base;
+        merge_patch(&mut merged, &linux);
+
+        let config: tauri::Config = serde_json::from_value(merged).unwrap();
+        let template = std::path::PathBuf::from("./linux/remarkdown.desktop");
+        assert_eq!(config.bundle.linux.deb.desktop_template, Some(template.clone()));
+        assert_eq!(config.bundle.linux.rpm.desktop_template, Some(template));
+        assert_eq!(config.bundle.file_associations.as_ref().unwrap()[0].mime_type.as_deref(), Some("text/markdown"));
+
+        let desktop = include_str!("../linux/remarkdown.desktop");
+        assert!(desktop.lines().any(|l| l == "Exec={{exec}} %F"));
+    }
+
     #[test]
     fn queue_drains_once() {
         let q = PendingOpens::default();
