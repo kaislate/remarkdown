@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod appimage;
 mod commands;
 mod default_app;
 mod desktop_env;
@@ -17,6 +18,33 @@ mod sidecar;
 mod welcome;
 
 use tauri::Manager;
+
+// An AppImage isn't registered with the desktop the way the rpm is, so on first
+// run it writes its own launcher entry. Never fatal: a read-only home just
+// means no launcher entry.
+#[cfg(target_os = "linux")]
+fn integrate_appimage() {
+    let Some(appimage) = std::env::var_os("APPIMAGE").filter(|v| !v.is_empty()) else { return };
+    let xdg = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute());
+    let Some(data_home) = xdg.or_else(|| {
+        std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".local/share"))
+    }) else {
+        return;
+    };
+    let icon = include_bytes!("../icons/128x128@2x.png");
+    match appimage::integrate(std::path::Path::new(&appimage), &data_home, icon) {
+        Ok(appimage::Integration::Written) => {
+            // Optional: refreshes the "Open with" cache where the tool exists.
+            let _ = std::process::Command::new("update-desktop-database")
+                .arg(data_home.join("applications"))
+                .status();
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("[remarkdown] could not add the AppImage to the launcher: {e}"),
+    }
+}
 
 fn main() {
     // First statement: set_var is only sound before any other thread exists.
@@ -43,6 +71,8 @@ fn main() {
         .setup(|app| {
             // Before any window reads them: 0.8.0 resets settings once.
             fresh_start::run(app.handle());
+            #[cfg(target_os = "linux")]
+            integrate_appimage();
             // Files passed on our own command line (double-click on a cold
             // start). The frontend drains these once it's mounted.
             // args_os: std::env::args() panics on arguments that aren't
