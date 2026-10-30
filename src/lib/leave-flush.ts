@@ -15,11 +15,15 @@ export async function settlePendingSaves(): Promise<void> {
 }
 
 // A Mac app can be quit from the Dock, or by logging out, without any
-// window hearing about it first. So on a Mac each window saves whenever it
-// loses focus, which those always cause. No prompting here: an edit waiting
-// on a "changed by another program" decision is asked about when the
-// window closes. Windows and Linux always run the close handler, so they
-// don't register this.
+// window hearing about it first, and tao 0.37 has no
+// applicationShouldTerminate hook to catch that. So on a Mac each window
+// also saves whenever it loses focus. That covers such a quit only when it
+// blurs the window first, which isn't verified: a Dock Quit while
+// remarkdown is frontmost may not, and then edits still inside the save
+// debounce can be lost. This adds no prompt of its own: an edit waiting on
+// a "changed by another program" decision is asked about when the window
+// closes. Windows and Linux always run the close handler, so they don't
+// register this.
 export async function installMacBlurFlush(): Promise<(() => void) | null> {
   if (!isMac()) return null;
   return getCurrentWindow().onFocusChanged(({ payload: focused }) => {
