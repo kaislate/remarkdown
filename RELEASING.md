@@ -36,7 +36,8 @@ message saying so, before any build time is spent.
    notes (the in-app update window shows them) and check the assets:
    NSIS installer (and the MSI, unless the tag is a pre-release like
    `v0.9.0-beta`), the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
-   and the `.rpm`, each with a `.sig`.
+   and the `.rpm`. Each has a `.sig` beside it except the `.dmg`, which is
+   only for first installs: updates download the `.app.tar.gz`.
 5. Open `latest.json` and check `platforms` lists all five of:
    `windows-x86_64`, `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`
    (the AppImage) and `linux-x86_64-rpm`. Both `darwin-*` entries point at
@@ -49,10 +50,12 @@ The workflow always creates a draft, so tagging by mistake is harmless:
 delete the draft and the tag. Re-running a job after publishing fails,
 because the action only adds to drafts.
 
-Pull requests and pushes to `main` run the CI workflow instead: the unit,
-component and e2e tests on Linux, and tests plus a bundle build on Windows,
-macOS and Linux. The Linux job also checks that the rpm's launcher entry
-passes the file (`Exec=remarkdown %F`) and declares `text/markdown`.
+Pull requests and pushes to `main` run the CI workflow instead: the unit and
+component tests, `svelte-check` and the Rust tests on Windows, macOS and
+Linux; the e2e tests on Linux; and a bundle build on macOS (the universal
+`.app`) and Linux (the AppImage and `.rpm`). Nothing is bundled for Windows
+in CI. The Linux job also checks that the rpm's launcher entry passes the
+file (`Exec=remarkdown %F`) and declares `text/markdown`.
 
 ## Fallback: building on your own machine
 

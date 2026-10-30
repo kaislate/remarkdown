@@ -210,7 +210,9 @@ A colour strip appears above the tools while Highlight or Draw is active. Right-
 | `Ctrl+B` / `Ctrl+I` | Bold / italic |
 | `Ctrl+,` / `Ctrl+.` | Subscript / superscript |
 
-On a Mac, `⌘` replaces `Ctrl` in every shortcut above.
+On a Mac, `⌘` takes the place of `Ctrl` in these shortcuts, except
+`Ctrl+Tab` / `Ctrl+Shift+Tab`, which stay `Ctrl` because `⌘Tab` switches apps.
+Redo also takes `⇧⌘Z`, the usual Mac spelling.
 
 ---
 
