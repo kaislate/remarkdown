@@ -4,6 +4,61 @@ This document covers the end-to-end process for cutting a tagged release
 that installed copies of remarkdown can pick up via the in-app update
 checker.
 
+## Releasing with GitHub Actions
+
+Pushing a version tag builds Windows, macOS and Linux installers on GitHub
+and attaches them, with one merged `latest.json`, to a **draft** release.
+Nothing reaches users until you publish that draft.
+
+### One-time setup
+
+Add two repository secrets (Settings > Secrets and variables > Actions):
+
+- `TAURI_SIGNING_PRIVATE_KEY`: the contents of
+  `~/.tauri/remarkdown-updater.key` (the file's text, not its path).
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the key's password, if it has one.
+
+If the first secret is empty the release fails in its first step with a
+message saying so, before any build time is spent.
+
+### Cutting a release
+
+1. Write the version's section of [CHANGELOG.md](CHANGELOG.md) and bump the
+   version in `package.json`, `src-tauri/Cargo.toml` and
+   `src-tauri/tauri.conf.json` (they must match). Commit.
+2. Tag and push the tag:
+   ```bash
+   git tag -a v0.9.0 -m "remarkdown 0.9.0"
+   git push origin main v0.9.0
+   ```
+3. Wait for the Release workflow's three jobs (Windows, macOS, Ubuntu).
+4. Open the draft release on GitHub. Paste the CHANGELOG section into the
+   notes (the in-app update window shows them) and check the assets:
+   NSIS installer, the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
+   and the `.rpm`, each with a `.sig`.
+5. Open `latest.json` and check `platforms` lists all five of:
+   `windows-x86_64`, `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`
+   (the AppImage) and `linux-x86_64-rpm`. Both `darwin-*` entries point at
+   the same universal archive. If one is missing, a job failed or was
+   skipped: re-run it from the Actions tab.
+6. Publish the draft. For a pre-release, tick "pre-release" first so the
+   `/latest/` redirect skips it.
+
+The workflow always creates a draft, so tagging by mistake is harmless:
+delete the draft and the tag. Re-running a job after publishing fails,
+because the action only adds to drafts.
+
+Pull requests and pushes to `main` run the CI workflow instead: the unit,
+component and e2e tests on Linux, and tests plus a bundle build on Windows,
+macOS and Linux. The Linux job also checks that the rpm's launcher entry
+passes the file (`Exec=remarkdown %F`) and declares `text/markdown`.
+
+## Fallback: building on your own machine
+
+The rest of this document is the manual, Windows-only flow. Use it if
+Actions is unavailable. It produces only the Windows installer and manifest,
+so the Mac and Linux platforms would be absent from `latest.json`.
+
 ## One-time setup
 
 The signing key already exists at
