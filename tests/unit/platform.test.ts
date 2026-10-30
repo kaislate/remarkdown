@@ -29,6 +29,15 @@ describe('osFromUserAgent', () => {
     expect(osFromUserAgent('something else')).toBe('windows'));
 });
 
+// vitest.config.ts pins jsdom's user agent. Without it jsdom names the host
+// (process.platform), and a run on a Mac or Linux runner tests a different app.
+describe('the test environment', () => {
+  it('is WebView2 on Windows whatever machine runs the tests', () => {
+    expect(navigator.userAgent).toMatch(/Windows NT 10\.0; Win64; x64/);
+    expect(osFromUserAgent(navigator.userAgent)).toBe('windows');
+  });
+});
+
 describe('initPlatform', () => {
   beforeEach(() => {
     document.body.className = '';
