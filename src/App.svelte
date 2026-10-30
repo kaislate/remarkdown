@@ -46,7 +46,7 @@
   import ReattachBanner from './components/ReattachBanner.svelte';
   import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
-  import { runBeforeSwitch, activateSession } from './stores/tabs';
+  import { activateSession } from './stores/tabs';
   import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
@@ -56,8 +56,9 @@
   import { undoAnnot, redoAnnot } from './stores/annots';
   import { availableUpdate } from './stores/updates';
   import { openModal, activeModal } from './stores/modals';
-  import { savesSettled, unresolvedConflict, askAboutConflict } from './lib/edit-save';
-  import { sessions, activeSession } from './stores/sessions';
+  import { unresolvedConflict, askAboutConflict } from './lib/edit-save';
+  import { settlePendingSaves, installMacBlurFlush } from './lib/leave-flush';
+  import { activeSession } from './stores/sessions';
   import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
   import { refreshReadingProgress } from './stores/reading-progress';
   import { installSaveWatcher, savedPulse } from './lib/save';
@@ -81,6 +82,7 @@
   let disposeArticleWidth: (() => void) | null = null;
   let disposeOpenRequested: (() => void) | null = null;
   let disposeCloseRequested: (() => void) | null = null;
+  let disposeBlurFlush: (() => void) | null = null;
   let disposeSessionAutosave: (() => void) | null = null;
 
   // Sync the CSS variable on every zoom change so the root font-size scales
@@ -316,8 +318,7 @@
       // let a failed flush keep the window open.
       disposeCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
         try {
-          await runBeforeSwitch();
-          await Promise.all(get(sessions).map((s) => savesSettled(s)));
+          await settlePendingSaves();
           // Edits waiting on a "changed by another program" decision would
           // be lost: keep the window open and ask instead.
           const waiting = unresolvedConflict();
@@ -332,6 +333,13 @@
           console.error('[remarkdown] flush on close failed:', err);
         }
       });
+    } catch {
+      // non-Tauri host
+    }
+    // A Mac can quit without asking any window first (Dock, logout), so
+    // there each window also saves whenever it loses focus.
+    try {
+      disposeBlurFlush = await installMacBlurFlush();
     } catch {
       // non-Tauri host
     }
@@ -400,6 +408,7 @@
     disposeArticleWidth?.();
     disposeOpenRequested?.();
     disposeCloseRequested?.();
+    disposeBlurFlush?.();
     disposeSessionAutosave?.();
     unsubZoom();
     unsubTool();

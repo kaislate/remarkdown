@@ -29,13 +29,30 @@ impl PendingOpens {
 /// dir), drops anything that isn't an existing file, and de-dupes while
 /// preserving first-seen order.
 pub fn extract_open_paths(argv: &[String], cwd: &Path) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for arg in argv.iter().skip(1) {
-        if arg.starts_with('-') {
-            continue;
-        }
+    existing_files(argv.iter().skip(1).filter(|arg| !arg.starts_with('-')).map(|arg| {
         let p = Path::new(arg);
-        let abs = normalize(&if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) });
+        if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) }
+    }))
+}
+
+/// Finder's file:// URLs (a Mac "Open With" or a drop on the Dock icon) →
+/// existing file paths, by the same rules as argv. Anything that isn't a
+/// local file URL is dropped. Pure, so it's tested on every OS even though
+/// only a Mac ever calls it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn paths_from_file_urls(urls: &[tauri::Url]) -> Vec<String> {
+    existing_files(
+        urls.iter()
+            .filter(|u| u.scheme() == "file")
+            .filter_map(|u| u.to_file_path().ok()),
+    )
+}
+
+/// Absolute candidates → normalized paths of the ones that are existing
+/// files, de-duped in first-seen order.
+fn existing_files(candidates: impl Iterator<Item = PathBuf>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for abs in candidates.map(|p| normalize(&p)) {
         if !abs.is_file() {
             continue;
         }
@@ -192,6 +209,43 @@ mod tests {
         assert_eq!(plain.len(), 1);
         assert_eq!(dotted, plain);
         assert_eq!(parent, plain);
+    }
+
+    // Finder hands over file:// URLs, percent-encoded: spaces, accents and
+    // apostrophes must come back as the real path.
+    #[test]
+    fn file_url_for_an_existing_file_becomes_its_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("My Notes")).unwrap();
+        let file = dir.path().join("My Notes").join("Ünïcode's.md");
+        std::fs::write(&file, "x").unwrap();
+        let url = tauri::Url::from_file_path(&file).unwrap();
+        assert!(url.as_str().contains("My%20Notes"));
+        assert_eq!(paths_from_file_urls(&[url]), vec![file.to_string_lossy().into_owned()]);
+    }
+
+    #[test]
+    fn non_file_urls_and_missing_files_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = tauri::Url::from_file_path(dir.path().join("gone.md")).unwrap();
+        let web = tauri::Url::parse("https://example.com/a.md").unwrap();
+        let folder = tauri::Url::from_file_path(dir.path()).unwrap();
+        assert!(paths_from_file_urls(&[web, missing, folder]).is_empty());
+    }
+
+    #[test]
+    fn file_urls_are_deduped_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.md");
+        let b = dir.path().join("b.md");
+        std::fs::write(&a, "x").unwrap();
+        std::fs::write(&b, "x").unwrap();
+        let ua = tauri::Url::from_file_path(&a).unwrap();
+        let ub = tauri::Url::from_file_path(&b).unwrap();
+        assert_eq!(
+            paths_from_file_urls(&[ub.clone(), ua.clone(), ub]),
+            vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()]
+        );
     }
 
     #[test]

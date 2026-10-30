@@ -5,6 +5,8 @@ mod default_app;
 mod desktop_env;
 mod fresh_start;
 mod launch;
+#[cfg(target_os = "macos")]
+mod mac;
 mod reading_progress;
 mod recent;
 mod session_file;
@@ -16,7 +18,7 @@ mod welcome;
 use tauri::Manager;
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Must be registered first: when a second copy of the app starts
         // (e.g. the user double-clicks another .md while remarkdown is
         // open), this forwards its argv to us and the second copy exits.
@@ -43,7 +45,11 @@ fn main() {
             app.state::<launch::PendingOpens>()
                 .push(launch::extract_open_paths(&argv, &cwd));
             Ok(())
-        })
+        });
+    // The Mac menu bar; Windows and Linux keep their windows menu-free.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(mac::menu).on_menu_event(mac::on_menu_event);
+    builder
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
             commands::open_image_dialog,
@@ -70,6 +76,13 @@ fn main() {
             shell::reveal_in_folder,
             desktop_env::desktop_env,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // Files opened from Finder. Nothing to do anywhere else.
+            #[cfg(target_os = "macos")]
+            mac::on_run_event(app, event);
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
