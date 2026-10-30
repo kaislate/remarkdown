@@ -34,7 +34,8 @@ message saying so, before any build time is spent.
 3. Wait for the Release workflow's three jobs (Windows, macOS, Ubuntu).
 4. Open the draft release on GitHub. Paste the CHANGELOG section into the
    notes (the in-app update window shows them) and check the assets:
-   NSIS installer, the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
+   NSIS installer (and the MSI, unless the tag is a pre-release like
+   `v0.9.0-beta`), the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
    and the `.rpm`, each with a `.sig`.
 5. Open `latest.json` and check `platforms` lists all five of:
    `windows-x86_64`, `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`

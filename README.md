@@ -66,7 +66,7 @@ Open the `.dmg` and drag remarkdown to **Applications**. The first time you open
 2. Open **System Settings → Privacy & Security** and scroll down.
 3. Click **Open Anyway** next to remarkdown, then confirm.
 
-You only do this once. On macOS 15 and later, right-click → Open no longer skips the warning, so use the steps above. **Menu → Check for updates…** updates the installed app in place; the `.dmg` is only for the first install. Shortcuts use ⌘ where this page says `Ctrl`.
+You only do this once. On macOS 15 and later, right-click → Open no longer skips the warning, so use the steps above. **Menu → Check for updates…** updates the installed app in place; the `.dmg` is only for the first install.
 
 ### 🐧 Linux
 
@@ -209,6 +209,8 @@ A colour strip appears above the tools while Highlight or Draw is active. Right-
 | `Ctrl+Shift+8` / `7` / `9` | Bulleted list / Numbered list / Quote |
 | `Ctrl+B` / `Ctrl+I` | Bold / italic |
 | `Ctrl+,` / `Ctrl+.` | Subscript / superscript |
+
+On a Mac, `⌘` replaces `Ctrl` in every shortcut above.
 
 ---
 

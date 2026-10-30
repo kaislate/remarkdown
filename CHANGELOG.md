@@ -12,7 +12,7 @@ What changed in each version of remarkdown, newest first. The same notes appear 
 
 - **Mac:** a `.dmg` for Apple silicon and Intel (macOS 12 or later). It isn't signed with an Apple Developer ID yet, so the first time you open it macOS blocks it. Try to open it once, then go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** and confirm. You only do this once.
 - **Linux:** an **AppImage** for most distros, and an **rpm** for Fedora (`sudo dnf install ./remarkdown-*.rpm`). The AppImage adds itself to your app launcher the first time it runs, and never makes itself your default app.
-- Updates install in place from **Menu → Check for updates…** on both, and on the Mac.
+- Updates install in place from **Menu → Check for updates…**, on the Mac and on Linux (AppImage and rpm).
 
 ### 🍎 On a Mac
 
