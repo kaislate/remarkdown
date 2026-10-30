@@ -86,6 +86,19 @@ describe('wheel input', () => {
     expect(isWheelNotch({ deltaY: 7.5, deltaMode: 0, wheelDeltaY: -9 })).toBe(false);
     expect(isWheelNotch({ deltaY: 3, deltaMode: 1 })).toBe(true);
   });
+
+  // WebKit (macOS, Linux) gives a notch ±120 in wheelDeltaY like Chromium,
+  // but its deltaY is WebKit's own 40px line step, not Chromium's 100px.
+  it('counted by notch (WebKit): ±120 in wheelDeltaY is a notch, whatever deltaY says', () => {
+    expect(wheelPixels({ deltaY: 40, deltaMode: 0, wheelDeltaY: -120 }, 800, true)).toBe(100);
+    expect(wheelPixels({ deltaY: -80, deltaMode: 0, wheelDeltaY: 240 }, 800, true)).toBe(-200);
+    expect(wheelPixels({ deltaY: 40, deltaMode: 0, wheelDeltaY: -120 }, 60, true)).toBe(16);
+    // Without a wheelDeltaY, or for lines and pages, as before.
+    expect(wheelPixels({ deltaY: 100, deltaMode: 0 }, 800, true)).toBe(100);
+    expect(wheelPixels({ deltaY: 1, deltaMode: 2, wheelDeltaY: -120 }, 800, true)).toBe(700);
+    // Not counted by notch (Windows): by deltaY, exactly as it was.
+    expect(wheelPixels({ deltaY: 40, deltaMode: 0, wheelDeltaY: -120 }, 800)).toBe(40);
+  });
 });
 
 describe('installSmoothScroll', () => {
@@ -146,6 +159,14 @@ describe('installSmoothScroll', () => {
     step(16);
     expect(el.scrollTop).toBeGreaterThan(0);
     expect(el.scrollTop).toBeLessThan(100);
+    for (let i = 0; i < 20; i++) step(16);
+    expect(el.scrollTop).toBe(100);
+  });
+
+  it('counts WebKit notches by wheelDeltaY when told to', () => {
+    const el = scroller();
+    install(el, { ...opts(), wheelByNotch: true });
+    expect(wheel(el, 40, { wheelDeltaY: -120 }).defaultPrevented).toBe(true);
     for (let i = 0; i < 20; i++) step(16);
     expect(el.scrollTop).toBe(100);
   });
