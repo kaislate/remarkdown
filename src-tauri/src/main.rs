@@ -25,12 +25,9 @@ use tauri::Manager;
 #[cfg(target_os = "linux")]
 fn integrate_appimage() {
     let Some(appimage) = std::env::var_os("APPIMAGE").filter(|v| !v.is_empty()) else { return };
-    let xdg = std::env::var_os("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.is_absolute());
-    let Some(data_home) = xdg.or_else(|| {
-        std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".local/share"))
-    }) else {
+    let Some(data_home) =
+        appimage::data_home(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
+    else {
         return;
     };
     let icon = include_bytes!("../icons/128x128@2x.png");

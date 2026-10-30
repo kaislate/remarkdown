@@ -1,9 +1,10 @@
 // Only Linux calls into this; the logic compiles everywhere so it is tested everywhere.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
+use std::ffi::OsString;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const ENTRY_NAME: &str = "remarkdown-appimage.desktop";
 
@@ -78,6 +79,18 @@ pub fn desktop_entry(appimage: &str, icon: &Path) -> String {
     )
 }
 
+/// Where the launcher entry goes: $XDG_DATA_HOME, else ~/.local/share. Each
+/// counts only when absolute, as the XDG spec asks; a relative one (HOME="",
+/// say) would write under whatever directory the app was started from.
+pub fn data_home(xdg_data_home: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    let xdg = xdg_data_home.map(PathBuf::from).filter(|p| p.is_absolute());
+    xdg.or_else(|| {
+        home.map(PathBuf::from)
+            .filter(|h| h.is_absolute())
+            .map(|h| h.join(".local/share"))
+    })
+}
+
 pub fn integrate(appimage: &Path, data_home: &Path, icon_png: &[u8]) -> io::Result<Integration> {
     let apps = data_home.join("applications");
     let appimage_str = appimage.to_string_lossy();
@@ -129,6 +142,36 @@ mod tests {
 
     fn entry_path(data: &Path) -> std::path::PathBuf {
         data.join("applications/remarkdown-appimage.desktop")
+    }
+
+    // temp_dir() stands in for an absolute path: `/home/me` isn't one on Windows.
+    #[test]
+    fn data_home_prefers_an_absolute_xdg_data_home() {
+        let xdg = std::env::temp_dir().join("xdg");
+        let home = std::env::temp_dir().join("me");
+        assert_eq!(data_home(Some(xdg.clone().into()), Some(home.into())), Some(xdg));
+    }
+
+    #[test]
+    fn data_home_falls_back_to_the_home_share_directory() {
+        let home = std::env::temp_dir().join("me");
+        assert_eq!(data_home(None, Some(home.clone().into())), Some(home.join(".local/share")));
+        // A relative XDG_DATA_HOME is ignored, as the XDG spec says.
+        assert_eq!(
+            data_home(Some("rel/xdg".into()), Some(home.clone().into())),
+            Some(home.join(".local/share"))
+        );
+    }
+
+    // HOME="" would put the entry in `.local/share` under whatever directory
+    // the AppImage was started from.
+    #[test]
+    fn a_relative_or_missing_home_gives_no_data_home() {
+        for home in ["", "me", ".local"] {
+            assert_eq!(data_home(None, Some(home.into())), None, "{home:?}");
+        }
+        assert_eq!(data_home(Some("".into()), Some("".into())), None);
+        assert_eq!(data_home(None, None), None);
     }
 
     #[test]
