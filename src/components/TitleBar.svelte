@@ -204,7 +204,13 @@
      the traffic lights are native and sit above the page anyway. */
   :global(body.platform-macos) .titlebar-controls,
   :global(body.platform-macos) .controls-aura,
-  :global(body.platform-macos) .resize-grip {
+  :global(body.platform-macos) .resize-grip,
+  /* Tiling compositors (Hyprland, Sway, niri...) tile every window: no
+     minimize, no maximize, and moving or resizing only means something for
+     floating ones. The drag strip stays for those. */
+  :global(body.tiling-desktop) .titlebar-controls,
+  :global(body.tiling-desktop) .controls-aura,
+  :global(body.tiling-desktop) .resize-grip {
     display: none;
   }
   :global(body.platform-macos) .titlebar-drag {

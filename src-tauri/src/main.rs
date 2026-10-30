@@ -5,6 +5,7 @@ mod default_app;
 mod desktop_env;
 mod fresh_start;
 mod launch;
+mod linux_gpu;
 #[cfg(target_os = "macos")]
 mod mac;
 mod reading_progress;
@@ -18,6 +19,14 @@ mod welcome;
 use tauri::Manager;
 
 fn main() {
+    // First statement: set_var is only sound before any other thread exists.
+    #[cfg(target_os = "linux")]
+    if linux_gpu::needs_dmabuf_workaround(std::path::Path::new("/sys/class/drm"), |k| {
+        std::env::var(k).ok()
+    }) {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let builder = tauri::Builder::default()
         // Must be registered first: when a second copy of the app starts
         // (e.g. the user double-clicks another .md while remarkdown is

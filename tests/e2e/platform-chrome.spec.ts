@@ -7,7 +7,7 @@ import { test, expect, type Page, type Browser } from '@playwright/test';
 // it, the tab sidebar — steps down to clear them. The top tabs stay on
 // their line. Windows keeps exactly the layout it has always had.
 
-type OS = 'windows' | 'macos';
+type OS = 'windows' | 'macos' | 'linux';
 
 const A = '/e2e/chrome/Alpha.md';
 const B = '/e2e/chrome/Beta.md';
@@ -26,8 +26,8 @@ const rect = (page: Page, sel: string) =>
     return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
   });
 
-async function boot(page: Page, os: OS, settings: Record<string, unknown> = {}) {
-  await page.addInitScript((o) => { (window as any).__E2E_PLATFORM__ = { os: o, tiling: false }; }, os);
+async function boot(page: Page, os: OS, settings: Record<string, unknown> = {}, tiling = false) {
+  await page.addInitScript(([o, t]) => { (window as any).__E2E_PLATFORM__ = { os: o, tiling: t }; }, [os, tiling] as const);
   await page.goto('/');
   await expect(page.locator('body')).toHaveClass(new RegExp(`\\bplatform-${os}\\b`));
   await page.evaluate((docs) => {
@@ -153,4 +153,23 @@ test('the tutorial on a Mac: the drag tip points past the tabs, not at the traff
   const tip = await rect(page, '[data-tip="drag"]');
   const end = await rect(page, '.tabbar .new-tab');
   expect(tip.left + tip.width / 2).toBeGreaterThan(end.right);
+});
+
+test('on a tiling Linux desktop there are no window buttons, aura or resize grip', async ({ page }) => {
+  await boot(page, 'linux', {}, true);
+  await expect(page.locator('body')).toHaveClass(/(^| )tiling-desktop( |$)/);
+  await expect(page.locator('.titlebar-controls')).toBeHidden();
+  await expect(page.locator('.controls-aura')).toBeHidden();
+  await expect(page.locator('.resize-grip')).toBeHidden();
+  // Floating windows still move from the top edge.
+  await expect(page.locator('.titlebar-drag')).toBeVisible();
+});
+
+test('on a regular Linux desktop the chrome looks exactly like Windows', async ({ page }) => {
+  await boot(page, 'linux', {}, false);
+  await expect(page.locator('.titlebar-controls')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+  await expect(page.locator('.resize-grip')).toBeVisible();
+  await expect(page.locator('.titlebar-drag')).toBeVisible();
+  expect((await rect(page, '.hamburger')).top).toBe(14);
 });
