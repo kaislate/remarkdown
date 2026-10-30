@@ -39,9 +39,17 @@ fn integrate_appimage() {
             // Optional: refreshes the "Open with" cache where the tool exists.
             let _ = std::process::Command::new("update-desktop-database")
                 .arg(data_home.join("applications"))
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
                 .status();
         }
-        Ok(_) => {}
+        Ok(appimage::Integration::ManagedElsewhere) => {
+            eprintln!("[remarkdown] another tool already made a launcher entry for this AppImage");
+        }
+        Ok(appimage::Integration::Skipped) => {
+            eprintln!("[remarkdown] the AppImage path has a control character; no launcher entry");
+        }
+        Ok(appimage::Integration::Unchanged) => {}
         Err(e) => eprintln!("[remarkdown] could not add the AppImage to the launcher: {e}"),
     }
 }

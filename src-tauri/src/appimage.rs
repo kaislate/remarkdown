@@ -13,6 +13,24 @@ pub enum Integration {
     Unchanged,
     /// Another tool (AppImageLauncher, say) already made an entry for this AppImage.
     ManagedElsewhere,
+    /// The path has a control character (a newline, say) that no entry line can hold.
+    Skipped,
+}
+
+// TryExec is a plain string value: backslash and the control characters that
+// would break the line are escaped. The scan below compares in this same form.
+fn string_value(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 // An AppImage sits wherever the user dropped it, so unlike the rpm nothing
@@ -22,7 +40,7 @@ pub enum Integration {
 // Exec is a string value. A literal % is %% so it is not read as a field code.
 pub fn exec_quote(path: &str) -> String {
     const RESERVED: &str = " \t\n\"'\\><~|&;$*?#()`";
-    let quoted = if path.contains(|c| RESERVED.contains(c)) {
+    let quoted = if path.contains(|c: char| RESERVED.contains(c)) {
         let mut s = String::from("\"");
         for c in path.chars() {
             if matches!(c, '"' | '`' | '$' | '\\') {
@@ -55,7 +73,7 @@ pub fn desktop_entry(appimage: &str, icon: &Path) -> String {
          Terminal=false\n\
          X-AppImage-Integrate=false\n",
         exec_quote(appimage),
-        appimage,
+        string_value(appimage),
         icon.display()
     )
 }
@@ -63,6 +81,10 @@ pub fn desktop_entry(appimage: &str, icon: &Path) -> String {
 pub fn integrate(appimage: &Path, data_home: &Path, icon_png: &[u8]) -> io::Result<Integration> {
     let apps = data_home.join("applications");
     let appimage_str = appimage.to_string_lossy();
+    if appimage_str.chars().any(|c| c.is_control()) {
+        return Ok(Integration::Skipped);
+    }
+    let try_exec = string_value(&appimage_str);
 
     if let Ok(entries) = fs::read_dir(&apps) {
         for e in entries.flatten() {
@@ -72,7 +94,7 @@ pub fn integrate(appimage: &Path, data_home: &Path, icon_png: &[u8]) -> io::Resu
                 continue;
             }
             let Ok(text) = fs::read_to_string(&path) else { continue };
-            if text.lines().any(|l| l.trim().strip_prefix("TryExec=") == Some(&*appimage_str)) {
+            if text.lines().any(|l| l.trim().strip_prefix("TryExec=") == Some(try_exec.as_str())) {
                 return Ok(Integration::ManagedElsewhere);
             }
         }
@@ -190,6 +212,30 @@ mod tests {
         assert_eq!(got, Integration::ManagedElsewhere);
         assert!(!entry_path(data.path()).exists());
         assert!(!data.path().join("remarkdown/icon.png").exists());
+    }
+
+    #[test]
+    fn a_backslash_in_the_path_is_escaped_in_try_exec_and_still_matches() {
+        let data = tempfile::tempdir().unwrap();
+        let app = Path::new("/opt/a\\b.AppImage");
+        integrate(app, data.path(), ICON).unwrap();
+        let text = fs::read_to_string(entry_path(data.path())).unwrap();
+        assert!(text.lines().any(|l| l == "TryExec=/opt/a\\\\b.AppImage"));
+        // Another tool writing the same escaped TryExec is recognised.
+        let other = tempfile::tempdir().unwrap();
+        let apps = other.path().join("applications");
+        fs::create_dir_all(&apps).unwrap();
+        fs::write(apps.join("x.desktop"), "TryExec=/opt/a\\\\b.AppImage\n").unwrap();
+        assert_eq!(integrate(app, other.path(), ICON).unwrap(), Integration::ManagedElsewhere);
+    }
+
+    #[test]
+    fn a_path_with_a_control_character_is_skipped() {
+        let data = tempfile::tempdir().unwrap();
+        let app = Path::new("/opt/a\nb.AppImage");
+        assert_eq!(integrate(app, data.path(), ICON).unwrap(), Integration::Skipped);
+        assert!(!entry_path(data.path()).exists());
+        assert!(!data.path().join("remarkdown").exists());
     }
 
     #[test]
