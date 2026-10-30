@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   // Tabs: one per open document (session), either along the top between
   // the wordmark and the window controls (flat, Notepad-style) or as a
   // sidebar down the left edge (settings.tabPosition). They sit on the
@@ -395,7 +396,7 @@
       <button
         class="new-tab"
         aria-label="Open a file in a new tab"
-        title="Open a file (Ctrl+O)"
+        title="Open a file ({formatShortcut('Ctrl+O')})"
         onclick={() => void openViaDialog()}
       >
         <span aria-hidden="true">+</span>
@@ -440,7 +441,7 @@
         <button
           class="side-row side-new"
           aria-label="Open a file in a new tab"
-          title="Open a file (Ctrl+O)"
+          title="Open a file ({formatShortcut('Ctrl+O')})"
           onclick={() => void openViaDialog()}
         >
           <span class="tab-initial" aria-hidden="true">+</span>

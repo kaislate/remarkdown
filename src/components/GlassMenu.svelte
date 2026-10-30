@@ -10,7 +10,7 @@
   import { orphanedAnnots, annots } from '../stores/annots';
   import { openModal } from '../stores/modals';
   import { settings } from '../stores/settings';
-  import { toggleTabsShown, TOGGLE_TABS_SHORTCUT } from '../lib/tab-visibility';
+  import { toggleTabsShown, toggleTabsShortcut } from '../lib/tab-visibility';
   import { addToast } from '../stores/toasts';
   import MenuOverlay from './MenuOverlay.svelte';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
@@ -180,7 +180,7 @@
         onclick={() => { open = false; toggleTabsShown(); }}
       >
         {$settings.showTabs ? 'Hide tabs' : 'Show tabs'}
-        <span class="shortcut" aria-hidden="true">{TOGGLE_TABS_SHORTCUT}</span>
+        <span class="shortcut" aria-hidden="true">{toggleTabsShortcut()}</span>
       </button>
       <button
         role="menuitem"

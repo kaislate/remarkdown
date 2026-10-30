@@ -19,6 +19,7 @@
 // instead of flashing empty placeholders while mermaid re-lays-out.
 import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
+import { formatShortcut } from './shortcuts';
 
 type Mermaid = typeof import('mermaid').default;
 
@@ -300,12 +301,6 @@ export function applyDiagramSizing(svg: SVGSVGElement): void {
   if (!svg.style.maxWidth) svg.style.maxWidth = `${Math.round(natural * 1000) / 1000}px`;
 }
 
-function undoShortcut(): string {
-  const platform =
-    typeof navigator !== 'undefined' ? navigator.platform || navigator.userAgent : '';
-  return /Mac|iPhone|iPad/i.test(platform) ? '⌘+Z' : 'Ctrl+Z';
-}
-
 // What a reader sees in place of a diagram mermaid can't draw: plain
 // words up front, mermaid's parser output tucked into a collapsed
 // <details> for whoever wants it.
@@ -325,7 +320,7 @@ export function buildDiagramError(
   if (opts.undoHint) {
     const hint = document.createElement('p');
     hint.className = 'mermaid-error-hint';
-    hint.textContent = `Press ${undoShortcut()} to undo the last change.`;
+    hint.textContent = `Press ${formatShortcut('Ctrl+Z')} to undo the last change.`;
     box.appendChild(hint);
   }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom, ZOOM_LEVELS } from '../stores/ui';
 
   const minZoom = ZOOM_LEVELS[0];
@@ -9,7 +10,7 @@
   <button
     class="btn"
     aria-label="Zoom out"
-    title="Zoom out (Ctrl + −)"
+    title="Zoom out ({formatShortcut('Ctrl + −')})"
     disabled={$zoomLevel <= minZoom}
     onclick={decreaseZoom}
   >
@@ -18,7 +19,7 @@
   <button
     class="btn level"
     aria-label={`Zoom: ${Math.round($zoomLevel * 100)} percent. Click to reset.`}
-    title="Reset zoom (Ctrl + 0)"
+    title="Reset zoom ({formatShortcut('Ctrl + 0')})"
     onclick={resetZoom}
   >
     {Math.round($zoomLevel * 100)}%
@@ -26,7 +27,7 @@
   <button
     class="btn"
     aria-label="Zoom in"
-    title="Zoom in (Ctrl + +)"
+    title="Zoom in ({formatShortcut('Ctrl + +')})"
     disabled={$zoomLevel >= maxZoom}
     onclick={increaseZoom}
   >

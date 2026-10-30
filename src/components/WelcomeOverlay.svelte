@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import { onDestroy, tick } from 'svelte';
   import {
     tutorialOverlayVisible,
@@ -56,10 +57,10 @@
 
   const COPY: Record<TipId, string> = {
     menu: 'Open documents and settings here',
-    edit: 'Edit the text (Ctrl+E)',
+    edit: `Edit the text (${formatShortcut('Ctrl+E')})`,
     contents: 'Jump to any section',
     reader: 'Reader mode: nothing but the page',
-    tabs: 'Your open documents. Ctrl+Shift+B hides the tabs',
+    tabs: `Your open documents. ${formatShortcut('Ctrl+Shift+B')} hides the tabs`,
     drag: 'Hold to drag the window from here',
     drop: '…or drop a document anywhere in the window',
     minimap: 'Navigate long documents here',

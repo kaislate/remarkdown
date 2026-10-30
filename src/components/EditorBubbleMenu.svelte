@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import { tick } from 'svelte';
   import TextB from 'phosphor-svelte/lib/TextB';
   import TextItalic from 'phosphor-svelte/lib/TextItalic';
@@ -90,7 +91,7 @@
     class="bubble-btn"
     data-mark="strong"
     aria-pressed={activeMarks.has('strong')}
-    title="Bold (Ctrl+B)"
+    title="Bold ({formatShortcut('Ctrl+B')})"
     aria-label="Bold"
     onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('strong')}
@@ -102,7 +103,7 @@
     class="bubble-btn"
     data-mark="em"
     aria-pressed={activeMarks.has('em')}
-    title="Italic (Ctrl+I)"
+    title="Italic ({formatShortcut('Ctrl+I')})"
     aria-label="Italic"
     onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('em')}
@@ -126,7 +127,7 @@
     class="bubble-btn"
     data-mark="sub"
     aria-pressed={activeMarks.has('sub')}
-    title="Subscript (Ctrl+,)"
+    title="Subscript ({formatShortcut('Ctrl+,')})"
     aria-label="Subscript"
     onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('sub')}
@@ -138,7 +139,7 @@
     class="bubble-btn"
     data-mark="sup"
     aria-pressed={activeMarks.has('sup')}
-    title="Superscript (Ctrl+.)"
+    title="Superscript ({formatShortcut('Ctrl+.')})"
     aria-label="Superscript"
     onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('sup')}
@@ -150,7 +151,7 @@
     class="bubble-btn"
     data-mark="code"
     aria-pressed={activeMarks.has('code')}
-    title="Inline code (Ctrl+`)"
+    title="Inline code ({formatShortcut('Ctrl+`')})"
     aria-label="Inline code"
     onmousedown={(e) => e.preventDefault()}
     onclick={() => onMark('code')}
