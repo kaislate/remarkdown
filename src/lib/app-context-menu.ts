@@ -68,6 +68,17 @@ export function classify(target: Element | null, opts: { articleSelector?: strin
   return { kind: 'chrome', el: null };
 }
 
+// The selection to put back before the menu acts, copied as it was when
+// the menu opened: selected text within `within`, and in the editor the
+// bare caret as well. Opening the menu moves focus to it, and WebKit then
+// drops the editor's caret, so Paste would land at the top of the
+// document.
+export function selectionToKeep(kind: ClickKind, sel: Selection | null, within: Node | null | undefined): Range | null {
+  if (!sel || sel.rangeCount === 0 || !within?.contains(sel.anchorNode)) return null;
+  if (sel.isCollapsed && kind !== 'editor') return null;
+  return sel.getRangeAt(0).cloneRange();
+}
+
 const sep = 'separator' as const;
 
 // The menu for a click, or null for none.

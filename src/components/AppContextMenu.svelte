@@ -5,7 +5,7 @@
   // first and claim it — and always stops the browser's own menu.
   import { get } from 'svelte/store';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
-  import { classify, menuFor, type MenuActions } from '../lib/app-context-menu';
+  import { classify, menuFor, selectionToKeep, type MenuActions } from '../lib/app-context-menu';
   import { readerMode, exitReaderMode, toggleReaderMode } from '../stores/reader-mode';
   import { toggleEditMode } from '../stores/edit-mode';
   import { doc } from '../stores/doc';
@@ -130,12 +130,9 @@
       hasSelection = !!fieldSelection && fieldSelection[0] !== fieldSelection[1];
       readOnly = el.readOnly || el.disabled;
     } else {
-      const sel = window.getSelection();
       const within = kind === 'editor' ? el : get(currentViewerRoot);
-      if (sel && !sel.isCollapsed && sel.rangeCount > 0 && within?.contains(sel.anchorNode)) {
-        hasSelection = true;
-        savedRange = sel.getRangeAt(0).cloneRange();
-      }
+      savedRange = selectionToKeep(kind, window.getSelection(), within);
+      hasSelection = !!savedRange && !savedRange.collapsed;
     }
 
     const items = menuFor(

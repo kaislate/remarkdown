@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { classify, menuFor, type ClickContext, type MenuActions } from '../../src/lib/app-context-menu';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { classify, menuFor, selectionToKeep, type ClickContext, type MenuActions } from '../../src/lib/app-context-menu';
 
 const actions = (): MenuActions => ({
   cut: vi.fn(), copy: vi.fn(), paste: vi.fn(), selectAll: vi.fn(), highlight: vi.fn(), addNote: vi.fn(),
@@ -74,5 +74,52 @@ describe('the menu for it', () => {
 
   it('buttons and panels: no menu (and no browser menu either)', () => {
     expect(menuFor({ kind: 'chrome', readerMode: false, hasSelection: false }, actions())).toBeNull();
+  });
+});
+
+describe('the selection the menu puts back', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<article id="page"><p id="pp">Some words on the page.</p></article>
+      <div id="ed" contenteditable="true"><p id="ep">Some words being edited.</p></div>`;
+  });
+  const $ = (id: string) => document.getElementById(id)!;
+  const place = (id: string, from: number, to = from) => {
+    const text = $(id).firstChild!;
+    const r = document.createRange();
+    r.setStart(text, from);
+    r.setEnd(text, to);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(r);
+    return sel;
+  };
+
+  it('selected words, on the page or in the editor', () => {
+    const page = selectionToKeep('page', place('pp', 5, 10), $('page'));
+    expect(page?.toString()).toBe('words');
+    expect(selectionToKeep('editor', place('ep', 5, 10), $('ed'))?.toString()).toBe('words');
+  });
+
+  // Opening the menu takes focus, and WebKit then drops the editor's
+  // caret: without it Paste would land at the top of the document.
+  it('the bare caret too, in the editor', () => {
+    const r = selectionToKeep('editor', place('ep', 4), $('ed'));
+    expect(r?.collapsed).toBe(true);
+    expect(r?.startContainer).toBe($('ep').firstChild);
+    expect(r?.startOffset).toBe(4);
+  });
+
+  it('but not a bare caret on the page, nor a selection somewhere else', () => {
+    expect(selectionToKeep('page', place('pp', 4), $('page'))).toBeNull();
+    expect(selectionToKeep('editor', place('pp', 5, 10), $('ed'))).toBeNull();
+    window.getSelection()!.removeAllRanges();
+    expect(selectionToKeep('editor', window.getSelection(), $('ed'))).toBeNull();
+  });
+
+  it('a copy, so later changes to the selection leave it alone', () => {
+    const sel = place('ep', 5, 10);
+    const r = selectionToKeep('editor', sel, $('ed'))!;
+    place('ep', 0, 2);
+    expect(r.toString()).toBe('words');
   });
 });
