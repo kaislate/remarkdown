@@ -11,6 +11,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Tests and builds only read the code, so the job token can do no more.
+permissions:
+  contents: read
+
 env:
   # Pull requests have no signing key, and createUpdaterArtifacts: true makes
   # a build fail without one. CI builds only prove the app bundles.
