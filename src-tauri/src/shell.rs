@@ -1,12 +1,52 @@
 // Small hand-offs to the OS shell.
 
 use crate::commands::CommandError;
+use std::path::Path;
 
 /// Explorer's argument for "open the folder with this file selected".
 /// Explorer parses its own command line: the path must follow `/select,`
 /// inside quotes, so it's passed raw rather than through Rust's quoting.
 pub fn explorer_select_arg(path: &str) -> String {
     format!("/select,\"{}\"", path.replace('/', "\\"))
+}
+
+/// An absolute `file://` URI for a path. Everything but RFC 3986's unreserved
+/// characters and `/` is percent-encoded byte by byte, so quotes and spaces
+/// can't break the GVariant text the file manager is handed. A plain string
+/// transform, so it reads the same on every host.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn file_uri(path: &Path) -> String {
+    let mut uri = String::from("file://");
+    for &b in path.to_string_lossy().as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
+            uri.push(b as char);
+        } else {
+            uri.push_str(&format!("%{b:02X}"));
+        }
+    }
+    uri
+}
+
+/// `gdbus call` arguments (no program name) asking the desktop's file manager
+/// to show one item, selected, in its folder. gdbus reads GVariant text, so the
+/// uris are `['…']` and the startup id an empty string, `""`. Nautilus, Dolphin,
+/// Thunar and Nemo all answer this call.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn show_items_args(uri: &str) -> Vec<String> {
+    [
+        "call",
+        "--session",
+        "--dest",
+        "org.freedesktop.FileManager1",
+        "--object-path",
+        "/org/freedesktop/FileManager1",
+        "--method",
+        "org.freedesktop.FileManager1.ShowItems",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .chain([format!("['{uri}']"), "\"\"".to_string()])
+    .collect()
 }
 
 /// Opens the file's folder in Explorer with the file selected ("Show in
@@ -27,10 +67,40 @@ pub fn reveal_in_folder(path: String) -> Result<(), CommandError> {
         cmd.spawn().map_err(|e| CommandError::Io(e.to_string()))?;
         Ok(())
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-        let _ = path;
-        Err(CommandError::Io("only supported on Windows".into()))
+        let p = Path::new(&path);
+        let mut cmd = std::process::Command::new("open");
+        if p.is_file() {
+            cmd.arg("-R").arg(p);
+        } else if let Some(dir) = p.parent() {
+            cmd.arg(dir);
+        }
+        cmd.spawn().map_err(|e| CommandError::Io(e.to_string()))?;
+        Ok(())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let p = Path::new(&path);
+        if p.is_file() {
+            let shown = std::process::Command::new("gdbus")
+                .args(show_items_args(&file_uri(p)))
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if shown {
+                return Ok(());
+            }
+        }
+        // No file manager on the bus (or the file is gone): just open the folder.
+        let dir = if p.is_dir() { Some(p) } else { p.parent() };
+        if let Some(dir) = dir {
+            std::process::Command::new("xdg-open")
+                .arg(dir)
+                .spawn()
+                .map_err(|e| CommandError::Io(e.to_string()))?;
+        }
+        Ok(())
     }
 }
 
@@ -49,5 +119,37 @@ mod tests {
     #[test]
     fn select_arg_uses_backslashes() {
         assert_eq!(explorer_select_arg("C:/a/b.md"), r#"/select,"C:\a\b.md""#);
+    }
+
+    #[test]
+    fn file_uri_encodes_everything_but_unreserved_and_slash() {
+        assert_eq!(
+            file_uri(std::path::Path::new("/home/me/My Notes/\u{dc}n\u{ef}code's.md")),
+            "file:///home/me/My%20Notes/%C3%9Cn%C3%AFcode%27s.md"
+        );
+    }
+
+    #[test]
+    fn file_uri_keeps_unreserved_characters() {
+        assert_eq!(
+            file_uri(std::path::Path::new("/a-b_c.d~e/F9")),
+            "file:///a-b_c.d~e/F9"
+        );
+    }
+
+    #[test]
+    fn show_items_args_end_with_the_uri_array_and_empty_startup_id() {
+        let args = show_items_args("file:///home/me/a%27b.md");
+        assert_eq!(args[args.len() - 2], "['file:///home/me/a%27b.md']");
+        assert_eq!(args[args.len() - 1], "\"\"");
+        assert_eq!(args[0], "call");
+        assert!(args.contains(&"org.freedesktop.FileManager1.ShowItems".to_string()));
+    }
+
+    #[test]
+    fn show_items_array_has_no_quote_inside_the_literal() {
+        let uri = file_uri(std::path::Path::new("/tmp/it's.md"));
+        let lit = &show_items_args(&uri)[8];
+        assert_eq!(lit.matches('\'').count(), 2);
     }
 }
