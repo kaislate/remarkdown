@@ -4,7 +4,9 @@ What changed in each version of remarkdown, newest first. The same notes appear 
 
 ---
 
-## Unreleased — 🍎🐧 remarkdown on Mac and Linux
+## 0.9.0-beta — 🍎🐧 remarkdown on Mac and Linux
+
+*Pre-release 2026-10-31 · [v0.9.0-beta](https://github.com/kaislate/remarkdown/releases/tag/v0.9.0-beta)*
 
 **Nothing changes on Windows.** remarkdown now also comes for Mac and Linux, and the same reader, annotator and editor work on all three.
 

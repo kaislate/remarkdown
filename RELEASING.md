@@ -21,6 +21,16 @@ Add two repository secrets (Settings > Secrets and variables > Actions):
 If the first secret is empty the release fails in its first step with a
 message saying so, before any build time is spent.
 
+A pre-release tag (one with a `-`, like `v0.9.0-beta`) needs no key. Installed
+copies never update to a pre-release, so it builds without updater artifacts:
+no `.sig` files and no `latest.json`, only the installers to download. The
+workflow marks its draft as a pre-release.
+
+The rpm takes the version as it is, and rpm sorts `0.9.0-beta` *after*
+`0.9.0`. Someone who installed a beta rpm must remove it
+(`sudo dnf remove remarkdown`) before installing the stable rpm of the same
+version.
+
 ### Cutting a release
 
 1. Write the version's section of [CHANGELOG.md](CHANGELOG.md) and bump the
@@ -38,6 +48,8 @@ message saying so, before any build time is spent.
    `v0.9.0-beta`), the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
    and the `.rpm`. Each has a `.sig` beside it except the `.dmg`, which is
    only for first installs: updates download the `.app.tar.gz`.
+   A pre-release has only the installers: no `.sig` files, no `latest.json`,
+   so skip step 5.
 5. Open `latest.json` and check `platforms` lists all five of:
    `windows-x86_64`, `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`
    (the AppImage) and `linux-x86_64-rpm`. Both `darwin-*` entries point at

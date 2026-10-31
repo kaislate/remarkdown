@@ -11,6 +11,10 @@ jobs:
   release:
     name: release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      # Kept out of the expression below, whose parser would read the
+      # closing braces of this JSON as its own end.
+      NO_UPDATER_ARTIFACTS: '--config {"bundle":{"createUpdaterArtifacts":false}}'
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +28,10 @@ jobs:
     steps:
       # First, so a missing secret fails in seconds instead of after a full
       # build: without the key the updater artifacts cannot be signed.
+      # Pre-releases (a tag with a `-`, like v0.9.0-beta) build no updater
+      # artifacts, so they need no key.
       - name: Check the signing secret
+        if: ${{ !contains(github.ref_name, '-') }}
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -68,9 +75,13 @@ jobs:
           releaseName: remarkdown v__VERSION__
           releaseBody: See the assets below to download remarkdown.
           releaseDraft: true
-          prerelease: false
-          uploadUpdaterJson: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Installed copies never update to a pre-release, so it ships
+          # unsigned, with no updater artifacts and no latest.json.
+          uploadUpdaterJson: ${{ !contains(github.ref_name, '-') }}
           updaterJsonPreferNsis: true
           # MSI only accepts numeric prerelease versions, so a tag like
           # v0.9.0-beta builds the NSIS installer alone (see RELEASING.md).
-          args: ${{ (runner.os == 'Windows' && contains(github.ref_name, '-')) && '--bundles nsis' || matrix.args }}
+          args: >-
+            ${{ (runner.os == 'Windows' && contains(github.ref_name, '-')) && '--bundles nsis' || matrix.args }}
+            ${{ contains(github.ref_name, '-') && env.NO_UPDATER_ARTIFACTS || '' }}
