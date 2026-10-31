@@ -528,6 +528,12 @@
     padding: 0 4px;
     box-sizing: border-box;
   }
+  /* On Linux the wordmark's font is whatever the desktop has, so how far
+     it unfolds is measured (GlassMenu.svelte), and the strip starts that
+     far along plus about the gap it has on Windows, if that is past 174px. */
+  :global(body.platform-linux) .tabbar {
+    left: max(174px, calc(var(--wordmark-unfolded-right, 0px) + 10px));
+  }
 
   .tab-strip {
     position: relative;

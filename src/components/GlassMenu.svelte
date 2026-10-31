@@ -15,9 +15,39 @@
   import MenuOverlay from './MenuOverlay.svelte';
   import ContextMenu, { type ContextMenuEntry } from './ContextMenu.svelte';
   import { showInFolder, copyPath } from '../lib/file-actions';
+  import { platform } from '../lib/platform';
   import type { OpenMode } from '../lib/settings-schema';
 
   let open = $state(false);
+
+  // On Linux the wordmark is drawn in whatever sans-serif the desktop has
+  // (Inter isn't bundled), and many (DejaVu Sans, Noto Sans, Cantarell)
+  // are wider than Windows' Segoe UI: unfolded to "remarkdown" it could
+  // reach under the first top tab, which starts at a fixed 174px. A hidden
+  // twin, always unfolded, measures how far it reaches in the font really
+  // in use, and the tab strip starts clear of that (TabBar.svelte). Windows
+  // keeps its fixed layout; on a Mac the wordmark sits a row below the tabs.
+  const measureWordmark = platform() === 'linux';
+  let wordmarkEl = $state<HTMLElement | null>(null);
+  let wordmarkTwinEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    const mark = wordmarkEl;
+    const twin = wordmarkTwinEl;
+    if (!mark || !twin || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const update = () => {
+      const right = mark.getBoundingClientRect().left + twin.getBoundingClientRect().width;
+      root.style.setProperty('--wordmark-unfolded-right', `${right}px`);
+    };
+    // The twin never animates, so it changes size only when its font does:
+    // once laid out, when a web font arrives, when the desktop's font changes.
+    const observer = new ResizeObserver(update);
+    observer.observe(twin);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--wordmark-unfolded-right');
+    };
+  });
 
   // Pre-release tag rendered under the wordmark while the build is not
   // yet 1.0 stable (zero-major) OR has any semver pre-release suffix
@@ -146,13 +176,18 @@
        hovered (or while the menu popover is open) — same dot-collapse
        + ark/own unfold choreography as the splash, just driven by
        hover transitions instead of a one-shot animation. -->
-  <span class="wordmark" aria-hidden="true"
-    ><span class="seg re">re</span><!--
+  {#snippet wordmarkSegments()}<span class="seg re">re</span><!--
     --><span class="seg dot">.</span><!--
     --><span class="seg m">m</span><!--
     --><span class="seg ark">ark</span><!--
     --><span class="seg d">d</span><!--
-    --><span class="seg own">own</span></span>
+    --><span class="seg own">own</span>{/snippet}
+  <span class="wordmark" aria-hidden="true" bind:this={wordmarkEl}
+    >{@render wordmarkSegments()}</span>
+  {#if measureWordmark}
+    <span class="wordmark twin" aria-hidden="true" bind:this={wordmarkTwinEl}
+      >{@render wordmarkSegments()}</span>
+  {/if}
 
   {#if preTagLabel}
     <!-- Animated pre-release tag. aria-hidden so screen readers
@@ -391,6 +426,24 @@
     max-width: 4.5ch;
     opacity: 1;
     clip-path: inset(0 0 0 0);
+  }
+  /* The unfolded twin (Linux only, see measureWordmark): laid out in the
+     hover shape at once, never seen, out of the row's flow. */
+  .wordmark.twin {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+  }
+  .wordmark.twin .seg {
+    transition: none;
+  }
+  .wordmark.twin .dot {
+    max-width: 0;
+  }
+  .wordmark.twin .ark,
+  .wordmark.twin .own {
+    max-width: 4.5ch;
   }
   /* Pre-release tag (BETA / ALPHA / RC / DEV) pinned under the wordmark.
      Still: it used to pulse, drift and sweep a shine across itself, which

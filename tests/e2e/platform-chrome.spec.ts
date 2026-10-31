@@ -168,6 +168,41 @@ test('on a tiling Linux desktop there are no window buttons, aura or resize grip
   await expect(page.locator('.titlebar-drag')).toBeVisible();
 });
 
+// Linux draws the wordmark in the desktop's own sans-serif, which may be much
+// wider than Windows' Segoe UI. A larger wordmark stands in for one here, so
+// the test means the same thing on any machine's fonts.
+async function bootWithWideWordmark(browser: Browser, os: OS) {
+  const page = await browser.newPage({ viewport: { width: 1100, height: 780 } });
+  await page.addInitScript(() => {
+    const widen = () => {
+      const style = document.createElement('style');
+      style.textContent = '.menu-root .wordmark { font-size: 26px !important; }';
+      document.head.append(style);
+    };
+    if (document.head) widen(); else document.addEventListener('DOMContentLoaded', widen);
+  });
+  await boot(page, os);
+  return page;
+}
+
+test('on Linux the top tabs start clear of the unfolded wordmark, however wide its font', async ({ browser }) => {
+  const linux = await bootWithWideWordmark(browser, 'linux');
+  const win = await bootWithWideWordmark(browser, 'windows');
+  try {
+    await linux.locator('.hamburger').hover();
+    await linux.waitForTimeout(700); // fully unfolded
+    const mark = await rect(linux, '.menu-root .wordmark');
+    const tab = await rect(linux, '[role="tab"]');
+    expect(mark.right).toBeGreaterThan(178); // past where the tabs start on Windows
+    expect(mark.right).toBeLessThan(tab.left);
+    // Windows keeps its fixed layout whatever the font.
+    expect((await rect(win, '.tabbar')).left).toBe(174);
+  } finally {
+    await linux.close();
+    await win.close();
+  }
+});
+
 test('on a regular Linux desktop the chrome looks exactly like Windows', async ({ page }) => {
   await boot(page, 'linux', {}, false);
   await expect(page.locator('.titlebar-controls')).toBeVisible();

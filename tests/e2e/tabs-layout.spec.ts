@@ -39,17 +39,29 @@ const rect = (page: Page, sel: string) =>
     return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
   });
 
-test.beforeEach(async ({ page }) => {
+async function boot(page: Page) {
   await page.goto('/');
   await page.evaluate((docs) => {
     for (const [p, md] of Object.entries(docs)) (window as any).__E2E_SEED_DOC__(p, md);
   }, DOCS);
+}
+
+test.beforeEach(async ({ page }) => {
+  await boot(page);
 });
 
 // Tabs sit on the window's own background: no title band, and the menu
 // button, wordmark and pre-release tag look and sit exactly as they do
 // without tabs. The page keeps the whole window.
 test('with tabs on top there is no title band and the menu and wordmark are unchanged', async ({ page }) => {
+  // Whether the wordmark clears the tabs depends on the font it gets, and
+  // each OS has its own: Windows' layout is only ever drawn with Windows'
+  // fonts. On a Linux machine (CI) the page runs as on Linux, where the tabs
+  // make room for the desktop's often wider font; elsewhere as on Windows.
+  if (process.platform === 'linux') {
+    await page.addInitScript(() => { (window as any).__E2E_PLATFORM__ = { os: 'linux', tiling: false }; });
+    await boot(page);
+  }
   await setSettings(page, { openMode: 'replace' });
   await openViaLaunch(page, [A]);
   await expect(h1(page)).toHaveText('Alpha');
