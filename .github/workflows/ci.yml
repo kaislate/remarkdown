@@ -82,10 +82,27 @@ jobs:
         run: |
           rpm=$(ls src-tauri/target/release/bundle/rpm/*.rpm | head -n 1)
           echo "Inspecting $rpm"
-          desktop=$(rpm2cpio "$rpm" | cpio -i --to-stdout '*remarkdown.desktop')
-          echo "$desktop"
-          grep -qxF 'Exec=remarkdown %F' <<< "$desktop" || { echo "::error::desktop entry lacks Exec=remarkdown %F"; exit 1; }
-          grep -qxF 'MimeType=text/markdown;' <<< "$desktop" || { echo "::error::desktop entry lacks MimeType=text/markdown;"; exit 1; }
+          root=$(mktemp -d)
+          # Ubuntu's rpm2cpio (rpm 4.17) exits 1 after writing the whole
+          # payload: it checks the bytes against the package's archive-size
+          # tag, which the rpm crate Tauri builds with doesn't write. Its exit
+          # status says nothing here; cpio reading the archive through to its
+          # trailer is the check that the payload is whole.
+          rpm2cpio "$rpm" > "$root/payload.cpio" || echo "rpm2cpio exited $?"
+          test -s "$root/payload.cpio" || { echo "::error::rpm2cpio wrote no payload"; exit 1; }
+          echo "payload: $(stat -c %s "$root/payload.cpio") bytes"
+          (cd "$root" && cpio -idm --quiet < payload.cpio)
+          mapfile -t entries < <(find "$root/usr/share/applications" -name '*.desktop' 2>/dev/null)
+          if [ "${#entries[@]}" -ne 1 ]; then
+            echo "::error::expected one .desktop file under usr/share/applications, found ${#entries[@]}"
+            (cd "$root" && find . -path ./payload.cpio -prune -o -print)
+            exit 1
+          fi
+          desktop="${entries[0]}"
+          echo "${desktop#"$root"}:"
+          cat "$desktop"
+          grep -qxF 'Exec=remarkdown %F' "$desktop" || { echo "::error::desktop entry lacks Exec=remarkdown %F"; exit 1; }
+          grep -qxF 'MimeType=text/markdown;' "$desktop" || { echo "::error::desktop entry lacks MimeType=text/markdown;"; exit 1; }
 
       - name: Build the universal Mac app
         if: runner.os == 'macOS'
