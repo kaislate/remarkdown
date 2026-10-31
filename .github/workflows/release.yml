@@ -3,6 +3,15 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # A pre-release has no tag of its own to push: the rpm refuses a `-` in a
+  # version, so a pre-release is a plain version (0.9.0) built from here
+  # with this box ticked. See RELEASING.md.
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Pre-release (unsigned, no updater files)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -12,6 +21,7 @@ jobs:
     name: release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     env:
+      PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
       # Kept out of the expression below, whose parser would read the
       # closing braces of this JSON as its own end.
       NO_UPDATER_ARTIFACTS: '--config {"bundle":{"createUpdaterArtifacts":false}}'
@@ -28,10 +38,9 @@ jobs:
     steps:
       # First, so a missing secret fails in seconds instead of after a full
       # build: without the key the updater artifacts cannot be signed.
-      # Pre-releases (a tag with a `-`, like v0.9.0-beta) build no updater
-      # artifacts, so they need no key.
+      # Pre-releases build no updater artifacts, so they need no key.
       - name: Check the signing secret
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: env.PRERELEASE != 'true'
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -75,13 +84,11 @@ jobs:
           releaseName: remarkdown v__VERSION__
           releaseBody: See the assets below to download remarkdown.
           releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ env.PRERELEASE == 'true' }}
           # Installed copies never update to a pre-release, so it ships
           # unsigned, with no updater artifacts and no latest.json.
-          uploadUpdaterJson: ${{ !contains(github.ref_name, '-') }}
+          uploadUpdaterJson: ${{ env.PRERELEASE != 'true' }}
           updaterJsonPreferNsis: true
-          # MSI only accepts numeric prerelease versions, so a tag like
-          # v0.9.0-beta builds the NSIS installer alone (see RELEASING.md).
           args: >-
-            ${{ (runner.os == 'Windows' && contains(github.ref_name, '-')) && '--bundles nsis' || matrix.args }}
-            ${{ contains(github.ref_name, '-') && env.NO_UPDATER_ARTIFACTS || '' }}
+            ${{ matrix.args }}
+            ${{ env.PRERELEASE == 'true' && env.NO_UPDATER_ARTIFACTS || '' }}

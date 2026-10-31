@@ -21,15 +21,22 @@ Add two repository secrets (Settings > Secrets and variables > Actions):
 If the first secret is empty the release fails in its first step with a
 message saying so, before any build time is spent.
 
-A pre-release tag (one with a `-`, like `v0.9.0-beta`) needs no key. Installed
-copies never update to a pre-release, so it builds without updater artifacts:
-no `.sig` files and no `latest.json`, only the installers to download. The
-workflow marks its draft as a pre-release.
+### Versions have no `-`
 
-The rpm takes the version as it is, and rpm sorts `0.9.0-beta` *after*
-`0.9.0`. Someone who installed a beta rpm must remove it
-(`sudo dnf remove remarkdown`) before installing the stable rpm of the same
-version.
+The rpm refuses a `-` in a version, so there are no `0.9.0-beta` versions:
+the Linux build fails on one. A pre-release is a plain version that is never
+released as stable (say `0.9.0`, with `0.9.1` the stable release after it).
+
+### Cutting a pre-release
+
+1. Bump the version and write the CHANGELOG section as below. Commit and push
+   `main`. Don't tag.
+2. Run the Release workflow by hand, with **Pre-release** ticked: Actions >
+   Release > Run workflow, or `gh workflow run release.yml --ref main`.
+3. It builds the same installers into a draft marked as a pre-release, but
+   unsigned and with no updater artifacts: no `.sig` files and no
+   `latest.json`, since installed copies never update to a pre-release. It
+   needs no signing key. Publishing the draft creates the tag.
 
 ### Cutting a release
 
@@ -44,12 +51,9 @@ version.
 3. Wait for the Release workflow's three jobs (Windows, macOS, Ubuntu).
 4. Open the draft release on GitHub. Paste the CHANGELOG section into the
    notes (the in-app update window shows them) and check the assets:
-   NSIS installer (and the MSI, unless the tag is a pre-release like
-   `v0.9.0-beta`), the universal Mac `.app.tar.gz` and `.dmg`, the AppImage
-   and the `.rpm`. Each has a `.sig` beside it except the `.dmg`, which is
-   only for first installs: updates download the `.app.tar.gz`.
-   A pre-release has only the installers: no `.sig` files, no `latest.json`,
-   so skip step 5.
+   NSIS installer and MSI, the universal Mac `.app.tar.gz` and `.dmg`, the
+   AppImage and the `.rpm`. Each has a `.sig` beside it except the `.dmg`,
+   which is only for first installs: updates download the `.app.tar.gz`.
 5. Open `latest.json` and check `platforms` lists all five of:
    `windows-x86_64`, `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`
    (the AppImage) and `linux-x86_64-rpm`. Both `darwin-*` entries point at
