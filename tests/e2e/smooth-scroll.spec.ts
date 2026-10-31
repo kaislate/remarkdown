@@ -31,21 +31,34 @@ const top = (page: Page) => page.locator('.scroll').evaluate((el) => el.scrollTo
 const step = (page: Page) => page.locator('.scroll').evaluate((el) => Math.max(16, el.clientHeight / 8));
 
 test('a wheel notch glides 1/8 of the page, fast at first then easing to a stop', async ({ page }) => {
+  // The glide runs on the page's clock, which is held here and stepped, so
+  // it is sampled every frame (16ms) however fast the machine draws.
+  await page.clock.install();
   await open(page);
   const want = await step(page);
-  // Sample the glide every frame from inside the page.
-  const samples = page.evaluate(() => new Promise<number[]>((resolve) => {
-    const el = document.querySelector('.scroll') as HTMLElement;
-    const out: number[] = [];
-    const start = performance.now();
-    const tick = () => {
-      out.push(el.scrollTop);
-      if (performance.now() - start < 700) requestAnimationFrame(tick); else resolve(out);
-    };
-    requestAnimationFrame(tick);
-  }));
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  // Sample the glide every frame from inside the page, from before the
+  // notch; and note when the page has had the notch.
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__wheeled = new Promise<void>((resolve) => {
+      window.addEventListener('wheel', () => resolve(), { once: true, capture: true });
+    });
+    w.__samples = new Promise<number[]>((resolve) => {
+      const el = document.querySelector('.scroll') as HTMLElement;
+      const out: number[] = [];
+      const start = performance.now();
+      const tick = () => {
+        out.push(el.scrollTop);
+        if (performance.now() - start < 700) requestAnimationFrame(tick); else resolve(out);
+      };
+      requestAnimationFrame(tick);
+    });
+  });
   await page.mouse.wheel(0, notch(page));
-  const s = await samples;
+  await page.evaluate(() => (window as any).__wheeled);
+  await page.clock.runFor(800);
+  const s: number[] = await page.evaluate(() => (window as any).__samples);
   const end = s[s.length - 1];
   expect(Math.abs(end - want)).toBeLessThanOrEqual(1);
   // It moved over several frames, not in one jump…

@@ -254,8 +254,17 @@ for (const { position, zoom, articleWidth } of MINIMAP_CASES) {
     const max = await scroller.evaluate((el) => el.scrollHeight - el.clientHeight);
     expect(max).toBeGreaterThan(2000);
     for (const f of [0, 0.2, 0.5, 0.8, 1]) {
-      await scroller.evaluate((el, top) => { el.scrollTop = top; }, Math.round(max * f));
-      await page.waitForTimeout(80);
+      // The minimap follows the page's scroll event, which comes with the
+      // next frame; on a busy machine that can be well past any fixed wait.
+      // So wait for the event, then a frame for the minimap to draw.
+      await scroller.evaluate((el, top) => new Promise<void>((resolve, reject) => {
+        const settle = () => requestAnimationFrame(() => resolve());
+        const before = el.scrollTop;
+        el.addEventListener('scroll', settle, { once: true });
+        el.scrollTop = top;
+        if (el.scrollTop === before) { el.removeEventListener('scroll', settle); settle(); }
+        setTimeout(() => reject(new Error(`no scroll event after scrolling from ${before} to ${top}`)), 5000);
+      }), Math.round(max * f));
       const m = await page.evaluate(() => {
         const scroll = document.querySelector('.scroll') as HTMLElement;
         const article = document.querySelector('.viewer') as HTMLElement;
