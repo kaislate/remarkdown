@@ -20,8 +20,9 @@ export async function withoutPaintWorklet(page: Page): Promise<void> {
 
 // A real click in the middle of an element as the page lays it out.
 // Playwright's WebKit misplaces some SVG text (a diagram's title, a gantt
-// task's label) when it works out where to click, by a few hundred pixels,
-// so `click()` lands somewhere else; the page's own measurement is right.
+// task's label, a pie legend's entry) when it works out where to click, by
+// up to a few hundred pixels, so `click()` lands somewhere else, even with
+// `force`; the page's own measurement is right.
 export async function clickMiddle(page: Page, target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   const r = await target.evaluate((el) => {

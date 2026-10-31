@@ -138,7 +138,7 @@ test.describe('pie / gantt / timeline — visual editing', () => {
     await expectSaved(page, { pie: p, gantt: GANTT, timeline: TIMELINE });
     await expectDrawn(page, 'pie');
 
-    await pie.locator('g.legend').nth(2).locator('text').click({ force: true });
+    await clickMiddle(page, pie.locator('g.legend').nth(2).locator('text'));
     await expect(fieldInput(page, 'label')).toHaveValue('Rats');
     await fill(page, 'value', '30');
     p = p.replace('"Rats" : 15', '"Rats" : 30');
