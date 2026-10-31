@@ -758,6 +758,11 @@ test('ink leaks from a resting pointer, spreading until it moves away, then drie
 });
 
 test('the other ink styles: a trail of drops, a pen line, or none', async ({ page }) => {
+  // Three trips to Settings, three ink swaps into reader mode and two out,
+  // and two waits for the ink to dry: about 22 s in Chromium and 28 s in
+  // WebKit on the Linux runner, where it ran out of the default 30 s in
+  // the middle of the last swap (which then finished as usual).
+  test.slow();
   await open(page, [A]);
   const inked = inkedPixels(page);
   for (const label of ['Trail', 'Pen']) {

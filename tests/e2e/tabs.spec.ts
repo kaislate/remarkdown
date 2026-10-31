@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { chooseSetting } from './support/settings';
 import { editorMod } from './support/webkit';
 
@@ -28,6 +28,35 @@ const tabs = (page: Page) => page.getByRole('tab');
 // The tab's visible name (the close button's × is part of its text).
 const labels = (page: Page) => page.locator('[role="tab"] .label');
 const h1 = (page: Page) => page.locator('.viewer h1, .editor-surface h1').first();
+
+// Puts the caret at the end of a paragraph the way a user does: a click
+// just past its last word, then a look at the toolbar, which names the
+// block the editor has the caret in. Not a click in the middle and then
+// End, straight away:
+//  - where the middle falls in the text depends on the fonts (Linux has
+//    neither Charter nor Georgia, and its fallback serif runs past it);
+//  - the click that first focuses the editor sets off ProseMirror's check
+//    20 ms later: if the DOM caret has moved and ProseMirror hasn't read
+//    the selectionchange yet, it puts back the caret it knows. A key
+//    pressed inside that window (End, on a slow runner) is undone, and the
+//    typing lands where the click left the caret; on a slower one still,
+//    so is the click. Once the toolbar follows the click, ProseMirror has
+//    the caret and that check has nothing to undo.
+async function clickAfterLastWord(page: Page, block: Locator, style: string) {
+  await block.scrollIntoViewIfNeeded();
+  const at = await block.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lines = range.getClientRects();
+    const last = lines[lines.length - 1];
+    const box = el.getBoundingClientRect();
+    return { x: Math.min(last.right + 4, box.right - 1), y: last.top + last.height / 2 };
+  });
+  await expect(async () => {
+    await page.mouse.click(at.x, at.y);
+    await expect(page.locator('.editor-toolbar .style-label')).toHaveText(style, { timeout: 1000 });
+  }).toPass();
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -73,8 +102,9 @@ test('edits and undo history survive a tab switch; edit mode is per tab', async 
   await page.locator('.edit-mode-toggle').click();
   const surface = page.locator('.editor-surface .ProseMirror');
   await expect(surface).toBeVisible();
-  await surface.locator('p').first().click();
-  await page.keyboard.press('End');
+  // The editor opens with the caret in the "Alpha" heading.
+  await expect(page.locator('.editor-toolbar .style-label')).toHaveText('Heading 1');
+  await clickAfterLastWord(page, surface.locator('p').first(), 'Normal text');
   await page.keyboard.type(' zzz');
   await expect(surface).toContainText('begin. zzz');
 
