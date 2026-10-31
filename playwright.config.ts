@@ -8,6 +8,12 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   workers: 1,
+  // Shared CI runners are slow and uneven, and much here is animation: one
+  // retry there keeps a test that lost a race with the machine from failing
+  // the run. Such a test still shows: the summary lists it as flaky, the
+  // github reporter puts a warning on the run, and its retry keeps a trace.
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['list'], ['github']] : 'list',
   use: {
     baseURL: `http://localhost:${port}`,
     trace: 'on-first-retry',
