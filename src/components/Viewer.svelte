@@ -26,6 +26,7 @@
   import { onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
   import { installSmoothScroll, GLIDE_SCALES } from '../lib/smooth-scroll';
+  import { platform } from '../lib/platform';
   import { activeModal } from '../stores/modals';
 
   // No cross-fade under reduced motion, nor on the E-ink reader theme
@@ -41,13 +42,15 @@
 
   // Edge-style smooth scrolling for the wheel and keys. Checked per event,
   // so turning it off (or reduced motion / e-ink) applies at once; nothing
-  // is taken over while a dialog is up.
+  // is taken over while a dialog is up. WebKit (macOS, Linux) has its
+  // notches counted rather than measured, so each still goes 1/8 page.
   $effect(() => {
     const el = scrollEl;
     if (!el) return;
     return installSmoothScroll(el, {
       enabled: () => get(settings).smoothScrolling && !reducedMotion() && get(activeModal) === null,
       glide: () => GLIDE_SCALES[get(settings).smoothScrollGlide],
+      wheelByNotch: platform() !== 'windows',
     });
   });
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   // Tabs: one per open document (session), either along the top between
   // the wordmark and the window controls (flat, Notepad-style) or as a
   // sidebar down the left edge (settings.tabPosition). They sit on the
@@ -395,7 +396,7 @@
       <button
         class="new-tab"
         aria-label="Open a file in a new tab"
-        title="Open a file (Ctrl+O)"
+        title="Open a file ({formatShortcut('Ctrl+O')})"
         onclick={() => void openViaDialog()}
       >
         <span aria-hidden="true">+</span>
@@ -440,7 +441,7 @@
         <button
           class="side-row side-new"
           aria-label="Open a file in a new tab"
-          title="Open a file (Ctrl+O)"
+          title="Open a file ({formatShortcut('Ctrl+O')})"
           onclick={() => void openViaDialog()}
         >
           <span class="tab-initial" aria-hidden="true">+</span>
@@ -526,6 +527,12 @@
     gap: 2px;
     padding: 0 4px;
     box-sizing: border-box;
+  }
+  /* On Linux the wordmark's font is whatever the desktop has, so how far
+     it unfolds is measured (GlassMenu.svelte), and the strip starts that
+     far along plus about the gap it has on Windows, if that is past 174px. */
+  :global(body.platform-linux) .tabbar {
+    left: max(174px, calc(var(--wordmark-unfolded-right, 0px) + 10px));
   }
 
   .tab-strip {
@@ -690,7 +697,7 @@
      open, below the hamburger menu (z:130). */
   .tab-sidebar {
     position: fixed;
-    top: 60px;
+    top: calc(60px + var(--chrome-inset-top));
     left: 0;
     bottom: 0;
     width: 52px;

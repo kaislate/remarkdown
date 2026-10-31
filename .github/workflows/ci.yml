@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch or PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Tests and builds only read the code, so the job token can do no more.
+permissions:
+  contents: read
+
+env:
+  # Pull requests have no signing key, and createUpdaterArtifacts: true makes
+  # a build fail without one. CI builds only prove the app bundles.
+  NO_UPDATER_ARTIFACTS: '{"bundle":{"createUpdaterArtifacts":false}}'
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    defaults:
+      run:
+        # bash on every runner, so the quoting below means the same thing everywhere.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The universal Mac build needs both architectures.
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            rpm2cpio cpio
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run check
+
+      # tauri::generate_context!() needs the built frontend (../dist, which is
+      # gitignored) to exist, even just to compile the tests.
+      - run: npm run build
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build the Linux bundles
+        if: runner.os == 'Linux'
+        run: npx tauri build --bundles appimage,rpm --config "$NO_UPDATER_ARTIFACTS"
+
+      # The only gate on the custom .desktop template and the mime_type
+      # variable: neither can be checked on a Windows machine.
+      - name: Check the rpm's desktop entry
+        if: runner.os == 'Linux'
+        run: |
+          rpm=$(ls src-tauri/target/release/bundle/rpm/*.rpm | head -n 1)
+          echo "Inspecting $rpm"
+          root=$(mktemp -d)
+          # Ubuntu's rpm2cpio (rpm 4.17) exits 1 after writing the whole
+          # payload: it checks the bytes against the package's archive-size
+          # tag, which the rpm crate Tauri builds with doesn't write. Its exit
+          # status says nothing here; cpio reading the archive through to its
+          # trailer is the check that the payload is whole.
+          rpm2cpio "$rpm" > "$root/payload.cpio" || echo "rpm2cpio exited $?"
+          test -s "$root/payload.cpio" || { echo "::error::rpm2cpio wrote no payload"; exit 1; }
+          echo "payload: $(stat -c %s "$root/payload.cpio") bytes"
+          (cd "$root" && cpio -idm --quiet < payload.cpio)
+          mapfile -t entries < <(find "$root/usr/share/applications" -name '*.desktop' 2>/dev/null)
+          if [ "${#entries[@]}" -ne 1 ]; then
+            echo "::error::expected one .desktop file under usr/share/applications, found ${#entries[@]}"
+            (cd "$root" && find . -path ./payload.cpio -prune -o -print)
+            exit 1
+          fi
+          desktop="${entries[0]}"
+          echo "${desktop#"$root"}:"
+          cat "$desktop"
+          grep -qxF 'Exec=remarkdown %F' "$desktop" || { echo "::error::desktop entry lacks Exec=remarkdown %F"; exit 1; }
+          grep -qxF 'MimeType=text/markdown;' "$desktop" || { echo "::error::desktop entry lacks MimeType=text/markdown;"; exit 1; }
+
+      - name: Build the universal Mac app
+        if: runner.os == 'macOS'
+        run: npx tauri build --target universal-apple-darwin --bundles app --config "$NO_UPDATER_ARTIFACTS"
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium webkit
+
+      - run: npm run test:e2e
+
+      # What a failed test saw: screenshots, error context, retry traces.
+      - name: Upload the Playwright results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 14

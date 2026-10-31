@@ -16,6 +16,7 @@ import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
 import { askAboutConflict, savesSettled } from '../lib/edit-save';
 import { activeModal, closeModal } from './modals';
+import { platform } from '../lib/platform';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
 const beforeSwitchHooks = new Set<BeforeSwitchHook>();
@@ -40,9 +41,16 @@ export async function runBeforeSwitch(): Promise<void> {
   }
 }
 
-// Windows paths: the same file can arrive as C:\Docs\A.md or c:/docs/a.md.
+// Whether two spellings are the same file depends on the file system.
+// Windows: C:\Docs\A.md and c:/docs/a.md are one file. A Mac's usual volume
+// ignores case but not slashes. Linux file names are case-sensitive, so
+// Notes.md and notes.md can be two different files.
 function normalisePath(p: string): string {
-  return p.replace(/\//g, '\\').toLowerCase();
+  switch (platform()) {
+    case 'windows': return p.replace(/\//g, '\\').toLowerCase();
+    case 'macos': return p.toLowerCase();
+    default: return p;
+  }
 }
 
 export function samePath(a: string, b: string): boolean {

@@ -132,7 +132,7 @@
      rest, in the page's own ink. */
   .reader-back {
     position: fixed;
-    top: 19px;
+    top: calc(19px + var(--chrome-inset-top));
     left: 58px;
     width: 28px;
     height: 28px;

@@ -14,8 +14,7 @@
 </div>
 
 ![Status: 0.8.0](https://img.shields.io/badge/status-0.8.0-2ea44f)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
-![Testers wanted: Linux & macOS](https://img.shields.io/badge/testers%20wanted-Linux%20%26%20macOS-orange)
+![Platforms: Windows, macOS, Linux](https://img.shields.io/badge/platforms-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-0078D4)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)
 ![Built with Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![License: TBD](https://img.shields.io/badge/license-TBD-lightgrey)
@@ -46,30 +45,35 @@
 
 ---
 
-## 🐧🍎 Linux & macOS: testers wanted
-
-The whole stack is cross-platform by construction:
-- the Tauri 2 shell;
-- a Rust backend with no Windows-only code paths (the atomic-write code already handles Unix fsync);
-- file watching through the cross-platform `notify` crate;
-- platform icons already bundled.
-
-A compatibility review found **no blockers** for Linux or macOS builds.
-
-What we can't do from here is *test* them on real machines: frameless windows across window managers, the CSS Custom Highlight API on WebKitGTK, drag-and-drop from different file managers, font fallbacks.
-
-**If you run Linux or macOS and want remarkdown on your platform, [open an issue](../../issues)** with your distro / OS version and we'll get you a build to try.
-
----
-
 ## ⬇️ Download
 
-Windows installers are published with each release. Get the latest from the **[Releases page](../../releases/latest)**:
+Installers are published with each release. Get the latest from the **[Releases page](../../releases/latest)**. Mac and Linux builds are new, so bug reports are welcome: [open an issue](../../issues) with your OS or distro and version.
+
+### 🪟 Windows
 
 - `remarkdown_<version>_x64-setup.exe`: NSIS installer (recommended)
 - `remarkdown_<version>_x64_en-US.msi`: MSI installer for `msiexec`, Group Policy and silent installs
 
 Already installed? **Menu → Check for updates…** fetches the next release without leaving the app. The installer registers remarkdown for `.md` and `.markdown`, and **Settings → Tabs & files** can make it your default app for them.
+
+### 🍎 macOS (12 or later)
+
+- `remarkdown_<version>_universal.dmg`: one download for Apple silicon and Intel Macs
+
+Open the `.dmg` and drag remarkdown to **Applications**. The first time you open it, macOS will block it, because the app isn't signed with an Apple Developer ID yet (signing is planned). To allow it:
+
+1. Try to open remarkdown once, and dismiss the warning.
+2. Open **System Settings → Privacy & Security** and scroll down.
+3. Click **Open Anyway** next to remarkdown, then confirm.
+
+You only do this once. On macOS 15 and later, right-click → Open no longer skips the warning, so use the steps above. **Menu → Check for updates…** updates the installed app in place; the `.dmg` is only for the first install.
+
+### 🐧 Linux
+
+- `remarkdown_<version>_amd64.AppImage`: runs on most distros. Make it executable (`chmod +x remarkdown_*.AppImage`) and run it. On first run it adds itself to your app launcher (`~/.local/share/applications/remarkdown-appimage.desktop`). It never makes itself your default app.
+- `remarkdown-<version>-1.x86_64.rpm`: for Fedora and other rpm distros. Install with `sudo dnf install ./remarkdown-*.rpm`. It registers remarkdown for `text/markdown` files.
+
+The AppImage needs FUSE 2: on Fedora `sudo dnf install fuse-libs`, on Arch `sudo pacman -S fuse2`. Both the AppImage and the rpm update in place from **Menu → Check for updates…**. On tiling desktops such as Hyprland, remarkdown hides its own window buttons; on GNOME they show.
 
 ---
 
@@ -206,6 +210,10 @@ A colour strip appears above the tools while Highlight or Draw is active. Right-
 | `Ctrl+B` / `Ctrl+I` | Bold / italic |
 | `Ctrl+,` / `Ctrl+.` | Subscript / superscript |
 
+On a Mac, `⌘` takes the place of `Ctrl` in these shortcuts, except
+`Ctrl+Tab` / `Ctrl+Shift+Tab`, which stay `Ctrl` because `⌘Tab` switches apps.
+Redo also takes `⇧⌘Z`, the usual Mac spelling.
+
 ---
 
 ## 💡 How the sidecar works
@@ -268,7 +276,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-This produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. A release the in-app updater can install needs the Ed25519 signing key; see [RELEASING.md](RELEASING.md).
+On Windows this produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. On a Mac or Linux the same command builds that platform's bundles. A release the in-app updater can install needs the Ed25519 signing key; see [RELEASING.md](RELEASING.md).
 
 ---
 
@@ -297,7 +305,6 @@ This produces signed NSIS (`bundle/nsis/`) and MSI (`bundle/msi/`) installers. A
 See [CHANGELOG.md](CHANGELOG.md) for the details of every release.
 
 ### 🔮 Next
-- **Linux and macOS releases**: no code blockers; waiting for testers ([see above](#-linux--macos-testers-wanted)).
 - **Pre-release channel**: let opt-in users actually receive beta builds (today only the changelog filter exists).
 - **Pictures**: drag and drop or paste images straight into the editor.
 - **Tighter file access**: limit the asset protocol to each document's own folder.

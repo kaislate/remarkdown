@@ -12,6 +12,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import SourcePopover, { type SourcePopoverState } from '../../components/SourcePopover.svelte';
 import { frontMatterFields } from '../markdown-it-frontmatter';
+import { formatShortcut } from '../shortcuts';
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -145,7 +146,7 @@ abstract class SourceNodeView implements NodeView {
 export class MathInlineView extends SourceNodeView {
   protected title = 'Formula';
   protected placeholder = 'e.g. a^2 + b^2 = c^2';
-  protected hint = 'TeX · Ctrl+Enter to save';
+  protected hint = `TeX · ${formatShortcut('Ctrl+Enter')} to save`;
   constructor(node: PMNode, view: EditorView, getPos: () => number | undefined) {
     super(node, view, getPos, 'span', 'math-inline');
   }
@@ -167,7 +168,7 @@ export class MathInlineView extends SourceNodeView {
 export class MathBlockView extends SourceNodeView {
   protected title = 'Formula';
   protected placeholder = 'e.g. \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}';
-  protected hint = 'TeX · Ctrl+Enter to save';
+  protected hint = `TeX · ${formatShortcut('Ctrl+Enter')} to save`;
   constructor(node: PMNode, view: EditorView, getPos: () => number | undefined) {
     super(node, view, getPos, 'div', 'math-block');
   }

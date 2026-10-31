@@ -3,6 +3,7 @@
 // pictures and formulas — and formulas and document details surviving a
 // save untouched.
 import { test, expect, type Page } from '@playwright/test';
+import { editorMod } from './support/webkit';
 
 const PATH = '/e2e/docs/structure.md';
 const MD = `---\ntitle: Structure\n---\n\n# Start\n\nA plain line.\n\nEuler: $e^{i\\pi} + 1 = 0$.\n`;
@@ -65,13 +66,13 @@ test('Text style shows where the cursor is and turns a line into a heading, a li
   expect(saved).toContain('$e^{i\\pi} + 1 = 0$');
 });
 
-test('typing # at the start of a line makes a heading; Ctrl+Alt+0 makes it normal text again', async ({ page }) => {
+test('typing # at the start of a line makes a heading; Mod+Alt+0 makes it normal text again', async ({ page }) => {
   await page.locator('.edit-mode-toggle').click();
   await clickInto(page, 'A plain line');
   await page.keyboard.press('Enter');
   await page.keyboard.type('# New part');
   await expect(page.locator('.editor-surface h1', { hasText: 'New part' })).toBeVisible();
-  await page.keyboard.press('Control+Alt+0');
+  await page.keyboard.press(`${await editorMod(page)}+Alt+0`);
   await expect(page.locator('.editor-surface p', { hasText: 'New part' })).toBeVisible();
 });
 

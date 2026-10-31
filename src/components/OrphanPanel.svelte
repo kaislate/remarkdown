@@ -74,6 +74,7 @@
     display: grid;
     place-items: center;
     z-index: 300;
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
   }
   .orphan-panel {

@@ -4,6 +4,38 @@ What changed in each version of remarkdown, newest first. The same notes appear 
 
 ---
 
+## Unreleased — 🍎🐧 remarkdown on Mac and Linux
+
+**Nothing changes on Windows.** remarkdown now also comes for Mac and Linux, and the same reader, annotator and editor work on all three.
+
+### ⬇️ What you download
+
+- **Mac:** a `.dmg` for Apple silicon and Intel (macOS 12 or later). It isn't signed with an Apple Developer ID yet, so the first time you open it macOS blocks it. Try to open it once, then go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** and confirm. You only do this once.
+- **Linux:** an **AppImage** for most distros, and an **rpm** for Fedora (`sudo dnf install ./remarkdown-*.rpm`). The AppImage adds itself to your app launcher the first time it runs, and never makes itself your default app.
+- Updates install in place from **Menu → Check for updates…**, on the Mac and on Linux (AppImage and rpm).
+
+### 🍎 On a Mac
+
+- The window has the native red, yellow and green buttons.
+- Shortcuts show ⌘ where they show Ctrl elsewhere.
+- Smooth scrolling is off by default, because a Mac already scrolls smoothly. You can turn it on in Settings.
+- **⌘Q** saves any pending edit before it quits.
+
+### 🐧 On Linux
+
+- On tiling desktops such as Hyprland, remarkdown hides its own window buttons. On GNOME they show.
+- With smooth scrolling on, one wheel notch glides an eighth of a page.
+
+### 📂 Show in folder
+
+- **Show in folder** now opens Finder on a Mac and your file manager on Linux, as it opens Explorer on Windows.
+
+### 🔧 Fixes
+
+- Running the tests in WebKit (the engine Mac and Linux use) found a few problems. The one you'd notice: **Paste** from the editor's right-click menu now goes where the caret was.
+
+---
+
 ## 0.8.0 — 📖 Reader mode, and every diagram editable
 
 *Released 2026-10-20 · [v0.8.0](https://github.com/kaislate/remarkdown/releases/tag/v0.8.0)*

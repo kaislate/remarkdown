@@ -12,6 +12,7 @@
 //
 // Menus that belong to a particular thing — a highlight, a drawing, a tab,
 // a recent file — still come first; this is everything else.
+import { formatShortcut, redoShortcut } from './shortcuts';
 import type { ContextMenuEntry } from '../components/ContextMenu.svelte';
 
 export type ClickKind = 'field' | 'editor' | 'link' | 'page' | 'chrome';
@@ -67,16 +68,27 @@ export function classify(target: Element | null, opts: { articleSelector?: strin
   return { kind: 'chrome', el: null };
 }
 
+// The selection to put back before the menu acts, copied as it was when
+// the menu opened: selected text within `within`, and in the editor the
+// bare caret as well. Opening the menu moves focus to it, and WebKit then
+// drops the editor's caret, so Paste would land at the top of the
+// document.
+export function selectionToKeep(kind: ClickKind, sel: Selection | null, within: Node | null | undefined): Range | null {
+  if (!sel || sel.rangeCount === 0 || !within?.contains(sel.anchorNode)) return null;
+  if (sel.isCollapsed && kind !== 'editor') return null;
+  return sel.getRangeAt(0).cloneRange();
+}
+
 const sep = 'separator' as const;
 
 // The menu for a click, or null for none.
 export function menuFor(ctx: ClickContext, a: MenuActions): ContextMenuEntry[] | null {
   const textEditing = (editable: boolean): ContextMenuEntry[] => [
-    { label: 'Cut', hint: 'Ctrl+X', disabled: !editable || !ctx.hasSelection, onSelect: a.cut },
-    { label: 'Copy', hint: 'Ctrl+C', disabled: !ctx.hasSelection, onSelect: a.copy },
-    { label: 'Paste', hint: 'Ctrl+V', disabled: !editable, onSelect: a.paste },
+    { label: 'Cut', hint: formatShortcut('Ctrl+X'), disabled: !editable || !ctx.hasSelection, onSelect: a.cut },
+    { label: 'Copy', hint: formatShortcut('Ctrl+C'), disabled: !ctx.hasSelection, onSelect: a.copy },
+    { label: 'Paste', hint: formatShortcut('Ctrl+V'), disabled: !editable, onSelect: a.paste },
     sep,
-    { label: 'Select all', hint: 'Ctrl+A', onSelect: a.selectAll },
+    { label: 'Select all', hint: formatShortcut('Ctrl+A'), onSelect: a.selectAll },
   ];
 
   if (ctx.kind === 'field') return textEditing(!ctx.readOnly);
@@ -84,13 +96,13 @@ export function menuFor(ctx: ClickContext, a: MenuActions): ContextMenuEntry[] |
 
   if (ctx.readerMode) {
     const items: ContextMenuEntry[] = [];
-    if (ctx.hasSelection) items.push({ label: 'Copy', hint: 'Ctrl+C', onSelect: a.copy }, sep);
+    if (ctx.hasSelection) items.push({ label: 'Copy', hint: formatShortcut('Ctrl+C'), onSelect: a.copy }, sep);
     items.push({ label: 'Leave reader mode', hint: 'Esc', onSelect: a.leaveReader });
     return items;
   }
 
   if (ctx.kind === 'editor') {
-    return [...textEditing(true), sep, { label: 'Done editing', hint: 'Ctrl+E', onSelect: a.toggleEdit }];
+    return [...textEditing(true), sep, { label: 'Done editing', hint: formatShortcut('Ctrl+E'), onSelect: a.toggleEdit }];
   }
 
   if (ctx.kind === 'link' && ctx.href) {
@@ -98,33 +110,33 @@ export function menuFor(ctx: ClickContext, a: MenuActions): ContextMenuEntry[] |
     const items: ContextMenuEntry[] = href.startsWith('#')
       ? [{ label: 'Go to section', onSelect: () => a.goToSection(href) }]
       : [{ label: 'Copy link address', onSelect: () => a.copyLink(href) }];
-    if (ctx.hasSelection) items.push(sep, { label: 'Copy', hint: 'Ctrl+C', onSelect: a.copy });
+    if (ctx.hasSelection) items.push(sep, { label: 'Copy', hint: formatShortcut('Ctrl+C'), onSelect: a.copy });
     return items;
   }
 
   // The page.
   if (ctx.hasSelection) {
     return [
-      { label: 'Copy', hint: 'Ctrl+C', onSelect: a.copy },
+      { label: 'Copy', hint: formatShortcut('Ctrl+C'), onSelect: a.copy },
       sep,
       { label: 'Highlight', onSelect: a.highlight },
       { label: 'Add a re.mark', onSelect: a.addNote },
       sep,
-      { label: 'Select all', hint: 'Ctrl+A', onSelect: a.selectAll },
+      { label: 'Select all', hint: formatShortcut('Ctrl+A'), onSelect: a.selectAll },
     ];
   }
   const items: ContextMenuEntry[] = [];
-  if (ctx.canUndo) items.push({ label: 'Undo', hint: 'Ctrl+Z', onSelect: a.undo });
-  if (ctx.canRedo) items.push({ label: 'Redo', hint: 'Ctrl+Y', onSelect: a.redo });
+  if (ctx.canUndo) items.push({ label: 'Undo', hint: formatShortcut('Ctrl+Z'), onSelect: a.undo });
+  if (ctx.canRedo) items.push({ label: 'Redo', hint: redoShortcut(), onSelect: a.redo });
   if (items.length) items.push(sep);
   items.push(
-    { label: 'Edit', hint: 'Ctrl+E', onSelect: a.toggleEdit },
+    { label: 'Edit', hint: formatShortcut('Ctrl+E'), onSelect: a.toggleEdit },
     { label: 'Reader mode', onSelect: a.enterReader },
   );
   if (ctx.path) {
     const path = ctx.path;
     items.push(sep, { label: 'Show in folder', onSelect: () => a.showInFolder(path) }, { label: 'Copy file path', onSelect: () => a.copyPath(path) });
   }
-  items.push(sep, { label: 'Select all', hint: 'Ctrl+A', onSelect: a.selectAll });
+  items.push(sep, { label: 'Select all', hint: formatShortcut('Ctrl+A'), onSelect: a.selectAll });
   return items;
 }

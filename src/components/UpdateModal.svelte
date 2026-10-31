@@ -251,6 +251,7 @@
     display: grid;
     place-items: center;
     z-index: 320;
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
   }
   .update-panel {

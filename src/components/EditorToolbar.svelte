@@ -10,6 +10,7 @@
   import MathOperations from 'phosphor-svelte/lib/MathOperations';
   import Minus from 'phosphor-svelte/lib/Minus';
   import { BLOCK_STYLES, type BlockStyle } from '../lib/editor/block-commands';
+  import { formatShortcut } from '../lib/shortcuts';
 
   import MermaidDiagramThumb from './MermaidDiagramThumb.svelte';
   import type { StarterKind } from '../lib/editor/mermaid-commands';
@@ -93,7 +94,7 @@
           }}
         >
           <span class="style-name">{s.label}</span>
-          <span class="style-keys">{s.keys}</span>
+          <span class="style-keys">{formatShortcut(s.keys)}</span>
         </button>
       {/each}
       <div class="menu-sep" role="separator"></div>

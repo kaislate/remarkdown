@@ -3,6 +3,7 @@
 // changes only the intended lines and the diagram still renders.
 // Helpers copied from mermaid-audit.spec.ts.
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { clickMiddle } from './support/webkit';
 
 const PIE = ['pie', '    %% keep me', '    title Pets adopted', '    "Dogs" : 386', '    "Cats" : 85', '    "Rats" : 15'].join('\n');
 const GANTT = [
@@ -137,13 +138,13 @@ test.describe('pie / gantt / timeline — visual editing', () => {
     await expectSaved(page, { pie: p, gantt: GANTT, timeline: TIMELINE });
     await expectDrawn(page, 'pie');
 
-    await pie.locator('g.legend').nth(2).locator('text').click({ force: true });
+    await clickMiddle(page, pie.locator('g.legend').nth(2).locator('text'));
     await expect(fieldInput(page, 'label')).toHaveValue('Rats');
     await fill(page, 'value', '30');
     p = p.replace('"Rats" : 15', '"Rats" : 30');
     await expectSaved(page, { pie: p, gantt: GANTT, timeline: TIMELINE });
 
-    await pie.locator('text.pieTitleText').click({ force: true });
+    await clickMiddle(page, pie.locator('text.pieTitleText'));
     await fill(page, 'title', 'Adoptions');
     p = p.replace('title Pets adopted', 'title Adoptions');
     await expectSaved(page, { pie: p, gantt: GANTT, timeline: TIMELINE });
@@ -166,13 +167,13 @@ test.describe('pie / gantt / timeline — visual editing', () => {
     await expectDrawn(page, 'gantt');
 
     const svgId2 = await gantt.locator('.mermaid-rendered > svg').getAttribute('id');
-    await gantt.locator(`[id="${svgId2}-task1-text"]`).click({ force: true });
+    await clickMiddle(page, gantt.locator(`[id="${svgId2}-task1-text"]`));
     await expect(fieldInput(page, 'name')).toHaveValue('Wireframes');
     await fill(page, 'name', 'Mock-ups');
     g = g.replace('Wireframes    :', 'Mock-ups    :');
     await expectSaved(page, { pie: PIE, gantt: g, timeline: TIMELINE });
 
-    await gantt.locator('text.sectionTitle', { hasText: 'Build' }).click({ force: true });
+    await clickMiddle(page, gantt.locator('text.sectionTitle', { hasText: 'Build' }));
     await fill(page, 'name', 'Delivery');
     g = g.replace('section Build', 'section Delivery');
     await expectSaved(page, { pie: PIE, gantt: g, timeline: TIMELINE });

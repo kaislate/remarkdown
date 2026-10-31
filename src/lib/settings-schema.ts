@@ -3,6 +3,7 @@ import { ZOOM_LEVELS } from '../stores/ui';
 import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
 import { READER_THEMES } from './reader-themes';
 import { CURSOR_INK_STYLES } from './cursor-ink';
+import { platform, type OS } from './platform';
 
 // Schema version is incremented when an incompatible change is made to the
 // shape so a future loader can branch on it. Today the only version is 1.
@@ -156,21 +157,30 @@ export const DEFAULT_SETTINGS: Settings = {
   onboardingCompleted: false,
 };
 
+// What a fresh install gets. Same as DEFAULT_SETTINGS (the Windows/Linux base)
+// except on a Mac, where the mouse and trackpad already glide, so the app's
+// own Edge-style glide on top would feel slushy and starts off. A saved choice
+// still wins: parseSettings merges the file over these.
+export function defaultSettings(os: OS = platform()): Settings {
+  return os === 'macos' ? { ...DEFAULT_SETTINGS, smoothScrolling: false } : DEFAULT_SETTINGS;
+}
+
 // Parse a JSON string from disk, falling back to defaults for any field that's
 // missing, unknown, or fails validation. We deep-merge over defaults so older
 // versions of settings.json still load — they simply pick up new defaults for
 // any newly-introduced fields.
-export function parseSettings(raw: string | null): Settings {
-  if (raw == null) return DEFAULT_SETTINGS;
+export function parseSettings(raw: string | null, os: OS = platform()): Settings {
+  const defaults = defaultSettings(os);
+  if (raw == null) return defaults;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return DEFAULT_SETTINGS;
+    return defaults;
   }
-  if (parsed == null || typeof parsed !== 'object') return DEFAULT_SETTINGS;
+  if (parsed == null || typeof parsed !== 'object') return defaults;
 
-  const merged = { ...DEFAULT_SETTINGS, ...(parsed as Record<string, unknown>) };
+  const merged = { ...defaults, ...(parsed as Record<string, unknown>) };
   // Force the schema version to the current one — this is what makes
   // forward-compatible loads possible. If the stored version was older we
   // treat any missing fields as defaults; if it was newer we still attempt to
@@ -179,5 +189,5 @@ export function parseSettings(raw: string | null): Settings {
 
   const result = SettingsSchema.safeParse(merged);
   if (result.success) return result.data;
-  return DEFAULT_SETTINGS;
+  return defaults;
 }

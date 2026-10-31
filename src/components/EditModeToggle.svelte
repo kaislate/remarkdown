@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
   import { editMode, toggleEditMode } from '../stores/edit-mode';
 </script>
@@ -8,7 +9,7 @@
   class:active={$editMode}
   aria-label={$editMode ? 'Exit edit mode' : 'Enter edit mode'}
   aria-pressed={$editMode}
-  title={$editMode ? 'Exit edit mode (Ctrl+E)' : 'Edit (Ctrl+E)'}
+  title={$editMode ? `Exit edit mode (${formatShortcut('Ctrl+E')})` : `Edit (${formatShortcut('Ctrl+E')})`}
   onclick={toggleEditMode}
 >
   <PencilSimple size={20} weight={$editMode ? 'fill' : 'regular'} />
@@ -20,7 +21,7 @@
      increments (38 button height + 8 gap). */
   .edit-mode-toggle {
     position: fixed;
-    top: 60px;
+    top: calc(60px + var(--chrome-inset-top));
     left: 14px;
     width: 38px;
     height: 38px;

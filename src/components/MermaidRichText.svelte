@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import TextB from 'phosphor-svelte/lib/TextB';
   import TextItalic from 'phosphor-svelte/lib/TextItalic';
   import {
@@ -131,11 +132,11 @@
     oninput={refreshState}
     onpaste={onPaste}
   ></div>
-  <button type="button" class="mermaid-rich-btn" class:active={bold} title="Bold (Ctrl+B)" aria-label="Bold"
+  <button type="button" class="mermaid-rich-btn" class:active={bold} title="Bold ({formatShortcut('Ctrl+B')})" aria-label="Bold"
     onmousedown={(e) => e.preventDefault()} onclick={() => format('bold')}>
     <TextB size={13} weight="bold" />
   </button>
-  <button type="button" class="mermaid-rich-btn" class:active={italic} title="Italic (Ctrl+I)" aria-label="Italic"
+  <button type="button" class="mermaid-rich-btn" class:active={italic} title="Italic ({formatShortcut('Ctrl+I')})" aria-label="Italic"
     onmousedown={(e) => e.preventDefault()} onclick={() => format('italic')}>
     <TextItalic size={13} />
   </button>

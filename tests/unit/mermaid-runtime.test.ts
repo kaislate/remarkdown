@@ -229,7 +229,7 @@ describe('buildDiagramError', () => {
   it('optionally adds the undo hint', () => {
     const el = buildDiagramError('boom', { undoHint: true });
     expect(el.querySelector('.mermaid-error-hint')?.textContent).toMatch(
-      /Press (Ctrl|⌘)\+Z to undo the last change/,
+      /Press (Ctrl\+|⌘)Z to undo the last change/
     );
   });
 });

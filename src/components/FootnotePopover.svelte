@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { formatShortcut } from '../lib/shortcuts';
   import { tick } from 'svelte';
   import type { Readable } from 'svelte/store';
   import Trash from 'phosphor-svelte/lib/Trash';
@@ -147,9 +148,9 @@
       <div class="body-head">
         <span id="fn-body-label">Body</span>
         <span class="marks">
-          <button type="button" class="mark-btn" title="Bold (Ctrl+B)" aria-label="Bold"
+          <button type="button" class="mark-btn" title="Bold ({formatShortcut('Ctrl+B')})" aria-label="Bold"
             onmousedown={(e) => e.preventDefault()} onclick={() => wrap('**')}><TextB size={13} weight="bold" /></button>
-          <button type="button" class="mark-btn" title="Italic (Ctrl+I)" aria-label="Italic"
+          <button type="button" class="mark-btn" title="Italic ({formatShortcut('Ctrl+I')})" aria-label="Italic"
             onmousedown={(e) => e.preventDefault()} onclick={() => wrap('*')}><TextItalic size={13} /></button>
         </span>
       </div>

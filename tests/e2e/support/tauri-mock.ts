@@ -30,6 +30,8 @@ function getDoc(path: string): Doc | null {
 
 export async function invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
+    case 'desktop_env':
+      return (window as any).__E2E_PLATFORM__ ?? { os: 'windows', tiling: false };
     case 'open_file_dialog': {
       const path = (window as any).__E2E_DIALOG_PATH__ ?? null;
       return path;

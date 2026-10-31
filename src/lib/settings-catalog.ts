@@ -6,6 +6,8 @@
 import type { Settings } from './settings-schema';
 import { ZOOM_LEVELS } from '../stores/ui';
 import { HIGHLIGHT_COLORS, DRAW_COLORS } from '../stores/tool';
+import { formatShortcut } from './shortcuts';
+import { isMac } from './platform';
 import { READER_THEMES, READER_THEME_LABELS } from './reader-themes';
 
 export type SectionId = 'appearance' | 'reading' | 'files' | 'annotations' | 'drawing' | 'updates' | 'about';
@@ -78,7 +80,7 @@ export const OPTIONS: OptionDef[] = [
   // Reading
   {
     id: 'setting-zoom', section: 'reading', title: 'Text size', depiction: 'zoom',
-    description: 'How large documents open. Ctrl + and Ctrl − change it while reading.',
+    get description() { return `How large documents open. ${isMac() ? '⌘+ and ⌘−' : 'Ctrl + and Ctrl −'} change it while reading.`; },
     control: { type: 'select', key: 'defaultZoom', options: ZOOM_LEVELS.map((z) => ({ value: z, label: pct(z) })) },
     keywords: 'zoom font size',
   },
@@ -151,7 +153,7 @@ export const OPTIONS: OptionDef[] = [
   },
   {
     id: 'setting-open-edit', section: 'reading', title: 'Always open documents ready to edit', depiction: 'edit-mode',
-    description: 'Every file opens in edit mode, as if you had pressed Ctrl+E.',
+    get description() { return `Every file opens in edit mode, as if you had pressed ${formatShortcut('Ctrl+E')}.`; },
     control: { type: 'switch', key: 'openInEditMode' },
     keywords: 'writer edit mode editor',
   },
@@ -181,7 +183,7 @@ export const OPTIONS: OptionDef[] = [
   },
   {
     id: 'setting-show-tabs', section: 'files', title: 'Show tabs', depiction: 'show-tabs',
-    description: 'Hidden, your documents stay open: Ctrl+Tab still switches between them. Also in the menu, or Ctrl+Shift+B.',
+    get description() { return `Hidden, your documents stay open: Ctrl+Tab still switches between them. Also in the menu, or ${formatShortcut('Ctrl+Shift+B')}.`; },
     control: { type: 'switch', key: 'showTabs' },
     visible: (s) => s.openMode === 'tabs',
     keywords: 'tabs hide show tab bar shortcut',

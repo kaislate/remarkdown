@@ -25,7 +25,7 @@ body.has-tabs.tabs-left.tab-sidebar-pinned:not(.reader-mode) {
    below the menu button's row (it reaches 52px, and the toolbar starts
    left of where the wordmark ends) instead of under either. */
 body.has-tabs:not(.tabs-left) .editor-toolbar {
-  top: 54px;
+  top: calc(54px + var(--chrome-inset-top));
 }
 
 /* The floating buttons down the left edge (and the watermark) move over

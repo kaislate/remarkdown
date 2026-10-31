@@ -7,6 +7,7 @@
 // the node view's commit (the one sanctioned way to change a diagram).
 
 import { renderMermaid, applyDiagramSizing, type MermaidRenderContext } from '../../mermaid-runtime';
+import { formatShortcut } from '../../shortcuts';
 
 export interface TextPanelOptions {
   // Where the panel goes (a UI host from the node view; PM ignores it).
@@ -55,7 +56,7 @@ export function openTextPanel(o: TextPanelOptions): TextPanel {
   actions.className = 'mermaid-text-actions';
   const hint = document.createElement('span');
   hint.className = 'mermaid-text-hint';
-  hint.textContent = 'Ctrl+Enter to save · Esc to cancel';
+  hint.textContent = `${formatShortcut('Ctrl+Enter')} to save · Esc to cancel`;
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'mermaid-text-cancel';

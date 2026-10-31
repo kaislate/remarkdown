@@ -38,6 +38,8 @@ const PAGE_FRACTION = 0.875;
 // Chromium's own wheel delta for one notch at Windows' default 3 lines.
 const PX_PER_NOTCH = 100;
 const PX_PER_LINE = PX_PER_NOTCH / 3;
+// wheelDeltaY for one notch, in every engine.
+const WHEEL_DELTA = 120;
 
 // `scale` stretches the glide: 1 is Edge's own timing.
 // Settings → Glide: how much longer than Edge's own timing a glide lasts.
@@ -165,18 +167,28 @@ function stepPx(height: number): number {
 }
 
 // Edge's distance for a wheel event on a scroller `height` tall.
-export function wheelPixels(e: WheelLike, height: number): number {
+// `byNotch` counts notches from wheelDeltaY (±120 each) instead of
+// measuring deltaY: WebKit (macOS, Linux) reports a notch there like
+// Chromium does, but its deltaY is WebKit's own 40px line step rather
+// than Chromium's 100px, so measured by deltaY a notch went 40% as far.
+export function wheelPixels(e: WheelLike, height: number, byNotch = false): number {
   if (e.deltaMode === 2) return Math.sign(e.deltaY) * Math.abs(e.deltaY) * PAGE_FRACTION * height;
+  if (byNotch && e.deltaMode === 0 && typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) {
+    return (-e.wheelDeltaY / WHEEL_DELTA) * stepPx(height);
+  }
   const native = e.deltaMode === 1 ? e.deltaY * PX_PER_LINE : e.deltaY;
   return (native / PX_PER_NOTCH) * stepPx(height);
 }
 
 // A mouse wheel's notch (animated) rather than a touchpad's or a
 // free-spinning wheel's fine-grained movement (already smooth). Windows
-// reports notches as multiples of the classic wheel delta.
-export function isWheelNotch(e: WheelLike): boolean {
+// reports notches as multiples of the classic wheel delta. Counted by
+// notch (WebKit, see wheelPixels) only whole ticks of 120 are: there ±40
+// or ±80 is a part of a tick, from a high-resolution wheel or a touchpad,
+// and counting it as a whole notch would jump 2.5 times as far.
+export function isWheelNotch(e: WheelLike, byNotch = false): boolean {
   if (e.deltaMode !== 0) return true;
-  if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) return e.wheelDeltaY % 40 === 0;
+  if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) return e.wheelDeltaY % (byNotch ? WHEEL_DELTA : 40) === 0;
   return Math.abs(e.deltaY) >= 33;
 }
 
@@ -185,6 +197,8 @@ export interface SmoothScrollOptions {
   enabled: () => boolean;
   // How much longer than Edge's own timing a glide lasts (1 = Edge).
   glide?: () => number;
+  // Count wheel notches from wheelDeltaY (WebKit; see wheelPixels).
+  wheelByNotch?: boolean;
   now?: () => number;
   raf?: (cb: (t: number) => void) => number;
   cancelRaf?: (id: number) => void;
@@ -265,9 +279,9 @@ export function installSmoothScroll(el: HTMLElement, opts: SmoothScrollOptions):
   function onWheel(e: WheelEvent): void {
     if (!opts.enabled() || e.defaultPrevented) return;
     if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || e.deltaY === 0) return;
-    if (!isWheelNotch(e as WheelEvent & WheelLike)) return;
+    if (!isWheelNotch(e as WheelEvent & WheelLike, opts.wheelByNotch)) return;
     if (innerScrollerTakes(e.target, Math.sign(e.deltaY))) return;
-    if (glideBy(wheelPixels(e, el.clientHeight))) e.preventDefault();
+    if (glideBy(wheelPixels(e, el.clientHeight, opts.wheelByNotch))) e.preventDefault();
   }
 
   function onKeydown(e: KeyboardEvent): void {

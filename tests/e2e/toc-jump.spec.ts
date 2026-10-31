@@ -19,24 +19,27 @@ async function open(page: Page, settings: Record<string, unknown> = {}) {
 }
 
 // Records scrollTop every frame for `ms`, and whether ink was on screen.
-function record(page: Page, ms: number, entry = '') {
-  return page.evaluate(({ ms, entry }) => new Promise<{ tops: number[]; inkFrames: number; markerReached: boolean }>((resolve) => {
+function record(page: Page, ms: number) {
+  return page.evaluate((ms) => new Promise<{ tops: number[]; inkFrames: number }>((resolve) => {
     const el = document.querySelector('.scroll') as HTMLElement;
     const tops: number[] = [];
     let inkFrames = 0;
-    let markerReached = false;
     const t0 = performance.now();
     const tick = () => {
       tops.push(el.scrollTop);
       if (document.querySelector('.ink-layer circle')) inkFrames++;
-      const m = document.querySelector('.toc-popover .marker') as HTMLElement | null;
-      const li = (Array.from(document.querySelectorAll('.toc-popover li')) as HTMLElement[]).find((l) => l.textContent?.trim() === entry);
-      if (m && li && Math.abs(m.offsetTop - li.offsetTop) <= 1) markerReached = true;
-      if (performance.now() - t0 < ms) requestAnimationFrame(tick); else resolve({ tops, inkFrames, markerReached });
+      if (performance.now() - t0 < ms) requestAnimationFrame(tick); else resolve({ tops, inkFrames });
     };
     requestAnimationFrame(tick);
-  }), { ms, entry });
+  }), ms);
 }
+
+// Whether the contents' marker is level with `entry`.
+const markerOn = (page: Page, entry: string) => page.evaluate((entry) => {
+  const m = document.querySelector('.toc-popover .marker') as HTMLElement | null;
+  const li = (Array.from(document.querySelectorAll('.toc-popover li')) as HTMLElement[]).find((l) => l.textContent?.trim() === entry);
+  return !!m && !!li && Math.abs(m.offsetTop - li.offsetTop) <= 1;
+}, entry);
 
 const headingTop = (page: Page, name: string) => page.evaluate((name) => {
   const h = Array.from(document.querySelectorAll('.viewer h2')).find((x) => x.textContent === name)!;
@@ -44,15 +47,29 @@ const headingTop = (page: Page, name: string) => page.evaluate((name) => {
 }, name);
 
 test('from the contents: the marker slides to the entry, the page glides there, and ink runs to the heading', async ({ page }) => {
+  // The glide, the ink and the list closing run on the page's clock, which
+  // is held here and stepped, so they are sampled every frame however fast
+  // the machine draws. The marker's slide is a CSS transition on the real
+  // clock; the list's closing is what it races, and a held clock keeps
+  // that race out of the test.
+  await page.clock.install();
   await open(page);
   await page.getByRole('button', { name: 'Open table of contents' }).click();
   const pop = page.getByRole('dialog', { name: 'Table of contents' });
   const entry = pop.getByRole('button', { name: 'Chapter 6' });
-  const rec = record(page, 2200, 'Chapter 6');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const rec = record(page, 2200);
   await entry.click();
-  const { tops, inkFrames, markerReached } = await rec;
-  // The marker slid all the way to the picked entry before the list closed.
-  expect(markerReached).toBe(true);
+  // The marker slides all the way to the picked entry…
+  await expect.poll(() => markerOn(page, 'Chapter 6')).toBe(true);
+  // …and the list stays open at least as long as that slide takes.
+  const slideMs = await page.locator('.toc-popover .marker').evaluate((m) =>
+    Math.max(...getComputedStyle(m).transitionDuration.split(',').map((d) => parseFloat(d) * (/ms\s*$/.test(d) ? 1 : 1000))));
+  expect(slideMs).toBeGreaterThan(0);
+  await page.clock.runFor(slideMs);
+  await expect(pop).toBeVisible();
+  await page.clock.runFor(2200);
+  const { tops, inkFrames } = await rec;
   // Glided: many distinct positions on the way, never back up.
   expect(new Set(tops.map((t) => Math.round(t))).size).toBeGreaterThan(8);
   for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeGreaterThanOrEqual(tops[i - 1] - 0.5);
@@ -61,6 +78,7 @@ test('from the contents: the marker slides to the entry, the page glides there, 
   expect(Math.abs((await headingTop(page, 'Chapter 6')) - 72)).toBeLessThanOrEqual(2);
   // The ink was on screen for a good part of it, and has gone again.
   expect(inkFrames).toBeGreaterThan(10);
+  await page.clock.resume();
   await expect(page.locator('.ink-layer')).toHaveCount(0, { timeout: 3000 });
   await expect(pop).toHaveCount(0);
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_SETTINGS, parseSettings, SettingsSchema } from '../../src/lib/settings-schema';
+import { DEFAULT_SETTINGS, defaultSettings, parseSettings, SettingsSchema } from '../../src/lib/settings-schema';
 
 describe('settings-schema', () => {
   it('returns defaults when raw is null', () => {
@@ -136,5 +136,30 @@ describe('onboarding settings', () => {
     const s = parseSettings(null);
     expect(s.onboardingCompleted).toBe(false);
     expect(s.openInEditMode).toBe(false);
+  });
+});
+
+describe('settings-schema: smooth scrolling default per OS', () => {
+  it('starts off on a Mac, where scrolling already glides', () => {
+    expect(parseSettings(null, 'macos').smoothScrolling).toBe(false);
+    expect(defaultSettings('macos').smoothScrolling).toBe(false);
+  });
+
+  it('starts on for Windows and Linux', () => {
+    expect(parseSettings(null, 'windows').smoothScrolling).toBe(true);
+    expect(parseSettings(null, 'linux').smoothScrolling).toBe(true);
+  });
+
+  it('a saved choice wins over the Mac default', () => {
+    expect(parseSettings('{"smoothScrolling":true}', 'macos').smoothScrolling).toBe(true);
+  });
+
+  it('a file that omits the key picks up the Mac default', () => {
+    expect(parseSettings('{"theme":"light"}', 'macos').smoothScrolling).toBe(false);
+  });
+
+  it('only smoothScrolling differs from the base defaults', () => {
+    expect(defaultSettings('macos')).toEqual({ ...DEFAULT_SETTINGS, smoothScrolling: false });
+    expect(defaultSettings('windows')).toEqual(DEFAULT_SETTINGS);
   });
 });

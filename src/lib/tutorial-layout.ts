@@ -80,8 +80,11 @@ export function placeTips(a: Anchors): { tips: Tip[]; bracket?: Bracket } {
   }
 
   // Dragging the window: the empty top edge — past the tabs if they're on
-  // top, else the middle — short of the window buttons.
-  const right = a.controls?.left ?? a.window.width;
+  // top, else the middle — short of the window buttons. On a Mac those are
+  // in the top-left corner instead, well before the strip, so they don't
+  // cut it short.
+  const onRight = !!a.controls && cx(a.controls) > a.window.width / 2;
+  const right = onRight ? a.controls!.left : a.window.width;
   const left = a.tabsTop ? a.tabsTop.end.right : 0;
   const dragX = a.tabsTop ? (left + right) / 2 : a.window.width / 2;
   tips.push({ id: 'drag', point: { x: dragX, y: 14 }, at: { x: dragX, y: 64 }, alignX: 'center', alignY: 'top', nudge: 'down' });

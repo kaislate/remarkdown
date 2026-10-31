@@ -50,7 +50,9 @@
         ],
         "name": "remarkdown.Markdown",
         "description": "Markdown document",
-        "role": "Editor"
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "contentTypes": ["net.daringfireball.markdown"]
       }
     ],
     "windows": {

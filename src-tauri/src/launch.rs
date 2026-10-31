@@ -29,13 +29,30 @@ impl PendingOpens {
 /// dir), drops anything that isn't an existing file, and de-dupes while
 /// preserving first-seen order.
 pub fn extract_open_paths(argv: &[String], cwd: &Path) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for arg in argv.iter().skip(1) {
-        if arg.starts_with('-') {
-            continue;
-        }
+    existing_files(argv.iter().skip(1).filter(|arg| !arg.starts_with('-')).map(|arg| {
         let p = Path::new(arg);
-        let abs = normalize(&if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) });
+        if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) }
+    }))
+}
+
+/// Finder's file:// URLs (a Mac "Open With" or a drop on the Dock icon) →
+/// existing file paths, by the same rules as argv. Anything that isn't a
+/// local file URL is dropped. Pure, so it's tested on every OS even though
+/// only a Mac ever calls it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn paths_from_file_urls(urls: &[tauri::Url]) -> Vec<String> {
+    existing_files(
+        urls.iter()
+            .filter(|u| u.scheme() == "file")
+            .filter_map(|u| u.to_file_path().ok()),
+    )
+}
+
+/// Absolute candidates → normalized paths of the ones that are existing
+/// files, de-duped in first-seen order.
+fn existing_files(candidates: impl Iterator<Item = PathBuf>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for abs in candidates.map(|p| normalize(&p)) {
         if !abs.is_file() {
             continue;
         }
@@ -96,6 +113,13 @@ pub fn take_pending_opens(app: AppHandle) -> Vec<String> {
     app.state::<PendingOpens>().take()
 }
 
+/// Where a Mac window's traffic lights sit (logical px from the top-left),
+/// the same in every window: tauri.macos.conf.json places the first
+/// window's there too (a test keeps the two in step). The page's left
+/// column steps down by --chrome-inset-top (theme.css) to clear them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const MAC_TRAFFIC_LIGHTS: (f64, f64) = (15.0, 20.0);
+
 /// Opens `path` in a new top-level window ("new window per file" mode).
 /// The path reaches the new webview through an init-script global rather
 /// than the URL, so Windows paths need no URL encoding. Must be async:
@@ -104,11 +128,22 @@ pub fn take_pending_opens(app: AppHandle) -> Vec<String> {
 pub async fn open_document_window(app: AppHandle, path: String) -> Result<(), CommandError> {
     let label = next_window_label();
     let path_js = serde_json::to_string(&path).map_err(|e| CommandError::Io(e.to_string()))?;
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
         .title("remarkdown")
         .inner_size(1100.0, 780.0)
-        .min_inner_size(600.0, 400.0)
-        .decorations(false)
+        .min_inner_size(600.0, 400.0);
+    // A Mac window keeps its own traffic lights, over the page in the
+    // top-left corner, like the first window (tauri.macos.conf.json);
+    // everywhere else the window is frameless and the page draws its own.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(MAC_TRAFFIC_LIGHTS.0, MAC_TRAFFIC_LIGHTS.1));
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    builder
         .initialization_script(format!("window.__RMD_OPEN__ = {path_js};"))
         .build()
         .map_err(|e| CommandError::Io(e.to_string()))?;
@@ -169,11 +204,64 @@ mod tests {
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("a.md"), "x").unwrap();
         let plain = extract_open_paths(&["exe".into(), "a.md".into()], dir.path());
-        let dotted = extract_open_paths(&["exe".into(), r".\a.md".into()], dir.path());
+        let dotted = extract_open_paths(&["exe".into(), "./a.md".into()], dir.path());
         let parent = extract_open_paths(&["exe".into(), "sub/../a.md".into()], dir.path());
         assert_eq!(plain.len(), 1);
         assert_eq!(dotted, plain);
         assert_eq!(parent, plain);
+    }
+
+    // A backslash only separates on Windows. On a Mac or Linux it's part of
+    // the file name, so `.\a.md` there names a different, missing file.
+    #[cfg(windows)]
+    #[test]
+    fn backslash_dot_segments_resolve_to_the_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let plain = extract_open_paths(&["exe".into(), "a.md".into()], dir.path());
+        let dotted = extract_open_paths(&["exe".into(), r".\a.md".into()], dir.path());
+        let parent = extract_open_paths(&["exe".into(), r"sub\..\a.md".into()], dir.path());
+        assert_eq!(plain.len(), 1);
+        assert_eq!(dotted, plain);
+        assert_eq!(parent, plain);
+    }
+
+    // Finder hands over file:// URLs, percent-encoded: spaces, accents and
+    // apostrophes must come back as the real path.
+    #[test]
+    fn file_url_for_an_existing_file_becomes_its_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("My Notes")).unwrap();
+        let file = dir.path().join("My Notes").join("Ünïcode's.md");
+        std::fs::write(&file, "x").unwrap();
+        let url = tauri::Url::from_file_path(&file).unwrap();
+        assert!(url.as_str().contains("My%20Notes"));
+        assert_eq!(paths_from_file_urls(&[url]), vec![file.to_string_lossy().into_owned()]);
+    }
+
+    #[test]
+    fn non_file_urls_and_missing_files_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = tauri::Url::from_file_path(dir.path().join("gone.md")).unwrap();
+        let web = tauri::Url::parse("https://example.com/a.md").unwrap();
+        let folder = tauri::Url::from_file_path(dir.path()).unwrap();
+        assert!(paths_from_file_urls(&[web, missing, folder]).is_empty());
+    }
+
+    #[test]
+    fn file_urls_are_deduped_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.md");
+        let b = dir.path().join("b.md");
+        std::fs::write(&a, "x").unwrap();
+        std::fs::write(&b, "x").unwrap();
+        let ua = tauri::Url::from_file_path(&a).unwrap();
+        let ub = tauri::Url::from_file_path(&b).unwrap();
+        assert_eq!(
+            paths_from_file_urls(&[ub.clone(), ua.clone(), ub]),
+            vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()]
+        );
     }
 
     #[test]
@@ -182,6 +270,79 @@ mod tests {
         let b = next_window_label();
         assert_ne!(a, b);
         assert!(a.starts_with("doc-"));
+    }
+
+    // RFC 7396, the way Tauri lays tauri.macos.conf.json over tauri.conf.json:
+    // objects merge key by key, anything else (arrays included) is replaced.
+    fn merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+        let Some(patch) = patch.as_object() else {
+            *target = patch.clone();
+            return;
+        };
+        if !target.is_object() {
+            *target = serde_json::Value::Object(Default::default());
+        }
+        let t = target.as_object_mut().unwrap();
+        for (k, v) in patch {
+            if v.is_null() {
+                t.remove(k);
+            } else {
+                merge_patch(t.entry(k.clone()).or_insert(serde_json::Value::Null), v);
+            }
+        }
+    }
+
+    // Only a Mac build ever reads tauri.macos.conf.json, so it's checked
+    // here, on every OS: it must still be a valid config once merged, keep
+    // the window exactly as everywhere else bar the title bar (the window
+    // list is replaced whole, so a forgotten field would silently go), and
+    // put the traffic lights where document windows put them.
+    #[test]
+    fn mac_config_is_the_same_window_with_the_traffic_lights() {
+        let base: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let mac: serde_json::Value = serde_json::from_str(include_str!("../tauri.macos.conf.json")).unwrap();
+        let mut merged = base.clone();
+        merge_patch(&mut merged, &mac);
+
+        let config: tauri::Config = serde_json::from_value(merged.clone()).unwrap();
+        let w = &config.app.windows[0];
+        assert!(w.decorations);
+        assert_eq!(w.title_bar_style, tauri::TitleBarStyle::Overlay);
+        assert!(w.hidden_title);
+        let p = w.traffic_light_position.as_ref().unwrap();
+        assert_eq!((p.x, p.y), MAC_TRAFFIC_LIGHTS);
+        assert_eq!(config.bundle.macos.signing_identity.as_deref(), Some("-"));
+        assert_eq!(config.bundle.macos.minimum_system_version.as_deref(), Some("12.0"));
+
+        let mut window = merged["app"]["windows"][0].as_object().unwrap().clone();
+        for k in ["titleBarStyle", "hiddenTitle", "trafficLightPosition"] {
+            window.remove(k);
+        }
+        window.insert("decorations".into(), false.into());
+        assert_eq!(serde_json::Value::Object(window), base["app"]["windows"][0]);
+        // Nothing else in the app section changes.
+        assert_eq!(merged["app"]["security"], base["app"]["security"]);
+    }
+
+    // Likewise for Linux: the merged config must parse, both package types
+    // must point at the launcher template, and that template must pass the
+    // file (%F), or file managers would open the app without it.
+    #[test]
+    fn linux_config_points_deb_and_rpm_at_a_launcher_that_passes_the_file() {
+        let base: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let linux: serde_json::Value = serde_json::from_str(include_str!("../tauri.linux.conf.json")).unwrap();
+        let mut merged = base;
+        merge_patch(&mut merged, &linux);
+
+        let config: tauri::Config = serde_json::from_value(merged).unwrap();
+        let template = std::path::PathBuf::from("./linux/remarkdown.desktop");
+        assert_eq!(config.bundle.linux.deb.desktop_template, Some(template.clone()));
+        assert_eq!(config.bundle.linux.rpm.desktop_template, Some(template));
+        assert_eq!(config.bundle.file_associations.as_ref().unwrap()[0].mime_type.as_deref(), Some("text/markdown"));
+
+        let desktop = include_str!("../linux/remarkdown.desktop");
+        assert!(desktop.lines().any(|l| l == "Exec={{exec}} %F"));
+        assert!(desktop.lines().any(|l| l == "MimeType={{mime_type}};"));
     }
 
     #[test]
