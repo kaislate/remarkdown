@@ -150,7 +150,7 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     case 'backup_corrupt_sidecar': {
       const path = args?.mdPath as string;
       const raw = localStorage.getItem(sidecarKey(path));
-      if (!raw) throw { Io: 'sidecar does not exist' };
+      if (raw === null) return null; // nothing left to back up
       const backupKey = `${sidecarKey(path)}.corrupt-${Date.now()}`;
       localStorage.setItem(backupKey, raw);
       localStorage.removeItem(sidecarKey(path));

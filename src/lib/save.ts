@@ -59,8 +59,9 @@ async function doSave(session: DocSession): Promise<void> {
   if (session.sidecarRefused) {
     if (get(session.annots).length === 0) return;
     try {
+      // null: the file is gone (the user moved it), so there's nothing to protect.
       const backup = await backupCorruptSidecar(current.path);
-      addToast({ kind: 'info', message: `Backed up the annotations file that couldn't be loaded to ${backup.split(/[\\/]/).pop()}` });
+      if (backup) addToast({ kind: 'info', message: `Backed up the annotations file that couldn't be loaded to ${backup.split(/[\\/]/).pop()}` });
     } catch (err) {
       // A save running alongside this one may have set it aside already.
       if (session.sidecarRefused) {

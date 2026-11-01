@@ -289,4 +289,21 @@ describe('a sidecar that was not loaded', () => {
     expect(get(activeSession).sidecarRefused).toBe(true);
     dispose();
   });
+
+  // The user moved or deleted the broken file themselves after the modal.
+  it('is simply written once the file is gone, now and on later saves', async () => {
+    vi.mocked(backupCorruptSidecar).mockResolvedValue(null);
+    const dispose = installSaveWatcher();
+    annots.set([highlight]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    expect(writeSidecar).toHaveBeenCalledTimes(1);
+    expect(get(persistentSaveError)).toBeNull();
+    expect(get(activeSession).sidecarRefused).toBe(false);
+
+    annots.set([highlight, { ...highlight, id: '01B' }]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    expect(writeSidecar).toHaveBeenCalledTimes(2);
+    expect(backupCorruptSidecar).toHaveBeenCalledTimes(1);
+    dispose();
+  });
 });

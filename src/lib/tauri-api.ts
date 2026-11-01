@@ -6,8 +6,9 @@ export interface ReadDocumentResult {
   dir: string;
   markdown: string;
   sidecarRaw: string | null;
-  // A sidecar is there but Rust didn't read it: it's too large, or isn't
-  // an ordinary file (a folder, or a link to a device).
+  // A sidecar is there but will never load: it's too large, isn't an
+  // ordinary file (a folder, or a link to a device), or isn't text. Any
+  // other read error fails readDocument, as it may pass.
   sidecarUnreadable?: boolean;
   sha256: string;
   bytes: number;
@@ -72,8 +73,10 @@ export function toAssetUrl(absolutePath: string): string {
   return convertFileSrc(absolutePath);
 }
 
-export async function backupCorruptSidecar(mdPath: string): Promise<string> {
-  return await invoke<string>('backup_corrupt_sidecar', { mdPath });
+// Moves a sidecar that couldn't be loaded aside; returns where to, or null
+// when there's no sidecar any more (nothing to back up).
+export async function backupCorruptSidecar(mdPath: string): Promise<string | null> {
+  return await invoke<string | null>('backup_corrupt_sidecar', { mdPath });
 }
 
 export async function loadSettingsJson(): Promise<string | null> {

@@ -89,4 +89,22 @@ describe('CorruptSidecarModal', () => {
     expect(session.sidecarRefused).toBe(false);
     session.doc.set(null);
   });
+
+  it('starts fresh when the file is already gone', async () => {
+    vi.mocked(backupCorruptSidecar).mockResolvedValue(null);
+    const session = get(activeSession);
+    session.doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    session.sidecarRefused = true;
+    render(CorruptSidecarModal);
+    flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /back up/i }));
+    expect(get(activeModal)).toBeNull();
+    expect(session.sidecarRefused).toBe(false);
+    expect(get(toasts).some((t) => t.kind === 'error')).toBe(false);
+    session.doc.set(null);
+  });
 });

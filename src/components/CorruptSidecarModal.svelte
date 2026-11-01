@@ -9,11 +9,12 @@
     if ($activeModal?.kind !== 'corrupt-sidecar') return;
     const path = $activeModal.path;
     try {
+      // null: the file is already gone, so there was nothing to back up.
       const backup = await backupCorruptSidecar(path);
       // Nothing is left to protect: the tab may save its annotations again.
       const session = findSessionByPath(path);
       if (session) session.sidecarRefused = false;
-      addToast({ kind: 'info', message: `Backed up corrupt sidecar to ${backup.split(/[\\/]/).pop()}` });
+      if (backup) addToast({ kind: 'info', message: `Backed up corrupt sidecar to ${backup.split(/[\\/]/).pop()}` });
       closeModal();
     } catch (err) {
       addToast({ kind: 'error', message: `Backup failed: ${String(err)}` });

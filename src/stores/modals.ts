@@ -3,8 +3,9 @@ import { writable } from 'svelte/store';
 export type ModalState =
   | null
   | { kind: 'orphans' }
-  // No reason: the file is malformed. 'unreadable': too large, or not an
-  // ordinary file. 'too-many': more annotations than the app will load.
+  // No reason: the file is malformed. 'unreadable': too large, not an
+  // ordinary file, or not text. 'too-many': more annotations than the app
+  // will load.
   | { kind: 'corrupt-sidecar'; path: string; reason?: 'unreadable' | 'too-many' }
   | { kind: 'settings' }
   | { kind: 'confirm-clear-annots' }

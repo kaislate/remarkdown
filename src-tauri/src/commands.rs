@@ -121,15 +121,19 @@ pub struct ReadDocumentResult {
     pub dir: String,
     pub markdown: String,
     pub sidecar_raw: Option<String>,
-    /// A sidecar is there but couldn't be read: it's too large, isn't an
-    /// ordinary file, isn't text, or may not be read. The frontend offers to
-    /// back it up, as for a corrupt one.
+    /// A sidecar is there but will never load: it's too large, isn't an
+    /// ordinary file, or isn't text. The frontend offers to back it up, as
+    /// for a corrupt one.
     pub sidecar_unreadable: bool,
     pub sha256: String,
     pub bytes: u64,
 }
 
-#[tauri::command]
+// Commands that read or write a file the frontend names are async, so they
+// run on a worker thread instead of the main one: a file on a network share
+// answers as slowly as the server likes (a sidecar can be a link to one),
+// and the window can't redraw while a main-thread command waits.
+#[tauri::command(async)]
 pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     let md_path = PathBuf::from(&path);
     let bytes = match read_capped(&md_path, DOCUMENT_LIMIT) {
@@ -149,9 +153,13 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     let sc_path = sidecar_path_for(&md_path);
     let mut sidecar_unreadable = false;
     let sidecar_raw = if sc_path.exists() {
-        // Whatever is wrong with the sidecar, the document still opens; the
-        // frontend offers to back the sidecar up. Only a sidecar that has
-        // gone since exists() looked counts as no sidecar at all.
+        // A sidecar that will never load (too large, not an ordinary file,
+        // not text) doesn't keep the document from opening; the frontend
+        // offers to back it up. Any other error may pass (a file another
+        // program has open, a cloud file not downloaded yet), and backing
+        // the sidecar up would hide its annotations from the user, so the
+        // document fails to open with the error, as it always has. Only a
+        // sidecar that has gone since exists() looked counts as none.
         match read_capped(&sc_path, SIDECAR_LIMIT) {
             Ok(raw) => match String::from_utf8(raw) {
                 Ok(text) => Some(text),
@@ -160,11 +168,12 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
                     None
                 }
             },
-            Err(ReadRefused::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(_) => {
+            Err(ReadRefused::NotAFile | ReadRefused::TooLarge) => {
                 sidecar_unreadable = true;
                 None
             }
+            Err(ReadRefused::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(ReadRefused::Io(e)) => return Err(e.into()),
         }
     } else {
         None
@@ -186,7 +195,7 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);
@@ -218,7 +227,7 @@ pub fn remove_recent(app: tauri::AppHandle, path: String) -> Result<Vec<String>,
     crate::recent::remove(&app, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
     paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
 }
@@ -259,13 +268,13 @@ pub fn ensure_welcome_doc(app: tauri::AppHandle) -> Result<String, CommandError>
     Ok(p.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
-pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
+/// Moves a sidecar that couldn't be loaded aside, and returns where to.
+/// None when there is no sidecar any more (the user moved or deleted it):
+/// there's nothing left to protect, so that isn't an error.
+#[tauri::command(async)]
+pub fn backup_corrupt_sidecar(md_path: String) -> Result<Option<String>, CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);
-    if !sc.exists() {
-        return Err(CommandError::Io("sidecar does not exist".into()));
-    }
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -277,8 +286,11 @@ pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
         timestamp
     );
     backup.set_file_name(backup_name);
-    fs::rename(&sc, &backup)?;
-    Ok(backup.to_string_lossy().into_owned())
+    match fs::rename(&sc, &backup) {
+        Ok(()) => Ok(Some(backup.to_string_lossy().into_owned())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Writes edit-mode markdown and returns the sha256 of what was written.
@@ -286,7 +298,7 @@ pub fn backup_corrupt_sidecar(md_path: String) -> Result<String, CommandError> {
 /// changed since the editor last read or wrote it, so another program's
 /// edits are never silently overwritten. A file that has disappeared is
 /// simply recreated — the user's text is the only copy left.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_document(
     path: String,
     markdown: String,
@@ -416,25 +428,25 @@ mod tests {
         // broken one must not keep the document from opening.
         let dir = tempdir().unwrap();
         let md = dir.path().join("a.md");
-        fs::write(&md, b"# Hello
-").unwrap();
+        fs::write(&md, b"# Hello\n").unwrap();
         fs::write(dir.path().join("a.md.remarkdown.json"), [0xff, 0xfe, 0x00]).unwrap();
 
         let result = read_document(md.to_string_lossy().into_owned()).unwrap();
-        assert_eq!(result.markdown, "# Hello
-");
+        assert_eq!(result.markdown, "# Hello\n");
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
     }
 
+    // A sidecar that can't be read right now may be fine a moment later, so
+    // it isn't treated as broken (which would set it aside on the next
+    // save): the document fails to open with the error, as it always has.
     #[cfg(unix)]
     #[test]
-    fn read_document_opens_with_a_sidecar_it_may_not_read() {
+    fn read_document_fails_on_a_sidecar_it_may_not_read() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempdir().unwrap();
         let md = dir.path().join("a.md");
-        fs::write(&md, b"# Hello
-").unwrap();
+        fs::write(&md, b"# Hello\n").unwrap();
         let sc = dir.path().join("a.md.remarkdown.json");
         fs::write(&sc, b"{}").unwrap();
         fs::set_permissions(&sc, fs::Permissions::from_mode(0o000)).unwrap();
@@ -442,9 +454,26 @@ mod tests {
             return; // running as root: nothing is unreadable
         }
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
-        assert_eq!(result.sidecar_raw, None);
-        assert!(result.sidecar_unreadable);
+        let result = read_document(md.to_string_lossy().into_owned());
+        assert!(matches!(result, Err(CommandError::Io(_))));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn read_document_fails_while_another_program_has_the_sidecar_locked() {
+        // What antivirus or a sync client does for a moment.
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        fs::write(&md, b"# Hello\n").unwrap();
+        let sc = dir.path().join("a.md.remarkdown.json");
+        fs::write(&sc, b"{}").unwrap();
+        let lock = fs::OpenOptions::new().read(true).share_mode(0).open(&sc).unwrap();
+
+        let result = read_document(md.to_string_lossy().into_owned());
+        assert!(matches!(result, Err(CommandError::Io(_))));
+        drop(lock);
+        assert_eq!(fs::read(&sc).unwrap(), b"{}");
     }
 
     #[test]
@@ -528,10 +557,22 @@ mod tests {
         fs::write(&md, b"# hi\n").unwrap();
         fs::write(&sc, b"{ corrupt").unwrap();
 
-        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap();
+        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap().unwrap();
         assert!(result.contains(".corrupt-"));
         assert!(!sc.exists());
         assert!(std::path::Path::new(&result).exists());
+    }
+
+    #[test]
+    fn backup_corrupt_sidecar_with_no_sidecar_left_has_nothing_to_do() {
+        // The user moved the broken file away themselves: nothing to protect,
+        // so saving annotations must not be held up.
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        fs::write(&md, b"# hi\n").unwrap();
+
+        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]
