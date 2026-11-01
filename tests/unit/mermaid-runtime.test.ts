@@ -15,6 +15,8 @@ import {
   commentRegexWork,
   methodRegexWork,
   genericTypesWork,
+  whitespaceWork,
+  textMermaidSees,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -208,6 +210,7 @@ describe('mermaid runtime', () => {
       `flowchart TD\n${'A["a<b>x</b> i<n"] --> B\n'.repeat(2_000)}`,
       `erDiagram\n${'A ||--o{ B : "i<n"\n'.repeat(2_000)}`,
       `flowchart TD\nA${'\n'.repeat(1_000)}%% note\n${'\n    '.repeat(300)}B`,
+      `---\ntitle: Flow\n---\n%%{init: {"theme": "forest"}}%%\nflowchart TD\n${'A --> B\n'.repeat(5_000)}`,
     ]) {
       const p = renderMermaid(source, DARK);
       await flush();
@@ -224,6 +227,8 @@ describe('mermaid runtime', () => {
     expect(styleRegexWork('style:#;'.repeat(25_000))).toBeLessThan(1e8);
     expect(tagRegexWork(`<${'a'.repeat(200_000)}`)).toBeGreaterThan(1e10);
     expect(commentRegexWork(' \n'.repeat(100_000))).toBeGreaterThan(1e10);
+    expect(whitespaceWork(' '.repeat(200_000))).toBeGreaterThan(1e10);
+    expect(textMermaidSees('%%{a\n}%%'.repeat(50_000))).toBe('');
     expect(performance.now() - t0).toBeLessThan(500);
   });
 
@@ -234,6 +239,44 @@ describe('mermaid runtime', () => {
     const out = await renderMermaid(`flowchart TD\nA\n${`${'style:#'.repeat(70)}\n`.repeat(100)}`, DARK);
     expect(performance.now() - t0).toBeLessThan(200);
     expect(out.ok).toBe(false);
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  // mermaid drops `%%{…}%%` directives, newlines inside them included,
+  // before any of the passes above, so short lines split by directives
+  // reach them as one long line (1.8 KB of style line took 2.3 s).
+  it('weighs the lines mermaid sees once directives are gone', async () => {
+    const split = (piece: string, n: number) => Array(n).fill(piece).join('%%{a\n}%%');
+    for (const source of [
+      `flowchart TD\nA\n${split('style:#'.repeat(12), 20)}`,
+      `flowchart TD\nA\n${split(' \n'.repeat(100), 40)}x`,
+      `classDiagram\nA : a)${split('('.repeat(100), 20)}`,
+      // Finding the frontmatter is itself slow on this one: it is
+      // turned away before that is tried.
+      `---${'\n'.repeat(100_000)}${'flowchart TD\nA\n'.repeat(10_000)}`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  // mermaid's flowchart lexer, and the /\s*%%.*\n/gm every diagram goes
+  // through, read a run of whitespace again from each character in it:
+  // 8,000 spaces in a row took the flowchart parser 2 s, 20,000 took 32.
+  it('turns away a long run of spaces', async () => {
+    for (const source of [
+      `flowchart TD\nA${' '.repeat(8_000)}B`,
+      `sequenceDiagram\nA->>B: hi\n${'\t'.repeat(40_000)}B`,
+      `flowchart TD\nA${Array(8).fill(' '.repeat(1_000)).join('%%{a}%%')}B`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
     expect(mocked.renders.length).toBe(0);
   });
 
@@ -259,6 +302,7 @@ describe('mermaid runtime', () => {
     for (const source of [
       `classDiagram\nclass Animal {\n${'  +eat(Food f, List~int~ xs) Map~K, V~\n  -int age\n'.repeat(2_000)}}`,
       `classDiagram\n${'Animal : +isMammal() bool\n'.repeat(2_000)}`,
+      `classDiagram\n${`Animal : ${'eats (a lot) '.repeat(80)}\n`.repeat(100)}`,
       `flowchart TD\nA["${'f(x) '.repeat(4_000)}"]`,
     ]) {
       const p = renderMermaid(source, DARK);

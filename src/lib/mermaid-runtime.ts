@@ -297,8 +297,13 @@ export function commentRegexWork(source: string): number {
 //   - parseGenericTypes turns `~` pairs into `<…>`, looking for the
 //     first and last `~` from scratch for each pair (it also runs on ER
 //     entity names; 40 KB of `~` took seconds).
-// Both are weighed per line, as if the whole line were one member that
-// fails (no member is longer, and none costs more), and summed. Rates
+// Both are weighed per line, as if the whole line were one member (no
+// member is longer, and none costs more), and summed. A line piece with
+// a `(` after its first character and before its last `)` matches from
+// its first start, after `.+` backs up past the `(`s that follow that
+// `)` (twice: with and without the leading visibility mark), so it costs
+// that much and not the full failure: long notes with parentheses in
+// them are drawn as fast as any other text. Rates
 // measured: about 150,000 steps per ms for the first, 500,000 for the
 // second, so neither runs past about a third of a second.
 const METHOD_WORK_LIMIT = 5e7;
@@ -311,10 +316,32 @@ export function methodRegexWork(source: string): number {
     if (!line.includes(')')) continue;
     for (const piece of line.split(/[\r\u2028\u2029]/)) {
       const len = piece.length;
+      const close = piece.lastIndexOf(')');
+      const open = piece.indexOf('(', 1);
+      if (open >= 0 && open < close) {
+        let tries = len;
+        for (let p = piece.indexOf('(', close); p >= 0; p = piece.indexOf('(', p + 1)) tries += len - p;
+        work += 2 * tries;
+        continue;
+      }
       work += (len * (len + 1)) / 2;
       for (let p = piece.indexOf('('); p >= 0; p = piece.indexOf('(', p + 1)) work += p * (len - p);
     }
   }
+  return work;
+}
+
+// And one in mermaid's lexers: the flowchart one, and the
+// /\s*%%.*\n/gm detectType runs for every diagram, read a run of
+// whitespace again from each character in it (measured: 8,000 spaces in
+// a row took the flowchart parser 2 s, about 30,000 steps per ms). The
+// limit lets through runs of a few thousand, far more than any
+// indentation or blank space a diagram has.
+const WHITESPACE_WORK_LIMIT = 1e7;
+
+export function whitespaceWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\s+/g)) work += run[0].length ** 2;
   return work;
 }
 
@@ -327,6 +354,54 @@ export function genericTypesWork(source: string): number {
   return work;
 }
 
+// The passes above, except the tag one, run on the source after
+// mermaid's preprocessDiagram has turned CRLF into LF, cut off the
+// frontmatter and dropped every `%%{…}%%` directive. A directive can
+// hold a newline, so dropping it joins the lines around it: short style
+// lines split by directives reached the style regex as one 1.8 KB line
+// (2.3 s). So they are weighed on that text, made with mermaid's own
+// regexes (mermaid 11.14, src/diagram-api/regexes.ts). Its last step,
+// dropping `%%` comment lines, takes out whole lines and joins none, so
+// it is left out: a comment line is only weighed as if it stayed.
+//
+// The frontmatter regex is slow itself where `---` is followed by many
+// line breaks and no closing `---`: it reads the rest of the source once
+// for each of them (measured: about three million steps per ms). mermaid
+// runs it on every source, before its size limit, so such a source is
+// turned away before either of us runs it.
+const FRONT_MATTER_WORK_LIMIT = 1e9;
+
+export function frontMatterWork(source: string): number {
+  if (!source.startsWith('---')) return 0;
+  let breaks = 0;
+  for (let i = 3; i < source.length && /\s/.test(source[i]); i++) {
+    if (source[i] === '\n' || source[i] === '\r') breaks++;
+  }
+  return breaks * source.length;
+}
+
+const frontMatterRegex = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s;
+const directiveRegex = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+export function textMermaidSees(source: string): string {
+  return source.replace(/\r\n?/g, '\n').replace(frontMatterRegex, '').replace(directiveRegex, '');
+}
+
+// Why mermaid would hang on `source`, if it would.
+function tooSlowToRead(source: string): string | null {
+  const tangled = 'This diagram is too long and tangled to read.';
+  if (frontMatterWork(source) > FRONT_MATTER_WORK_LIMIT) return tangled;
+  const seen = textMermaidSees(source);
+  if (styleRegexWork(seen) > STYLE_WORK_LIMIT) return 'A style line in this diagram is too long and tangled to read.';
+  return tagRegexWork(source) > TAG_WORK_LIMIT ||
+    commentRegexWork(seen) > COMMENT_WORK_LIMIT ||
+    whitespaceWork(seen) > WHITESPACE_WORK_LIMIT ||
+    methodRegexWork(seen) > METHOD_WORK_LIMIT ||
+    genericTypesWork(seen) > GENERIC_WORK_LIMIT
+    ? tangled
+    : null;
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -336,14 +411,7 @@ async function renderNow(
   const cached = cache.get(key);
   if (cached) return rekey(cached);
 
-  const tooSlow = styleRegexWork(source) > STYLE_WORK_LIMIT
-    ? 'A style line in this diagram is too long and tangled to read.'
-    : tagRegexWork(source) > TAG_WORK_LIMIT ||
-        commentRegexWork(source) > COMMENT_WORK_LIMIT ||
-        methodRegexWork(source) > METHOD_WORK_LIMIT ||
-        genericTypesWork(source) > GENERIC_WORK_LIMIT
-      ? 'This diagram is too long and tangled to read.'
-      : null;
+  const tooSlow = tooSlowToRead(source);
   if (tooSlow) {
     const entry: CacheEntry = { outcome: { ok: false, error: tooSlow }, id: nextId() };
     remember(key, entry);
