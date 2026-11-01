@@ -8,10 +8,14 @@
 // terminator + whitespace). Sentence i runs [splits[i-1] || 0, splits[i]).
 export function findSentenceSplits(text: string): number[] {
   const splits: number[] = [];
-  const re = /[.!?]+\s+/g;
+  // Each match takes a whole run of terminators, so the search goes on
+  // after it; `[.!?]+\s+` retried a run with no space after it from
+  // every character in it (quadratic in a long run of dots). A run
+  // ends a sentence when whitespace follows.
+  const re = /[.!?]+(\s*)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    splits.push(m.index + m[0].length);
+    if (m[1]) splits.push(m.index + m[0].length);
   }
   return splits;
 }
