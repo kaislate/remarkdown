@@ -12,6 +12,11 @@
 // reader a link can only go to the browser or mail app: a relative path or
 // an '#id' has nothing to mean there. A diagram's links and the editor's
 // go nowhere (the editor is for changing them, not following them).
+//
+// A form is the other way a page leaves: mermaid keeps form controls in a
+// diagram's HTML labels, and a click on the button would go to the form's
+// action. No form in the app submits by navigating (the link popover
+// handles its own submit), so every submit is prevented the same way.
 
 import { linkAction } from './link-action';
 
@@ -33,10 +38,13 @@ export function installLinkGuard(target: Window, external: (url: string) => void
     const action = linkAction(href, null);
     if (action.kind === 'external') external(action.url);
   };
+  const onSubmit = (e: Event) => e.preventDefault();
   target.addEventListener('click', onLink, true);
   target.addEventListener('auxclick', onLink, true);
+  target.addEventListener('submit', onSubmit, true);
   return () => {
     target.removeEventListener('click', onLink, true);
     target.removeEventListener('auxclick', onLink, true);
+    target.removeEventListener('submit', onSubmit, true);
   };
 }

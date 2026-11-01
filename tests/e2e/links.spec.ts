@@ -7,6 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 const START = '/e2e/links/Start.md';
 const OTHER = '/e2e/links/other.md';
+const FORM = '/e2e/links/Form.md';
 const FILLER = Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}, long enough to take a line or two of the column.`).join('\n\n');
 const DOCS: Record<string, string> = {
   [START]: [
@@ -26,16 +27,27 @@ const DOCS: Record<string, string> = {
     '',
   ].join('\n'),
   [OTHER]: '# Other\n\nThe other document.\n',
+  // Mermaid keeps form controls in an HTML label, even under strict
+  // security; the button would send the window to the form's action.
+  [FORM]: [
+    '# Form',
+    '',
+    '```mermaid',
+    'flowchart TD',
+    `  A["<form action='http://xn--a.attacker.example/'><button>Update required</button></form>"] --> B["<form method='post' action='/'><button>Reload</button></form>"]`,
+    '```',
+    '',
+  ].join('\n'),
 };
 
-async function open(page: Page) {
+async function open(page: Page, path = START, title = 'Links') {
   await page.goto('/');
   await page.evaluate(([docs, p]) => {
     for (const [path, md] of Object.entries(docs)) (window as any).__E2E_SEED_DOC__(path, md);
     (window as any).__E2E_QUEUE_OPENS__([p]);
     (window as any).__E2E_FIRE_OPEN_REQUESTED__();
-  }, [DOCS, START] as const);
-  await expect(page.locator('.viewer h1')).toHaveText('Links');
+  }, [DOCS, path] as const);
+  await expect(page.locator('.viewer h1')).toHaveText(title);
 }
 
 const external = (page: Page) => page.evaluate(() => (window as any).__E2E_EXTERNAL__ ?? []);
@@ -151,4 +163,78 @@ test("a link in the footnote editor's preview neither reloads the app nor leaves
   expect(await page.evaluate(() => (window as any).__E2E_STILL_HERE__)).toBe(true);
   await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
   expect(context.pages()).toHaveLength(1);
+});
+
+// A form in a diagram label never takes the window anywhere, in the reader
+// or in the editor: not to another site (Rust can't stop that one, its URL
+// parser rejects the host), and not back to the app's own page, which
+// would reload it and lose the edit.
+test("a form in a diagram's label goes nowhere", async ({ page, context }) => {
+  const left: string[] = [];
+  page.on('request', (r) => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) left.push(`${r.method()} ${r.url()}`);
+  });
+  await page.route(/attacker\.example/, (r) => r.fulfill({ contentType: 'text/html', body: '<h1>phished</h1>' }));
+  await open(page, FORM, 'Form');
+  left.length = 0;
+  const url = page.url();
+  await page.evaluate(() => ((window as any).__E2E_STILL_HERE__ = true));
+
+  const reader = page.locator('.viewer .mermaid-block');
+  await expect(reader.getByText('Update required')).toBeVisible();
+  await reader.getByText('Update required').click();
+  await reader.getByText('Reload').click();
+  // Put a form on the page as a sanitizer slip would, to show the window's
+  // own guard holds on its own.
+  await page.evaluate(() => {
+    document.querySelector('.viewer .mermaid-block')!.insertAdjacentHTML(
+      'beforeend',
+      `<form method="post" action="/"><button id="slip">Slip</button></form>`,
+    );
+  });
+  await page.locator('#slip').click();
+
+  await page.locator('.edit-mode-toggle').click();
+  const editor = page.locator('.editor-surface .mermaid-rendered');
+  await expect(editor.getByText('Update required')).toBeVisible();
+  await editor.getByText('Update required').click();
+  await editor.getByText('Reload').click();
+
+  await page.waitForTimeout(300);
+  expect(left).toEqual([]);
+  expect(page.url()).toBe(url);
+  expect(await page.evaluate(() => (window as any).__E2E_STILL_HERE__)).toBe(true);
+  await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+  expect(context.pages()).toHaveLength(1);
+});
+
+// The editor's link popover is the one form in the app. It applies the link
+// itself, so the window's refusal to submit anything leaves it working.
+test("the editor's link popover still applies a link", async ({ page }) => {
+  await open(page, OTHER, 'Other');
+  const url = page.url();
+  await page.locator('.edit-mode-toggle').click();
+  // Select 'other' in "The other document."; the bubble shows on a mouseup
+  // once the editor has caught up with the selection.
+  await page.evaluate(() => {
+    const p = document.querySelector('.editor-surface .ProseMirror p')!;
+    (p.closest('.ProseMirror') as HTMLElement).focus();
+    const tn = p.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(tn, 4);
+    r.setEnd(tn, 9);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(r);
+  });
+  const bubble = page.locator('.editor-bubble-menu');
+  await expect(async () => {
+    await page.locator('.editor-surface').dispatchEvent('mouseup');
+    await expect(bubble.getByRole('button', { name: 'Link' })).toBeVisible({ timeout: 250 });
+  }).toPass();
+  await bubble.getByRole('button', { name: 'Link' }).click();
+  await bubble.locator('.link-input').fill('https://example.com/applied');
+  await bubble.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.locator('.editor-surface a[href="https://example.com/applied"]')).toHaveText('other');
+  expect(page.url()).toBe(url);
 });

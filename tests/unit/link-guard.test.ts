@@ -97,12 +97,27 @@ describe('installLinkGuard', () => {
     expect(click(link('<a data-t>no href</a>'))).toBe(true);
   });
 
+  // A diagram label may carry a form: mermaid keeps form, button and input
+  // under strict security, and a click on the button sends the window to
+  // the form's action. No form in the app submits by navigating.
+  it('never lets a form submit the window anywhere', () => {
+    const form = link(
+      '<div class="mermaid-block"><form data-t action="http://xn--a.attacker.example/"><button>Update</button></form></div>',
+    ) as HTMLFormElement;
+    form.addEventListener('submit', (e) => e.stopPropagation());
+    expect(form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))).toBe(false);
+    const post = link('<form data-t method="post" action="/"><input name="q"></form>');
+    expect(post.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))).toBe(false);
+  });
+
   it('stops when uninstalled', () => {
     uninstall();
     const a = link('<a data-t href="https://example.com/">x</a>');
     a.addEventListener('click', (e) => e.preventDefault());
     click(a);
     expect(external).not.toHaveBeenCalled();
+    const form = link('<form data-t action="/"></form>');
+    expect(form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))).toBe(true);
     uninstall = () => {};
   });
 });

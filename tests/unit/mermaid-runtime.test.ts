@@ -158,6 +158,19 @@ describe('mermaid runtime', () => {
     });
   });
 
+  // Strict security still draws HTML labels, run only through DOMPurify,
+  // whose defaults keep forms. A label's form button would send the window
+  // wherever the document says. Mermaid's own pass forbids <style>, and
+  // this config replaces it.
+  it("has mermaid's sanitizer drop form controls from labels", async () => {
+    const p = renderMermaid('flowchart TD\nA', LIGHT);
+    await flush();
+    mocked.renders[0].resolve();
+    await p;
+    const forbid = (mocked.configs[0].dompurifyConfig as { FORBID_TAGS?: string[] } | undefined)?.FORBID_TAGS;
+    expect(forbid).toEqual(expect.arrayContaining(['style', 'form', 'button', 'input', 'select', 'textarea']));
+  });
+
   it('caches by (theme, font, source) and hands out a fresh svg id on every hit', async () => {
     const p = renderMermaid('flowchart TD\nA', DARK);
     await flush();
@@ -522,6 +535,20 @@ describe('disarmDiagramLinks', () => {
       expect(a.getAttribute('target')).toBeNull();
     }
     expect(host.querySelector('#flowchart-A-0')).not.toBeNull();
+  });
+
+  // An HTML label (in a foreignObject) can hold a form whose button sends
+  // the window to the form's action. The controls go; their words stay.
+  it('takes the form controls out of a label and keeps its words', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg"><g class="node"><foreignObject><div><span class="nodeLabel">' +
+      '<form action="http://xn--a.attacker.example/"><button>Update required</button>' +
+      '<input name="q"><select><option>a</option></select><textarea>t</textarea></form>' +
+      '</span></div></foreignObject></g></svg>';
+    disarmDiagramLinks(host);
+    expect(host.querySelector('form, button, input, select, textarea')).toBeNull();
+    expect(host.querySelector('.nodeLabel')?.textContent).toBe('Update required');
   });
 });
 

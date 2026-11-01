@@ -536,9 +536,11 @@ const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextS
 // their formatting stay. (FORBID_TAGS style is mermaid's own default.)
 // DOMPurify's defaults already drop iframe, object and embed, and must go
 // on doing so: a frame showing an asset url could call the app's commands
-// (see asset_protocol.rs).
+// (see asset_protocol.rs). Its defaults keep forms, though: a label's
+// button would send the window to the form's action, so the form controls
+// go too.
 const LABEL_PURIFY = {
-  FORBID_TAGS: ['style', 'image', 'feimage'],
+  FORBID_TAGS: ['style', 'image', 'feimage', 'form', 'button', 'input', 'select', 'textarea'],
   FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'xlink:href'],
 };
 
@@ -745,7 +747,9 @@ export function applyDiagramSizing(svg: SVGSVGElement): void {
 // node in an svg <a>. Clicked, one would take the whole window to the
 // page it names, and in the editor a click on a node only means "select
 // it". So every diagram link loses its target once the svg is in place;
-// the node and its look stay.
+// the node and its look stay. A form in an HTML label would do the same
+// through its button; mermaid's sanitizer is told to drop them
+// (renderMermaid), and any that get past it go here, keeping their words.
 export function disarmDiagramLinks(root: ParentNode): void {
   for (const a of root.querySelectorAll('a')) {
     a.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
@@ -753,6 +757,8 @@ export function disarmDiagramLinks(root: ParentNode): void {
     a.removeAttribute('href');
     a.removeAttribute('target');
   }
+  for (const el of root.querySelectorAll('form, button')) el.replaceWith(...el.childNodes);
+  for (const el of root.querySelectorAll('input, select, textarea')) el.remove();
 }
 
 // What a reader sees in place of a diagram mermaid can't draw: plain
