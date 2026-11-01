@@ -5,6 +5,7 @@ mod asset_protocol;
 mod commands;
 mod default_app;
 mod desktop_env;
+mod doc_paths;
 mod fresh_start;
 mod launch;
 mod linux_gpu;

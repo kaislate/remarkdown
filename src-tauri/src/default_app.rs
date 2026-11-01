@@ -16,6 +16,8 @@ use serde::Serialize;
 
 pub const PROG_ID: &str = "remarkdown.Markdown";
 pub const APP_NAME: &str = "remarkdown";
+/// The file types we register for, which are also the only files the Open
+/// dialog offers and the file commands accept (doc_paths.rs).
 pub const EXTS: [&str; 2] = ["md", "markdown"];
 const CAPABILITIES_KEY: &str = r"Software\remarkdown\Capabilities";
 

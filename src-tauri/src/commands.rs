@@ -4,6 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::doc_paths::document_path;
+
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
     #[allow(dead_code)]
@@ -31,7 +33,7 @@ pub async fn open_file_dialog(app: tauri::AppHandle) -> Result<Option<String>, C
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Markdown", &["md", "markdown"])
+        .add_filter("Markdown", &crate::default_app::EXTS)
         .pick_file(move |path| {
             let _ = tx.send(path.map(|p| p.to_string()));
         });
@@ -166,7 +168,7 @@ pub async fn read_document(path: String) -> Result<ReadDocumentResult, CommandEr
 }
 
 fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandError> {
-    let md_path = PathBuf::from(&path);
+    let md_path = document_path(&path)?;
     let bytes = match read_capped(&md_path, DOCUMENT_LIMIT) {
         Ok(bytes) => bytes,
         Err(ReadRefused::NotAFile) => {
@@ -232,7 +234,7 @@ pub async fn write_sidecar(md_path: String, json: String) -> Result<(), CommandE
 }
 
 fn write_sidecar_blocking(md_path: String, json: String) -> Result<(), CommandError> {
-    let md = PathBuf::from(md_path);
+    let md = document_path(&md_path)?;
     let sc = sidecar_path_for(&md);
     crate::sidecar::atomic_write_user_file(&sc, json.as_bytes())?;
     Ok(())
@@ -268,7 +270,11 @@ pub async fn check_paths_exist(paths: Vec<String>) -> Result<Vec<bool>, CommandE
 }
 
 fn check_paths_exist_blocking(paths: Vec<String>) -> Vec<bool> {
-    paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
+    // Only documents are ever asked about; anything else reads as missing.
+    paths
+        .iter()
+        .map(|p| document_path(p).is_ok_and(|p| p.is_file()))
+        .collect()
 }
 
 #[tauri::command]
@@ -316,7 +322,7 @@ pub async fn backup_corrupt_sidecar(md_path: String) -> Result<Option<String>, C
 }
 
 fn backup_corrupt_sidecar_blocking(md_path: String) -> Result<Option<String>, CommandError> {
-    let md = PathBuf::from(md_path);
+    let md = document_path(&md_path)?;
     let sc = sidecar_path_for(&md);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -355,7 +361,7 @@ fn write_document_blocking(
     markdown: String,
     expected_sha256: Option<String>,
 ) -> Result<String, CommandError> {
-    let p = PathBuf::from(path);
+    let p = document_path(&path)?;
     if let Some(expected) = expected_sha256 {
         // Hashed as it streams in, so checking a large file costs no memory.
         // Not opening anything but an ordinary file keeps a FIFO from
@@ -725,6 +731,55 @@ mod tests {
         let p = path.to_string_lossy().into_owned();
         write_document_blocking(p, "v2".into(), Some(sha_of(b"v1"))).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "v2");
+    }
+
+    // A script that got into the page can only reach Markdown documents
+    // through the commands, never other files.
+    #[test]
+    fn read_document_refuses_a_file_that_is_not_markdown() {
+        let dir = tempdir().unwrap();
+        let secret = dir.path().join("id_rsa");
+        fs::write(&secret, b"private").unwrap();
+        let result = read_document_blocking(secret.to_string_lossy().into_owned());
+        assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("not a Markdown file")));
+    }
+
+    #[test]
+    fn write_document_refuses_a_file_that_is_not_markdown() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("autostart.bat");
+        let result = write_document_blocking(target.to_string_lossy().into_owned(), "evil".into(), None);
+        assert!(matches!(result, Err(CommandError::Io(_))));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn sidecar_commands_refuse_a_file_that_is_not_markdown() {
+        let dir = tempdir().unwrap();
+        let txt = dir.path().join("notes.txt");
+        let txt_sidecar = dir.path().join("notes.txt.remarkdown.json");
+        fs::write(&txt_sidecar, b"{ corrupt").unwrap();
+        let p = txt.to_string_lossy().into_owned();
+        assert!(matches!(write_sidecar_blocking(p.clone(), "{}".into()), Err(CommandError::Io(_))));
+        assert_eq!(fs::read_to_string(&txt_sidecar).unwrap(), "{ corrupt");
+        assert!(matches!(backup_corrupt_sidecar_blocking(p), Err(CommandError::Io(_))));
+        assert!(txt_sidecar.exists());
+    }
+
+    #[test]
+    fn write_sidecar_writes_next_to_a_document() {
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        write_sidecar_blocking(md.to_string_lossy().into_owned(), "{\"x\":1}".into()).unwrap();
+        assert_eq!(fs::read_to_string(dir.path().join("a.md.remarkdown.json")).unwrap(), "{\"x\":1}");
+    }
+
+    #[test]
+    fn check_paths_exist_reports_only_documents() {
+        let dir = tempdir().unwrap();
+        let other = dir.path().join("secret.txt");
+        fs::write(&other, b"x").unwrap();
+        assert_eq!(check_paths_exist_blocking(vec![other.to_string_lossy().into_owned()]), vec![false]);
     }
 
     #[test]

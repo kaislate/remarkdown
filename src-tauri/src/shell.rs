@@ -54,6 +54,9 @@ pub fn show_items_args(uri: &str) -> Vec<String> {
 /// folder"). If the file no longer exists, opens its folder instead.
 #[tauri::command]
 pub fn reveal_in_folder(path: String) -> Result<(), CommandError> {
+    // Only documents are ever shown (tabs, recent files), so nothing else
+    // reaches the shell from here.
+    crate::doc_paths::document_path(&path)?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
