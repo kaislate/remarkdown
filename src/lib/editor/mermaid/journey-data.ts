@@ -36,6 +36,10 @@ export interface JourneyModel {
 }
 
 const HEADER = /^journey\s*$/;
+// `name: score: people`. The name ends at its last non-space before
+// the colon: a lazy `[^:]+?\s*:` found the same end, but rescanned a
+// run of spaces from each position in it (quadratic).
+const TASK = /^([^:]*[^:\s]|[^:])\s*:\s*(-?\d+(?:\.\d+)?)\s*(?::\s*(.*))?$/;
 
 export function parseJourney(source: string): JourneyModel | null {
   const st = statements(source, HEADER);
@@ -48,7 +52,7 @@ export function parseJourney(source: string): JourneyModel | null {
     else if ((m = /^section\s+(.*)$/.exec(t))) {
       section = { line, name: m[1].trim(), tasks: [] };
       model.sections.push(section);
-    } else if ((m = /^([^:]+?)\s*:\s*(-?\d+(?:\.\d+)?)\s*(?::\s*(.*))?$/.exec(t))) {
+    } else if ((m = TASK.exec(t))) {
       if (!section) {
         section = { line: null, name: '', tasks: [] };
         model.sections.push(section);

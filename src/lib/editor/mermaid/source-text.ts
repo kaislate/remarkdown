@@ -89,10 +89,17 @@ export function findPreamble(lines: string[]): DiagramPreamble {
     if (end > 0) {
       let title: Frontmatter['title'] = null;
       for (let k = 1; k < end; k++) {
-        const m = /^(\s*title\s*:\s*)(.*?)\s*$/.exec(lines[k]);
-        if (m) {
-          title = { line: k, span: { start: m[1].length, end: m[1].length + m[2].length }, value: unquoteYaml(m[2]) };
-        }
+        // `title:` and its value, trimmed; a value with a line break
+        // inside (a lone CR or U+2028/9) isn't read. Done by hand: the
+        // regex /^(\s*title\s*:\s*)(.*?)\s*$/ grew its lazy value one
+        // character at a time, rescanning a run of spaces each time.
+        const head = /^\s*title\s*:/.exec(lines[k]);
+        if (!head) continue;
+        const rest = lines[k].slice(head[0].length);
+        const value = rest.trim();
+        if (/[\n\r\u2028\u2029]/.test(value)) continue;
+        const start = head[0].length + rest.length - rest.trimStart().length;
+        title = { line: k, span: { start, end: start + value.length }, value: unquoteYaml(value) };
       }
       frontmatter = { startLine: 0, endLine: end, title };
       i = end + 1;

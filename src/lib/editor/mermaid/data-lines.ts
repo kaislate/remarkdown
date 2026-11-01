@@ -39,14 +39,21 @@ export class LineEditor {
 }
 
 // The diagram's statements after its header: [line index, trimmed text],
-// skipping blank lines and comments. null when there's no header.
+// skipping blank lines and comments. null when there's no header, or
+// when a statement holds a lone CR or a U+2028/9: mermaid reads a CR
+// as a line break, and a `.` stops at all three, so the row patterns
+// would fail at it only after retrying every split of what came
+// before (quadratic). Such a diagram stays text-edited.
 export function statements(source: string, header: RegExp): { header: number; lines: string[]; items: Array<[number, string]> } | null {
   const lines = splitLines(source).lines;
   const { headerLine } = findPreamble(lines);
   if (headerLine < 0 || !header.test(lines[headerLine].trim())) return null;
   const items: Array<[number, string]> = [];
   for (let i = headerLine + 1; i < lines.length; i++) {
-    if (!isBlankOrComment(lines[i])) items.push([i, lines[i].trim()]);
+    if (isBlankOrComment(lines[i])) continue;
+    const t = lines[i].trim();
+    if (/[\r\u2028\u2029]/.test(t)) return null;
+    items.push([i, t]);
   }
   return { header: headerLine, lines, items };
 }

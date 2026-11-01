@@ -41,6 +41,10 @@ export interface RadarModel {
 
 const HEADER = /^radar(-beta)?\s*$/;
 const NAMED = /^([A-Za-z_][\w-]*)\s*(?:\[\s*"([^"]*)"\s*\])?$/;
+// `curve id["label"]{values}`. The space before `{` goes with the label
+// when there is one: two `\s*` side by side split a run of spaces every
+// way (quadratic).
+const CURVE = /^curve\s+([A-Za-z_][\w-]*)\s*(?:\[\s*"([^"]*)"\s*\]\s*)?\{(.*)\}$/;
 
 export function parseRadar(source: string): RadarModel | null {
   const st = statements(source, HEADER);
@@ -57,7 +61,7 @@ export function parseRadar(source: string): RadarModel | null {
         if (!a) return null;
         model.axes.push({ line, id: a[1], label: a[2] ?? '' });
       }
-    } else if ((m = /^curve\s+([A-Za-z_][\w-]*)\s*(?:\[\s*"([^"]*)"\s*\])?\s*\{(.*)\}$/.exec(t))) {
+    } else if ((m = CURVE.exec(t))) {
       const items = splitList(m[3]);
       const values = items?.map(parseNumber);
       if (!values || values.some((v) => v === null)) return null;

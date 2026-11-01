@@ -14,10 +14,35 @@ import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
 import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
 import { styleSemicolons } from '../../../src/lib/editor/mermaid/entity-text';
 import { aheadOnLine } from '../../../src/lib/editor/mermaid/line-ahead';
+import { parseJourney } from '../../../src/lib/editor/mermaid/journey-data';
+import { parseQuadrant } from '../../../src/lib/editor/mermaid/quadrant-data';
+import { parseRadar } from '../../../src/lib/editor/mermaid/radar-data';
+import { parseXyChart } from '../../../src/lib/editor/mermaid/xychart-data';
+import { parsePacket } from '../../../src/lib/editor/mermaid/packet-data';
+import { parseSankey } from '../../../src/lib/editor/mermaid/sankey-data';
+import { findPreamble } from '../../../src/lib/editor/mermaid/source-text';
+import { serializeRich } from '../../../src/lib/editor/mermaid/rich-text';
 
 // Generous, so a slow CI machine doesn't fail a fixed parser, and far
 // below what the old code took.
 const BUDGET_MS = 500;
+
+// Short random strings over `alphabet`, the same ones on every run.
+function randomRows(alphabet: string[], count = 20_000, maxLen = 10): string[] {
+  let seed = 5;
+  const rand = (n: number) => {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    return (seed >>> 8) % n;
+  };
+  const rows: string[] = [];
+  for (let i = 0; i < count; i++) {
+    let s = '';
+    const len = rand(maxLen + 1);
+    for (let k = 0; k < len; k++) s += alphabet[rand(alphabet.length)];
+    rows.push(s);
+  }
+  return rows;
+}
 
 function timed<T>(fn: () => T): { ms: number; value: T } {
   const t0 = performance.now();
@@ -228,5 +253,119 @@ describe('class, ER and state lexers', () => {
       }
     }
     expect(hits).toBeGreaterThan(200);
+  });
+});
+
+describe('data diagrams', () => {
+  const spaces = ' '.repeat(40_000);
+
+  // A lazy name (`[^:]+?`) before `\s*:`, a lazy axis label before
+  // `\s*-->`, and two `\s*` side by side each rescanned a long run of
+  // spaces from every position in it.
+  for (const [name, parse, ok] of [
+    ['journey task', () => parseJourney(`journey\nsection s\nx${spaces}y`), false],
+    ['journey task name', () => parseJourney(`journey\nsection s\nx${spaces}y: 3: Me`), true],
+    ['quadrant axis', () => parseQuadrant(`quadrantChart\nx-axis a${spaces}b`), true],
+    ['quadrant point', () => parseQuadrant(`quadrantChart\nx${spaces}y`), false],
+    ['radar curve', () => parseRadar(`radar-beta\ncurve a${spaces}x`), false],
+  ] as const) {
+    it(`reads a ${name} with a long run of spaces in linear time`, () => {
+      const { ms, value } = timed(parse);
+      expect(ms).toBeLessThan(BUDGET_MS);
+      expect(value !== null).toBe(ok);
+    });
+  }
+
+  // A lone CR or a U+2028 stops `.`, so `title\s+(.*)$` and the like
+  // failed at it and retried every split of the spaces before it. A
+  // line holding one isn't a line mermaid reads the same way anyway.
+  const LS = String.fromCharCode(0x2028);
+  for (const [name, parse] of [
+    ['journey', (t: string) => parseJourney(`journey\n${t}`)],
+    ['quadrant', (t: string) => parseQuadrant(`quadrantChart\n${t}`)],
+    ['radar', (t: string) => parseRadar(`radar-beta\n${t}`)],
+    ['xychart', (t: string) => parseXyChart(`xychart-beta\n${t}`)],
+    ['packet', (t: string) => parsePacket(`packet-beta\n${t}`)],
+    ['sankey', (t: string) => parseSankey(`sankey-beta\n${t}`)],
+  ] as const) {
+    it(`leaves a ${name} line with a line break inside to the text panel, quickly`, () => {
+      for (const brk of ['\r', LS]) {
+        const { ms, value } = timed(() => parse(`title${spaces}a${brk}b`));
+        expect(ms).toBeLessThan(BUDGET_MS);
+        expect(value).toBeNull();
+      }
+    });
+  }
+
+  // Random rows over the characters that matter, read by the parser and
+  // by the regex it used to use: the same fields every time.
+  it('reads every row the way the old patterns did', () => {
+    const rows = randomRows(['a', 'b', ' ', '  ', ':', '-->', '[', ']', ',', '1', '.', '-', '"', '{', '}', 'x-axis ', 'curve ']);
+    let hits = 0;
+    for (const row of rows) {
+      const t = row.trim();
+      if (!t || /^(title|section|quadrant-|axis|max|min|showLegend|ticks|graticule)/.test(t)) continue;
+      const task = /^([^:]+?)\s*:\s*(-?\d+(?:\.\d+)?)\s*(?::\s*(.*))?$/.exec(t);
+      const j = parseJourney(`journey\nsection s\n${t}`);
+      expect(j?.sections[0].tasks[0] ?? null, t).toEqual(
+        task ? { line: 2, name: task[1].trim(), score: Number(task[2]), people: (task[3] ?? '').split(',').map((p) => p.trim()).filter(Boolean) } : null,
+      );
+      const axis = /^([xy])-axis\s+(.*?)(?:\s*-->\s*(.*))?$/.exec(t);
+      const point = /^([^:[\]]+?)\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]$/.exec(t);
+      const q = parseQuadrant(`quadrantChart\n${t}`);
+      if (axis) expect(q?.xAxis ?? q?.yAxis, t).toEqual({ line: 1, low: axis[2].trim(), high: (axis[3] ?? '').trim() });
+      else if (point) expect(q?.points[0], t).toEqual({ line: 1, name: point[1].trim(), x: Number(point[2]), y: Number(point[3]) });
+      else expect(q, t).toBeNull();
+      const curve = /^curve\s+([A-Za-z_][\w-]*)\s*(?:\[\s*"([^"]*)"\s*\])?\s*\{(.*)\}$/.exec(t);
+      const r = parseRadar(`radar-beta\n${t}`);
+      if (curve) expect([r?.curves[0]?.id, r?.curves[0]?.label], t).toEqual(r ? [curve[1], curve[2] ?? ''] : [undefined, undefined]);
+      else expect(r, t).toBeNull();
+      if (task || axis || point || curve) hits++;
+    }
+    expect(hits).toBeGreaterThan(100);
+  });
+
+  it('still reads names, axes and curves as before', () => {
+    const j = parseJourney('journey\nsection s\n  Make tea  :  5 : Me, You');
+    expect(j?.sections[0].tasks[0]).toMatchObject({ name: 'Make tea', score: 5, people: ['Me', 'You'] });
+    const q = parseQuadrant('quadrantChart\nx-axis  Low  stuff   -->  High\ny-axis Only low\nA  b : [0.1, 0.2]');
+    expect(q?.xAxis).toMatchObject({ low: 'Low  stuff', high: 'High' });
+    expect(q?.yAxis).toMatchObject({ low: 'Only low', high: '' });
+    expect(q?.points[0]).toMatchObject({ name: 'A  b', x: 0.1, y: 0.2 });
+    const r = parseRadar('radar-beta\naxis a, b\ncurve c  ["C"]  {1, 2}\ncurve d {3, 4}');
+    expect(r?.curves.map((c) => [c.id, c.label, c.values])).toEqual([['c', 'C', [1, 2]], ['d', '', [3, 4]]]);
+  });
+});
+
+describe('frontmatter and labels', () => {
+  const spaces = ' '.repeat(40_000);
+
+  // `(.*?)\s*$` grew the lazy value one character at a time, and each
+  // time `\s*$` scanned the rest of a run of spaces.
+  it('reads a frontmatter title with a long run of spaces in linear time', () => {
+    const lines = ['---', `title: a${spaces}b  `, '---', 'pie'];
+    const { ms, value } = timed(() => findPreamble(lines));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.frontmatter?.title?.value).toBe(`a${spaces}b`);
+    expect(value.frontmatter?.title?.span).toEqual({ start: 7, end: 7 + spaces.length + 2 });
+  });
+
+  it('reads titles and writes labels the way the old patterns did', () => {
+    const LS = String.fromCharCode(0x2028);
+    for (const row of randomRows(['a', ' ', '  ', '\t', '\r', LS, '"', ':', 'title'])) {
+      const old = /^(\s*title\s*:\s*)(.*?)\s*$/.exec(row);
+      const title = findPreamble(['---', row, '---', 'pie']).frontmatter?.title ?? null;
+      expect(title && { span: title.span }, JSON.stringify(row)).toEqual(old && { span: { start: old[1].length, end: old[1].length + old[2].length } });
+      const line = /^(\s*)(.*?)(\s*)$/.exec(row);
+      if (!line) continue;
+      const expected = line[2] ? `${line[1]}**${line[2]}**${line[3]}` : row;
+      expect(serializeRich([{ text: row, bold: true, italic: false }]), JSON.stringify(row)).toBe(expected);
+    }
+  });
+
+  it('writes a formatted label with a long run of spaces in linear time', () => {
+    const { ms, value } = timed(() => serializeRich([{ text: `  a${spaces}b `, bold: true, italic: false }]));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value).toBe(`  **a${spaces}b** `);
   });
 });

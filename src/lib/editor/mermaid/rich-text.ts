@@ -119,8 +119,12 @@ export function serializeRich(runs: RichRun[]): string {
       return r.text
         .split('\n')
         .map((line) => {
-          const m = /^(\s*)(.*?)(\s*)$/.exec(line)!;
-          return m[2] ? `${m[1]}${marker}${escapeMarkers(m[2])}${marker}${m[3]}` : line;
+          // Split by hand: /^(\s*)(.*?)(\s*)$/ grew its lazy middle one
+          // character at a time, rescanning a run of spaces each time.
+          const body = line.trim();
+          if (!body) return line;
+          const lead = line.length - line.trimStart().length;
+          return `${line.slice(0, lead)}${marker}${escapeMarkers(body)}${marker}${line.slice(lead + body.length)}`;
         })
         .join('\n');
     })
