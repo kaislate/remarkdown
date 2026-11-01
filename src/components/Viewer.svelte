@@ -228,8 +228,10 @@
       const href = a.getAttribute('href');
       const action = linkAction(href, get(doc)?.dir);
       if (action.kind === 'scroll') {
-        const target = document.getElementById(action.id);
-        if (target && root.contains(target)) jumpToSection(target);
+        // Looked for in the article: getElementById would find the first
+        // element on the whole page with that id, which may be the app's.
+        const target = [...root.querySelectorAll<HTMLElement>('[id]')].find((el) => el.id === action.id);
+        if (target) jumpToSection(target);
       } else if (action.kind === 'open') {
         void openPaths([action.path]);
       } else if (action.kind === 'external') {

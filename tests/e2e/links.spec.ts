@@ -50,6 +50,17 @@ test('a footnote link scrolls to the footnote, and the page stays put', async ({
   expect(page.url()).toBe(url);
 });
 
+// The target is looked for in the article, not the first element anywhere
+// on the page that shares its id.
+test('a footnote link finds its footnote even when something outside the article has the same id', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => document.body.insertAdjacentHTML('afterbegin', '<div id="fn1" hidden></div>'));
+  const footnote = page.locator('.viewer li#fn1');
+  await expect(footnote).not.toBeInViewport();
+  await page.locator('.viewer a[href="#fn1"]').click();
+  await expect(footnote).toBeInViewport();
+});
+
 test('a link to a sibling .md opens it in a tab', async ({ page }) => {
   await open(page);
   const url = page.url();
