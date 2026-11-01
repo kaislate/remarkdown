@@ -162,9 +162,11 @@ function escapeRe(s: string): string {
 const ARROW_ALT = [...MESSAGE_STYLES.map((s) => s.delim), ...HALF_ARROWS].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
 
 // Groups: 1 indent, 2 from, 3 ws, 4 arrow, 5 ws, 6 activation, 7 ws,
-// 8 to, 9 ws, 10 ": …" part, 11 ws after colon, 12 text.
+// 8 to, 9 ws, 10 ": …" part, 11 ws after colon, 12 text. The ws after
+// the activation mark is only tried with one: two `\s*` side by side
+// could split a long run of spaces every way (quadratic).
 const MESSAGE_RE = new RegExp(
-  `^(\\s*)(${ID_RE_SRC})(\\s*)(${ARROW_ALT})(\\s*)([+-]?)(\\s*)(${ID_RE_SRC})(\\s*)(:(\\s*)(.*))?$`,
+  `^(\\s*)(${ID_RE_SRC})(\\s*)(${ARROW_ALT})(\\s*)(?:([+-])(\\s*))?(${ID_RE_SRC})(\\s*)(:(\\s*)(.*))?$`,
   'u',
 );
 
@@ -175,8 +177,11 @@ const NOTE_RE = new RegExp(
 );
 
 // Groups: 1 indent, 2 `create `, 3 keyword, 4 ws, 5 id, 6 `@{…}`, 7 display.
+// The display runs to the last non-space (or, when there is none, is
+// the last space, as a lazy `.+?` before `\s*$` would take it, but
+// without growing one character at a time over a long run of spaces).
 const PARTICIPANT_RE = new RegExp(
-  `^(\\s*)(create\\s+)?(participant|actor)(\\s+)(${ID_RE_SRC})(@\\{[^}]*\\})?(?:\\s+as\\s+(.+?))?\\s*$`,
+  `^(\\s*)(create\\s+)?(participant|actor)(\\s+)(${ID_RE_SRC})(@\\{[^}]*\\})?(?:\\s+as\\s+(.*\\S|\\s))?\\s*$`,
   'u',
 );
 
@@ -347,6 +352,11 @@ function parseOrThrow(source: string): SequenceSourceParseResult {
     // edit the wrong message). Leave such diagrams render-only.
     // Entity codes (`#59;`) and `#` comments may contain `;` freely.
     if (unencodedSemicolon(t)) fail(`statement separator in: ${t}`);
+    // A lone CR (a line break to mermaid) or U+2028/9 stops the `.` in
+    // the patterns below, so a line holding one never reads anyway, and
+    // with a long run of spaces before it the `\s*(.*)$` tails retry
+    // every split of the run: quadratic. Say no before trying them.
+    if (/[\r\u2028\u2029]/.test(raw)) fail(`line break inside: ${t}`);
 
     const firstWord = /^[A-Za-z_]+/.exec(t)?.[0] ?? '';
     const lower = firstWord.toLowerCase();
@@ -517,7 +527,7 @@ function parseOrThrow(source: string): SequenceSourceParseResult {
     // Message.
     const mMatch = MESSAGE_RE.exec(raw);
     if (mMatch) {
-      const [, ind, from, ws1, delim, ws2, act, ws3, to, ws4, colonPart, ws5] = mMatch;
+      const [, ind, from, ws1, delim, ws2, act = '', ws3 = '', to, ws4, colonPart, ws5] = mMatch;
       const style = MESSAGE_STYLES.find((s) => s.delim === delim)?.style ?? 'other';
       mention(from, i);
       mention(to, i);

@@ -8,6 +8,7 @@ import { parseGantt } from '../../../src/lib/editor/mermaid/gantt-parser';
 import { parseGanttDate } from '../../../src/lib/editor/mermaid/gantt-dates';
 import { parseMermaidSource, type SubgraphStatement } from '../../../src/lib/editor/mermaid-parser';
 import { applyFlowchartEdit } from '../../../src/lib/editor/mermaid-flowchart-edit';
+import { parseSequenceSource } from '../../../src/lib/editor/mermaid-sequence-parser';
 
 // Generous, so a slow CI machine doesn't fail a fixed parser, and far
 // below what the old code took.
@@ -79,5 +80,51 @@ describe('flowchart', () => {
     const { ms, value } = timed(() => parseMermaidSource(source));
     expect(ms).toBeLessThan(BUDGET_MS);
     expect(value.ok).toBe(true);
+  });
+});
+
+describe('sequence', () => {
+  const spaces = ' '.repeat(70_000);
+
+  // G71: the alias's lazy `.+?` grew one character at a time, and each
+  // time `\s*$` scanned the rest of the run of spaces.
+  it('reads a participant alias with a long run of spaces in linear time', () => {
+    const { ms, value } = timed(() => parseSequenceSource(`sequenceDiagram\nparticipant A as x${spaces}y`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok).toBe(true);
+    if (value.ok) expect(value.graph.participants.get('A')?.display.length).toBeGreaterThan(70_000);
+  });
+
+  // G71: the two `\s*` around a message's activation mark could split a
+  // run of spaces every way.
+  it('rejects a message with a long run of spaces in linear time', () => {
+    const { ms, value } = timed(() => parseSequenceSource(`sequenceDiagram\nA->${spaces}!`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok).toBe(false);
+  });
+
+  // A U+2028 stops `.`, so `\s*:\s*(.*)$` retried every split of the
+  // spaces before it.
+  it('rejects a line holding a line separator in linear time', () => {
+    for (const line of [`Note over A:${spaces}x\u2028y`, `A->>B:${spaces}x\u2028y`, `participant A as${spaces}x\u2028y`]) {
+      const { ms, value } = timed(() => parseSequenceSource(`sequenceDiagram\n${line}`));
+      expect(ms).toBeLessThan(BUDGET_MS);
+      expect(value.ok).toBe(false);
+    }
+  });
+
+  it('still reads aliases, activations and texts as before', () => {
+    const r = parseSequenceSource(
+      ['sequenceDiagram', 'participant A as  Alice  ', 'participant B as   ', 'A->> +B: hi', 'B-->>- A:  back ', 'A->>+ B'].join('\n'),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.participants.get('A')?.display).toBe('Alice');
+    expect(r.map.declarations.get('B')?.[0].hasDisplay).toBe(true);
+    expect(r.graph.events.map((e) => (e.kind === 'message' ? [e.from, e.to, e.text, e.activation ?? null] : null))).toEqual([
+      ['A', 'B', 'hi', 'activate'],
+      ['B', 'A', 'back', 'deactivate'],
+      ['A', 'B', '', 'activate'],
+    ]);
   });
 });
