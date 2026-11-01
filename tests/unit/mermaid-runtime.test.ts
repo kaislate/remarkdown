@@ -13,6 +13,8 @@ import {
   styleRegexWork,
   tagRegexWork,
   commentRegexWork,
+  methodRegexWork,
+  genericTypesWork,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -222,6 +224,56 @@ describe('mermaid runtime', () => {
     expect(styleRegexWork('style:#;'.repeat(25_000))).toBeLessThan(1e8);
     expect(tagRegexWork(`<${'a'.repeat(200_000)}`)).toBeGreaterThan(1e10);
     expect(commentRegexWork(' \n'.repeat(100_000))).toBeGreaterThan(1e10);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  // Lines each under the limit still add up: mermaid runs the style
+  // regex over all of them, so 100 lines of 500 bytes took seconds.
+  it('turns away many style lines that add up to seconds', async () => {
+    const t0 = performance.now();
+    const out = await renderMermaid(`flowchart TD\nA\n${`${'style:#'.repeat(70)}\n`.repeat(100)}`, DARK);
+    expect(performance.now() - t0).toBeLessThan(200);
+    expect(out.ok).toBe(false);
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  // mermaid reads each class member with /([#+~-])?(.+)\((.*)\)…/, which
+  // on a member with no `(` before a `)` is cubic (2 KB took seconds),
+  // and turns `~` pairs into `<…>` by searching from scratch for each
+  // pair (40 KB of `~` took seconds).
+  it('turns away a class member mermaid would take seconds over', async () => {
+    for (const source of [
+      `classDiagram\nclass A {\n  a)${'('.repeat(2_000)}\n}`,
+      `classDiagram\nA : a)${'('.repeat(2_000)}`,
+      `classDiagram\nclass A {\n  a ${'~'.repeat(45_000)}\n}`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('draws classes people write, however many', async () => {
+    for (const source of [
+      `classDiagram\nclass Animal {\n${'  +eat(Food f, List~int~ xs) Map~K, V~\n  -int age\n'.repeat(2_000)}}`,
+      `classDiagram\n${'Animal : +isMammal() bool\n'.repeat(2_000)}`,
+      `flowchart TD\nA["${'f(x) '.repeat(4_000)}"]`,
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
+  it('weighs class members in linear time', () => {
+    const t0 = performance.now();
+    expect(methodRegexWork(`classDiagram\nA : a)${'('.repeat(200_000)}`)).toBeGreaterThan(1e10);
+    expect(genericTypesWork(`a${'~'.repeat(200_000)}`)).toBeGreaterThan(1e10);
     expect(performance.now() - t0).toBeLessThan(500);
   });
 

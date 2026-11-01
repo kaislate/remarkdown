@@ -20,6 +20,7 @@
 import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
 import { formatShortcut } from './shortcuts';
+import { detectDiagramType } from './editor/mermaid-detect';
 
 type Mermaid = typeof import('mermaid').default;
 
@@ -193,11 +194,13 @@ function errorMessage(err: unknown): string {
 // timeout stops synchronous work. This bounds, in one pass per line,
 // the steps it would take (measured: a million or more per ms), so a
 // render that would hang is turned away before mermaid sees it. Lines
-// people write come out far below the limit.
+// people write come out far below the limit. The lines are summed, as
+// mermaid runs the regex over all of them: a hundred lines each under
+// the limit took seconds together.
 const STYLE_WORK_LIMIT = 1e8;
 
 export function styleRegexWork(source: string): number {
-  let worst = 0;
+  let work = 0;
   for (const line of source.split(/[\n\r\u2028\u2029]/)) {
     const len = line.length;
     for (const keyword of ['style', 'classDef']) {
@@ -242,10 +245,10 @@ export function styleRegexWork(source: string): number {
       if (semi < first + keyword.length) tail = perStart - len;
       // A match ends at the last `;`; every keyword after it fails
       // against what follows. Without a match every keyword fails.
-      worst = Math.max(worst, matched ? perStart + startsAfterSemi * tail : starts * perStart);
+      work += matched ? perStart + startsAfterSemi * tail : starts * perStart;
     }
   }
-  return worst;
+  return work;
 }
 
 // Two more of mermaid's passes run on every source, before its size
@@ -286,6 +289,44 @@ export function commentRegexWork(source: string): number {
   return work;
 }
 
+// And two more in class diagrams, once mermaid reads the members:
+//   - each member holding a `)` goes through
+//     /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/, which isn't anchored:
+//     where it can't match, it runs `.+` to the end of the line and back
+//     from every start, and `(.*)` from every `(` (2 KB took seconds);
+//   - parseGenericTypes turns `~` pairs into `<…>`, looking for the
+//     first and last `~` from scratch for each pair (it also runs on ER
+//     entity names; 40 KB of `~` took seconds).
+// Both are weighed per line, as if the whole line were one member that
+// fails (no member is longer, and none costs more), and summed. Rates
+// measured: about 150,000 steps per ms for the first, 500,000 for the
+// second, so neither runs past about a third of a second.
+const METHOD_WORK_LIMIT = 5e7;
+const GENERIC_WORK_LIMIT = 1e8;
+
+export function methodRegexWork(source: string): number {
+  if (detectDiagramType(source) !== 'class') return 0;
+  let work = 0;
+  for (const line of source.split('\n')) {
+    if (!line.includes(')')) continue;
+    for (const piece of line.split(/[\r\u2028\u2029]/)) {
+      const len = piece.length;
+      work += (len * (len + 1)) / 2;
+      for (let p = piece.indexOf('('); p >= 0; p = piece.indexOf('(', p + 1)) work += p * (len - p);
+    }
+  }
+  return work;
+}
+
+export function genericTypesWork(source: string): number {
+  let work = 0;
+  for (const line of source.split('\n')) {
+    const tildes = line.split('~').length - 1;
+    if (tildes > 1) work += tildes * line.length;
+  }
+  return work;
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -297,7 +338,10 @@ async function renderNow(
 
   const tooSlow = styleRegexWork(source) > STYLE_WORK_LIMIT
     ? 'A style line in this diagram is too long and tangled to read.'
-    : tagRegexWork(source) > TAG_WORK_LIMIT || commentRegexWork(source) > COMMENT_WORK_LIMIT
+    : tagRegexWork(source) > TAG_WORK_LIMIT ||
+        commentRegexWork(source) > COMMENT_WORK_LIMIT ||
+        methodRegexWork(source) > METHOD_WORK_LIMIT ||
+        genericTypesWork(source) > GENERIC_WORK_LIMIT
       ? 'This diagram is too long and tangled to read.'
       : null;
   if (tooSlow) {
