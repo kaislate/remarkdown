@@ -57,14 +57,20 @@ function outside(raw: string, scheme: string): LinkAction {
 function otherDocument(raw: string, docDir: string | null | undefined): LinkAction {
   const dir = docDir ? plainPath(docDir) : null;
   if (!dir) return NONE;
-  // A colon is a drive or an NTFS stream on Windows; on macOS and Linux
-  // (a folder from '/', no backslashes) it's just part of a name.
-  const windows = !/^\/(?!\/)/.test(dir) || dir.includes('\\');
+  // A macOS or Linux folder starts from a single '/'; anything else (a
+  // drive, \\server\share, //server/share) is Windows. A colon is a drive
+  // or an NTFS stream on Windows; on macOS and Linux it's just part of a
+  // name, and so is a backslash.
+  const windows = !/^\/(?![\\/])/.test(dir);
   const rel = decode(raw.split(/[?#]/, 1)[0]);
   // A leading slash or backslash (before or after decoding) is an absolute
   // path or another machine.
   if (!rel || /^[\\/]/.test(raw) || /^[\\/]/.test(rel) || (windows && rel.includes(':'))) return NONE;
   if (/[\x00-\x1f]/.test(rel) || !MD_RE.test(rel)) return NONE;
+  if (!windows) {
+    const path = posixJoin(dir, rel);
+    return path ? { kind: 'open', path } : NONE;
+  }
 
   // A document on a network share (\\server\share\…): joinPath knows only
   // drives and '/', so the share is joined as a plain folder, and a link
@@ -81,6 +87,32 @@ function otherDocument(raw: string, docDir: string | null | undefined): LinkActi
   // Same separators as the document's own path, so the tab and recent list
   // name the file the way the rest of the app does.
   return { kind: 'open', path: dir.includes('\\') ? path.replace(/\//g, '\\') : path };
+}
+
+// macOS mounts another machine's exports the moment anything looks under
+// /net/<host> or /Network/Servers/<host> (autofs on Linux may do the same
+// for /net). A link that climbs there would have the computer reach out to
+// whatever host the document names, so it may only stay on the host the
+// document itself is on.
+const AUTOMOUNT_RE = /^\/(?:net|network)(?:\/|$)/i;
+const automountHost = (p: string) => /^\/(?:net|network\/servers)\/[^/]+\//i.exec(p)?.[0].toLowerCase();
+
+// `rel` from the macOS or Linux folder `dir`, tidied (`.` and `..`), or
+// null where it may not go. Only '/' separates there: joinPath would split
+// a folder called 'a\b' in two.
+function posixJoin(dir: string, rel: string): string | null {
+  const stack: string[] = [];
+  for (const part of [...dir.split('/'), ...rel.split('/')]) {
+    if (!part || part === '.') continue;
+    if (part === '..') stack.pop();
+    else stack.push(part);
+  }
+  const path = `/${stack.join('/')}`;
+  if (AUTOMOUNT_RE.test(path)) {
+    const host = automountHost(path);
+    if (!host || host !== automountHost(`${dir}/`)) return null;
+  }
+  return path;
 }
 
 // Windows' long and device spellings (\\?\C:\…, \\?\UNC\server\share\…,

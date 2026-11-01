@@ -76,6 +76,35 @@ describe('links to other documents', () => {
     expect(linkAction('Meeting%3A%20notes.md', '\\\\srv\\share')).toEqual(NONE);
   });
 
+  // A backslash is just a character in a macOS or Linux name, not a
+  // separator, and doesn't make the folder a Windows one.
+  it('keeps a backslash in a macOS or Linux folder name', () => {
+    expect(linkAction('x.md', '/home/me/a\\b')).toEqual({ kind: 'open', path: '/home/me/a\\b/x.md' });
+    expect(linkAction('../y.md', '/home/me/a\\b/c')).toEqual({ kind: 'open', path: '/home/me/a\\b/y.md' });
+    expect(linkAction('Meeting%3A%20notes.md', '/home/me/a\\b')).toEqual({ kind: 'open', path: '/home/me/a\\b/Meeting: notes.md' });
+  });
+
+  // macOS mounts another machine's exports the moment anything looks
+  // under /net/<host> (and /Network/Servers/<host>): a link that climbs
+  // there would have the Mac reach out to a host the document names.
+  it("refuses a link that climbs into macOS's network mounts", () => {
+    for (const href of [
+      '../../../../../../../../net/evil.example/export/x.md',
+      '..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fnet%2Fevil.example%2Fexport%2Fx.md',
+      '../../../../../../../../NET/evil.example/x.md',
+      '../../../../../../../../net/evil.md',
+      '../../../../../../../../Network/Servers/evil.example/x.md',
+      '../../../../../../../../network/x.md',
+    ]) {
+      expect(linkAction(href, '/Users/me/docs'), href).toEqual(NONE);
+    }
+    // A document already on a mounted export keeps its links on that host.
+    expect(linkAction('../other.md', '/net/srv/export/docs')).toEqual({ kind: 'open', path: '/net/srv/export/other.md' });
+    expect(linkAction('../../../evil/x.md', '/net/srv/export/docs')).toEqual(NONE);
+    // A folder that is merely called net is any other folder.
+    expect(linkAction('../net/x.md', '/Users/me/docs')).toEqual({ kind: 'open', path: '/Users/me/net/x.md' });
+  });
+
   it('needs the document folder', () => {
     expect(linkAction('other.md', null)).toEqual(NONE);
     expect(linkAction('other.md', undefined)).toEqual(NONE);
