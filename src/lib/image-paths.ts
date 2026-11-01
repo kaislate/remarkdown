@@ -5,12 +5,52 @@
 //    (spaces, brackets…) percent-encoded; a picture on another drive
 //    keeps its full path (POSIX has one root, so there it's always relative).
 //  - resolveImageSrc: what's in the markdown → a URL the window can load
-//    (web and data URLs as they are; files through the asset protocol).
+//    (web and data URLs as they are; files through the asset protocol;
+//    nothing at all for the unsafe ones below).
 
 import { platform } from './platform';
 
 export function isWebUrl(src: string): boolean {
-  return /^(https?:|asset:|data:|blob:|file:)/i.test(src) || /^https?:\/\/asset\.localhost/i.test(src);
+  return /^(https?:|data:|blob:)/i.test(src);
+}
+
+// Only ASCII escapes: every character that matters below is ASCII, and
+// this never fails on a stray % the way decodeURIComponent does.
+const decodeAscii = (s: string) => s.replace(/%([0-7][0-9A-Fa-f])/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)));
+
+// The src as the window's URL parser reads it: tabs and newlines dropped,
+// spaces and control characters trimmed, backslashes as slashes.
+const asParsed = (s: string) => s.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/\\/g, '/');
+
+function unsafeReading(s: string): boolean {
+  // \\host\share, \\?\…, \\.\…, //host (any slashes) and NT's \??\ prefix.
+  if (s.startsWith('//') || s.startsWith('/??/')) return true;
+  const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(s)?.[1].toLowerCase();
+  if (scheme === 'asset' || scheme === 'file' || scheme === 'ipc' || scheme === 'tauri') return true;
+  if (scheme !== 'http' && scheme !== 'https') return false;
+  // The app's own protocols are served from *.localhost; the parser
+  // undoes the tricks (http:host, %2E, user@, a trailing dot).
+  try {
+    return new URL(s).hostname.replace(/\.+$/, '').endsWith('.localhost');
+  } catch {
+    return true;
+  }
+}
+
+// A src a markdown file must never make the app load: the asset protocol
+// or another of the app's own URLs, a file: URL, or a network share or
+// device path. On Windows merely looking a share up signs in to it with
+// the user's password hash, so this is checked on the src as written and
+// on every percent-decoded form of it, before anything touches it.
+export function isUnsafeImageSrc(src: string): boolean {
+  let s = src;
+  for (let round = 0; round < 4; round++) {
+    if (unsafeReading(asParsed(s))) return true;
+    const next = decodeAscii(s);
+    if (next === s) return false;
+    s = next;
+  }
+  return true;
 }
 
 const isDrivePath = (p: string) => /^[A-Za-z]:[\\/]/.test(p);
@@ -58,7 +98,10 @@ function decode(src: string): string {
 }
 
 export function resolveImageSrc(src: string, baseDir: string | undefined, toAssetUrl: ((path: string) => string) | undefined): string {
-  if (!src || isWebUrl(src) || !toAssetUrl) return src;
+  if (!src) return src;
+  // An empty src is a picture that asks for nothing.
+  if (isUnsafeImageSrc(src)) return '';
+  if (isWebUrl(src) || !toAssetUrl) return src;
   const path = decode(src);
   if (isDrivePath(path)) return toAssetUrl(slashes(path));
   // A leading slash is a full file path on macOS and Linux; Windows leaves it be.
