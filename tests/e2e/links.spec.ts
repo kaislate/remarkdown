@@ -22,7 +22,7 @@ const DOCS: Record<string, string> = {
     '',
     FILLER,
     '',
-    '[^1]: The footnote itself.',
+    '[^1]: The footnote itself, with [a guide](CONTRIBUTING.md), [notes](https://example.com/notes) and [a host Rust cannot parse](http://xn--a.attacker.example/).',
     '',
   ].join('\n'),
   [OTHER]: '# Other\n\nThe other document.\n',
@@ -114,5 +114,30 @@ test("a diagram's click-href node goes nowhere", async ({ page, context }) => {
   await page.waitForTimeout(300);
   expect(await external(page)).toEqual([]);
   expect(page.url()).toBe(url);
+  expect(context.pages()).toHaveLength(1);
+});
+
+// The footnote editor's preview sits outside the reader, on <body>. A
+// relative link there would reload the whole app, losing the edit. Rust's
+// navigation guard never sees a host its URL parser rejects (Tauri lets
+// those through), though Chromium follows it: only the page can stop it.
+test("a link in the footnote editor's preview neither reloads the app nor leaves it", async ({ page, context }) => {
+  await open(page);
+  const url = page.url();
+  await page.locator('.edit-mode-toggle').click();
+  await page.locator('.editor-surface sup.footnote-ref a').click();
+  const preview = page.locator('.preview[aria-label="How it will read"]');
+  await expect(preview.locator('a')).toHaveCount(3);
+  await page.evaluate(() => ((window as any).__E2E_STILL_HERE__ = true));
+  await preview.locator('a[href="CONTRIBUTING.md"]').click();
+  await preview.locator('a[href="https://example.com/notes"]').click();
+  await expect.poll(() => external(page)).toEqual(['https://example.com/notes']);
+  // Chromium hands this one to open_external, which refuses it; WebKit
+  // can't parse it either.
+  await preview.locator('a[href^="http://xn--a."]').click();
+  await page.waitForTimeout(300);
+  expect(page.url()).toBe(url);
+  expect(await page.evaluate(() => (window as any).__E2E_STILL_HERE__)).toBe(true);
+  await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
   expect(context.pages()).toHaveLength(1);
 });

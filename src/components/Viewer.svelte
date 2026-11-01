@@ -212,7 +212,9 @@
   // decides what each one does). The window never follows one itself: a
   // page link would replace the app, and a ctrl/shift/middle click would
   // ask for a new window. A middle click arrives as auxclick; other
-  // buttons there (the right one) are the context menu's.
+  // buttons there (the right one) are the context menu's. The article's
+  // data-own-links tells lib/link-guard.ts, which holds every link in the
+  // app, to leave the routing of these to this handler.
   $effect(() => {
     const root = articleEl;
     if (!root) return;
@@ -363,7 +365,7 @@
              acceptable per design. The companion layers DO unmount in
              edit mode: highlights/notes/marginalia don't anchor cleanly
              to a hidden article, and the editor doesn't need them. -->
-        <article class="viewer md-rendered" bind:this={articleEl}>
+        <article class="viewer md-rendered" data-own-links bind:this={articleEl}>
           {@html $doc.html}
         </article>
         {#if !$editMode}

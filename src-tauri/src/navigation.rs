@@ -1,8 +1,14 @@
 //! Keeps every window on the app's own pages. A document can hold any link
 //! (and a diagram can declare one with `click X href`); followed in place, it
 //! would swap the app for whatever page it names, in a frameless window with
-//! no address bar to tell the two apart. The page handles the links it
-//! means to follow (Viewer.svelte); this is the backstop for everything else.
+//! no address bar to tell the two apart.
+//!
+//! The page stops every link click itself (lib/link-guard.ts, and
+//! Viewer.svelte for the reader's links); this catches what else gets
+//! through. It can't be the only guard: tauri-runtime-wry 2.12 asks it only
+//! about URLs the url crate can parse and lets any other through
+//! (`url.parse().map(..).unwrap_or(true)`), and Chromium follows some that
+//! url refuses, such as a bad punycode host (http://xn--a.example/).
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, Runtime, Url, WebviewWindowBuilder};

@@ -5,7 +5,8 @@
 //  - http(s) / mailto     → the user's browser or mail app
 // and everything else (file:, javascript:, custom schemes, absolute and
 // network paths, other kinds of file) does nothing. The window itself
-// never follows a link: Rust refuses that too (navigation.rs).
+// never follows a link: the click is always prevented (Viewer.svelte,
+// link-guard.ts), and Rust refuses the navigations it can (navigation.rs).
 
 import { joinPath } from './image-paths';
 
