@@ -11,6 +11,7 @@ mod launch;
 mod linux_gpu;
 #[cfg(target_os = "macos")]
 mod mac;
+mod navigation;
 mod reading_progress;
 mod recent;
 mod session_file;
@@ -84,6 +85,13 @@ fn main() {
         .plugin(asset_protocol::navigation_guard())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
+            // The first window, from tauri.conf.json ("create": false there),
+            // built here rather than by Tauri so it can't leave the app's
+            // pages either. Built first, where Tauri would have built it.
+            for config in &app.config().app.windows {
+                let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
+                navigation::lock_to_app(builder, navigation::dev_url(app.handle())).build()?;
+            }
             // Before any window reads them: 0.8.0 resets settings once.
             fresh_start::run(app.handle());
             #[cfg(target_os = "linux")]

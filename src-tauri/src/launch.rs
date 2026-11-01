@@ -143,7 +143,8 @@ pub async fn open_document_window(app: AppHandle, path: String) -> Result<(), Co
         .traffic_light_position(tauri::LogicalPosition::new(MAC_TRAFFIC_LIGHTS.0, MAC_TRAFFIC_LIGHTS.1));
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
-    builder
+    let dev_url = crate::navigation::dev_url(&app);
+    crate::navigation::lock_to_app(builder, dev_url)
         .initialization_script(format!("window.__RMD_OPEN__ = {path_js};"))
         .build()
         .map_err(|e| CommandError::Io(e.to_string()))?;
