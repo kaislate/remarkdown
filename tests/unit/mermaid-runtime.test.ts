@@ -11,6 +11,8 @@ import {
   buildDiagramError,
   MIN_DIAGRAM_SCALE,
   styleRegexWork,
+  tagRegexWork,
+  commentRegexWork,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -180,10 +182,46 @@ describe('mermaid runtime', () => {
     expect(mocked.renders.length).toBe(0);
   });
 
-  it('weighs a style line in linear time', () => {
+  // Two more of mermaid's own passes, run on every source before its
+  // size limit: cleanupText's /<(\w+)([^>]*)>/g splits a `<word` with
+  // no `>` after it every way, and cleanupComments' /^\s*%%…/gm scans
+  // the rest of a run of blank lines from each line in it. 40 KB of
+  // either took mermaid 5 to 30 s.
+  it('turns away a source mermaid would take seconds to clean up', async () => {
+    for (const source of [
+      `flowchart TD\nA\n<${'a'.repeat(40_000)}`,
+      `flowchart TD\nA${' \n'.repeat(20_000)}x`,
+      `flowchart TD\nA${'\n'.repeat(40_000)}x`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('draws long diagrams with tags, comparisons and blank lines', async () => {
+    for (const source of [
+      `flowchart TD\n${'A["a<b>x</b> i<n"] --> B\n'.repeat(2_000)}`,
+      `erDiagram\n${'A ||--o{ B : "i<n"\n'.repeat(2_000)}`,
+      `flowchart TD\nA${'\n'.repeat(1_000)}%% note\n${'\n    '.repeat(300)}B`,
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
+  it('weighs a source in linear time', () => {
     const t0 = performance.now();
     expect(styleRegexWork('style' + ':#'.repeat(100_000))).toBeGreaterThan(1e8);
     expect(styleRegexWork('style:#;'.repeat(25_000))).toBeLessThan(1e8);
+    expect(tagRegexWork(`<${'a'.repeat(200_000)}`)).toBeGreaterThan(1e10);
+    expect(commentRegexWork(' \n'.repeat(100_000))).toBeGreaterThan(1e10);
     expect(performance.now() - t0).toBeLessThan(500);
   });
 

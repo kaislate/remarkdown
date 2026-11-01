@@ -248,6 +248,44 @@ export function styleRegexWork(source: string): number {
   return worst;
 }
 
+// Two more of mermaid's passes run on every source, before its size
+// limit, and can be made just as slow (measured: 40 KB took 5 to 30 s):
+//   - cleanupText's /<(\w+)([^>]*)>/g splits a `<word` that has no `>`
+//     anywhere after it between `\w+` and `[^>]*` every way, each split
+//     scanning to the end (a `<word` before some `>` matches at once);
+//   - cleanupComments' /^\s*%%(?!{)[^\n]+\n?/gm, from every line start
+//     in a run of blank lines that doesn't end in a comment, scans to
+//     the end of the run and back.
+// The limits are set from the slowest rates measured (about ten
+// thousand steps per ms for indented blank lines), so neither pass runs
+// much past half a second; a diagram needs a thousand blank lines in a
+// row, or a `<word` thousands of characters long, to come near them.
+const TAG_WORK_LIMIT = 5e7;
+const COMMENT_WORK_LIMIT = 5e6;
+
+export function tagRegexWork(source: string): number {
+  let work = 0;
+  const word = /<(\w+)/g;
+  word.lastIndex = source.lastIndexOf('>') + 1;
+  for (let m = word.exec(source); m; m = word.exec(source)) work += m[1].length * (source.length - m.index);
+  return work;
+}
+
+export function commentRegexWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\s+/g)) {
+    const start = run.index!;
+    const end = start + run[0].length;
+    // Line starts inside the run: its start (at the top of the source),
+    // and the character after each line break in it.
+    if (start === 0) work += 2 * end;
+    for (let i = start; i < end; i++) {
+      if ('\n\r\u2028\u2029'.includes(source[i])) work += 2 * (end - i - 1);
+    }
+  }
+  return work;
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -257,8 +295,13 @@ async function renderNow(
   const cached = cache.get(key);
   if (cached) return rekey(cached);
 
-  if (styleRegexWork(source) > STYLE_WORK_LIMIT) {
-    const entry: CacheEntry = { outcome: { ok: false, error: 'A style line in this diagram is too long and tangled to read.' }, id: nextId() };
+  const tooSlow = styleRegexWork(source) > STYLE_WORK_LIMIT
+    ? 'A style line in this diagram is too long and tangled to read.'
+    : tagRegexWork(source) > TAG_WORK_LIMIT || commentRegexWork(source) > COMMENT_WORK_LIMIT
+      ? 'This diagram is too long and tangled to read.'
+      : null;
+  if (tooSlow) {
+    const entry: CacheEntry = { outcome: { ok: false, error: tooSlow }, id: nextId() };
     remember(key, entry);
     return entry.outcome;
   }
