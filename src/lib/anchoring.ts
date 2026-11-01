@@ -21,6 +21,9 @@ const MAX_CANDIDATES = 1000;
 // paragraphs all moved, takes about 150 million. Past it, the pass's
 // remaining anchors are left unplaced: their annotations aren't changed
 // (they're saved back as they are), and the next pass tries them again.
+// The searches check it too, as one anchor can run far past it alone: text
+// that's half of a long paragraph is found at a thousand places, and each
+// find reads it all.
 const PASS_BUDGET = 250_000_000;
 
 function findContainingBlock(node: Node): HTMLElement | null {
@@ -82,6 +85,11 @@ export function resolvingPass<T>(fn: () => T): T {
 // one anchor at a time, nothing is counted.
 function spend(chars: number): void {
   if (pass) pass.budget -= chars;
+}
+
+// Whether the pass has looked at all it may.
+function spent(): boolean {
+  return !!pass && pass.budget <= 0;
 }
 
 // `hay.indexOf(needle, from)`, counting the characters it went through.
@@ -238,7 +246,7 @@ function allIndexOf(hay: string, needle: string, limit = Infinity): number[] {
   if (!needle) return [];
   const out: number[] = [];
   let from = 0;
-  while (out.length < limit && from <= hay.length - needle.length) {
+  while (out.length < limit && from <= hay.length - needle.length && !spent()) {
     const i = find(hay, needle, from);
     if (i < 0) break;
     out.push(i);
@@ -361,7 +369,7 @@ function blockHits(viewerRoot: HTMLElement, needle: string, limit: number): { bl
   }
   const { text, starts } = blocks.joined;
   const out: { block: HTMLElement; i: number }[] = [];
-  for (let h = find(text, needle); h >= 0 && out.length < limit; h = find(text, needle, h + 1)) {
+  for (let h = find(text, needle); h >= 0 && out.length < limit && !spent(); h = find(text, needle, h + 1)) {
     // The last block starting at or before the match.
     let lo = 0;
     let hi = starts.length - 1;
@@ -387,7 +395,14 @@ function uniqueInContextOfBlocks(anchor: Anchor, viewerRoot: HTMLElement): Range
 }
 
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
-  if (pass && pass.budget <= 0) return null;
+  if (spent()) return null;
+  const range = place(anchor, viewerRoot);
+  // A search the cap cut short may have missed places the text is, so what
+  // was made of the places it found can't be trusted.
+  return spent() ? null : range;
+}
+
+function place(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
   if (anchor.endBlockHint) return resolveInRoot(anchor, viewerRoot, false);
 
   const hinted = blockById(viewerRoot, anchor.blockHint);

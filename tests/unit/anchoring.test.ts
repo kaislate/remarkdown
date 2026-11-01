@@ -430,6 +430,18 @@ describe('a pass over many anchors', () => {
     expect(resolvingPass(() => resolveAnchor(findable, root))?.toString()).toBe('the end');
   });
 
+  it('stops inside one anchor whose search alone would run past the cap', () => {
+    // Text that's half the paragraph is found at every place in the first
+    // half, and each find reads all of it: four seconds for this one anchor.
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(8_000_000)}</p>`);
+    const half: Anchor = { text: 'a'.repeat(4_000_000), prefix: '', suffix: '', blockHint: 'p:1' };
+    const start = performance.now();
+    const found = resolvingPass(() => resolveAnchor(half, root));
+    // About a quarter of a second here.
+    expect(performance.now() - start).toBeLessThan(1_500);
+    expect(found).toBeNull();
+  });
+
   it('still places hundreds of annotations in a long article whose paragraphs all moved', () => {
     // A paragraph added at the top renumbers every block after it, so no
     // anchor is in the block it remembers and each searches the whole article.
