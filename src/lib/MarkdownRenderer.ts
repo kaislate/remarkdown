@@ -18,6 +18,8 @@ export interface RenderResult {
 }
 
 const md = new MarkdownIt({
+  // No HTML, and so no frame: a frame showing an asset url could call the
+  // app's commands (see asset_protocol.rs).
   html: false,
   linkify: true,
   typographer: true,

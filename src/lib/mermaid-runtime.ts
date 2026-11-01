@@ -534,6 +534,9 @@ const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextS
 // stays in the svg. mermaid cleans every label with DOMPurify and this
 // config, which takes out everything that loads a picture. The words and
 // their formatting stay. (FORBID_TAGS style is mermaid's own default.)
+// DOMPurify's defaults already drop iframe, object and embed, and must go
+// on doing so: a frame showing an asset url could call the app's commands
+// (see asset_protocol.rs).
 const LABEL_PURIFY = {
   FORBID_TAGS: ['style', 'image', 'feimage'],
   FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'xlink:href'],

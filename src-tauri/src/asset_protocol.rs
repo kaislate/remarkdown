@@ -16,6 +16,16 @@
 // every response also carries `sandbox`: nothing loaded from here can run
 // script, and so nothing loaded from here can call a command. And no
 // window may open a page from here (navigation_guard).
+//
+// That trade-off rests on three guards: navigation_guard (top-level pages
+// only: a frame doesn't pass through it), `sandbox` (each engine has to
+// honour it on a custom protocol's answer) and opened_as_page (each engine
+// has to say what it wants). Nothing in a document can make a frame today:
+// markdown-it runs with html off, and DOMPurify's defaults drop iframe,
+// object and embed. Whoever lets a frame in, loosens a sanitizer, lets a
+// link reach asset URLs, or writes the app's CSP must keep asset: and
+// http(s)://asset.localhost out of frames (frame-src / child-src), or an
+// .svg here could call every command.
 
 use std::fs::File;
 use std::io::{ErrorKind, Read};
@@ -48,15 +58,22 @@ pub fn handle<R: Runtime>(
 
 /// Whether the window asked for this as a page (a link followed, a frame)
 /// rather than as a picture. The protocol only shows pictures, so that is
-/// refused outright, on top of `sandbox`. A webview that doesn't say is
-/// served as before.
+/// refused outright, on top of `sandbox`. A webview that doesn't send
+/// Sec-Fetch-Dest still asks for a page with an Accept that starts with
+/// text/html, which it never does for a picture.
 fn opened_as_page(headers: &HeaderMap) -> bool {
-    let dest = headers.get("sec-fetch-dest").and_then(|v| v.to_str().ok());
-    dest.is_some_and(|d| {
-        ["document", "iframe", "frame", "embed", "object"]
+    let header = |name| headers.get(name).and_then(|v| v.to_str().ok());
+    match header("sec-fetch-dest") {
+        Some(dest) => ["document", "iframe", "frame", "embed", "object"]
             .iter()
-            .any(|page| d.eq_ignore_ascii_case(page))
-    })
+            .any(|page| dest.eq_ignore_ascii_case(page)),
+        None => header("accept").is_some_and(|accept| {
+            accept
+                .trim_start()
+                .get(..9)
+                .is_some_and(|t| t.eq_ignore_ascii_case("text/html"))
+        }),
+    }
 }
 
 /// Whether a URL names something served here: asset://… on macOS and
@@ -425,6 +442,36 @@ mod tests {
         for dest in [Some("image"), Some("empty"), None] {
             assert!(!asked(dest), "{dest:?}");
         }
+    }
+
+    // A webview that doesn't send Sec-Fetch-Dest still asks for a page
+    // with an Accept that starts with text/html, and never asks for a
+    // picture that way.
+    #[test]
+    fn a_page_asked_for_without_saying_so_is_refused() {
+        let asked = |dest: Option<&str>, accept: Option<&str>| {
+            let mut r = Request::builder().uri("asset://localhost/%2Fhome%2Fme%2Fa.svg");
+            if let Some(d) = dest {
+                r = r.header("sec-fetch-dest", d);
+            }
+            if let Some(a) = accept {
+                r = r.header(header::ACCEPT, a);
+            }
+            opened_as_page(r.body(Vec::<u8>::new()).unwrap().headers())
+        };
+        let page = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+        assert!(asked(None, Some(page)));
+        assert!(asked(None, Some(" Text/HTML")));
+        assert!(asked(Some("iframe"), Some("*/*")));
+        for accept in [
+            Some("image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"),
+            Some("*/*"),
+            None,
+        ] {
+            assert!(!asked(None, accept), "{accept:?}");
+        }
+        // What the window says it wants it for comes first.
+        assert!(!asked(Some("image"), Some(page)));
     }
 
     #[test]

@@ -78,7 +78,8 @@ fn main() {
         // refuse it (see asset_protocol.rs).
         .register_asynchronous_uri_scheme_protocol("asset", asset_protocol::handle)
         // That makes a page served from it count as one of the app's own,
-        // so no window may open one.
+        // so no window may open one (and no frame may show one: what that
+        // rests on is in asset_protocol.rs).
         .plugin(asset_protocol::navigation_guard())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
