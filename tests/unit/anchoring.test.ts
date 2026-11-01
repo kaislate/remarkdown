@@ -525,3 +525,26 @@ describe('a pass over many anchors', () => {
     expect(found).toEqual(anchors.map((a) => a.text));
   });
 });
+
+describe('anchors in repetitive text', () => {
+  // Every match of an anchor's text is compared in full, so a long
+  // anchor over text that repeats it everywhere (a crafted file and
+  // sidecar) took seconds for each annotation. Past a bound it is
+  // ambiguous: nothing to pick between that many places.
+  it('gives up on a long anchor that matches nearly everywhere, quickly', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(100_000)}</p>`);
+    const anchor: Anchor = { text: 'a'.repeat(50_000), prefix: '', suffix: '', blockHint: 'p:1' };
+    const t0 = performance.now();
+    expect(resolveAnchor(anchor, root)).toBeNull();
+    expect(resolveAnchor({ ...anchor, blockHint: 'p:9' }, root)).toBeNull();
+    expect(resolveAnchor({ ...anchor, endBlockHint: 'p:1' }, root)).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it('still finds a short word among thousands of its copies', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'x the '.repeat(20_000)}unique the end</p>`);
+    const range = resolveAnchor({ text: 'the', prefix: 'x the unique ', suffix: ' end', blockHint: 'p:1' }, root);
+    expect(range?.toString()).toBe('the');
+    expect(range?.startOffset).toBe(20_000 * 6 + 7);
+  });
+});
