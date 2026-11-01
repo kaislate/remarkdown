@@ -9,7 +9,11 @@ export default defineConfig(({ mode }) => ({
     port: 1566,
     strictPort: true,
   },
-  envPrefix: ['VITE_', 'TAURI_'],
+  // Only VITE_ variables reach import.meta.env. `tauri build` runs this with
+  // the updater's signing key in TAURI_SIGNING_PRIVATE_KEY, so a 'TAURI_'
+  // prefix could inline the key into the shipped bundle. The app reads no
+  // TAURI_ENV_* variables either (desktop_env tells it the platform).
+  envPrefix: 'VITE_',
   build: {
     target: 'es2022',
     minify: 'esbuild',
