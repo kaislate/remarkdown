@@ -19,6 +19,7 @@ import { isMermaidFence } from '../mermaid-fence';
 import { MERMAID_EDIT_META } from './mermaid-source-guard';
 import {
   applyDiagramSizing,
+  disarmDiagramLinks,
   buildDiagramError,
   currentRenderContext,
   peekMermaidRender,
@@ -421,6 +422,7 @@ export class MermaidNodeView implements NodeView {
       this.renderedEl.innerHTML = outcome.svg;
       const svgRoot = this.renderedEl.querySelector<SVGSVGElement>(':scope > svg');
       if (svgRoot) applyDiagramSizing(svgRoot);
+      disarmDiagramLinks(this.renderedEl);
       this.showNote(editable ? null : 'edit');
       if (active) active.rendered();
       else controller?.cleared();

@@ -8,6 +8,7 @@ import {
   resetMermaidRuntimeForTests,
   setMermaidRenderTimeoutForTests,
   applyDiagramSizing,
+  disarmDiagramLinks,
   buildDiagramError,
   MIN_DIAGRAM_SCALE,
   styleRegexWork,
@@ -499,6 +500,28 @@ describe('applyDiagramSizing', () => {
     const svg = svgWith({ width: '100%' });
     applyDiagramSizing(svg);
     expect(svg.style.minWidth).toBe('');
+  });
+});
+
+describe('disarmDiagramLinks', () => {
+  // What mermaid draws for `click A href "…"` (and gantt/class links):
+  // the node wrapped in an svg <a>, under strict security too.
+  it('takes the target off every link in a diagram and keeps the node', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' +
+      '<a xlink:href="https://attacker.example/" target="_blank"><g class="node" id="flowchart-A-0"><text>A</text></g></a>' +
+      '<a href="http://asset.localhost/r.html"><g class="node" id="flowchart-B-1"></g></a>' +
+      '</svg>';
+    disarmDiagramLinks(host);
+    const links = [...host.querySelectorAll('a')];
+    expect(links).toHaveLength(2);
+    for (const a of links) {
+      expect(a.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBeNull();
+      expect(a.getAttribute('href')).toBeNull();
+      expect(a.getAttribute('target')).toBeNull();
+    }
+    expect(host.querySelector('#flowchart-A-0')).not.toBeNull();
   });
 });
 

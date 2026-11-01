@@ -6,7 +6,7 @@
 // with what's wrong if it can't be drawn — and Save puts it back through
 // the node view's commit (the one sanctioned way to change a diagram).
 
-import { renderMermaid, applyDiagramSizing, type MermaidRenderContext } from '../../mermaid-runtime';
+import { renderMermaid, applyDiagramSizing, disarmDiagramLinks, type MermaidRenderContext } from '../../mermaid-runtime';
 import { formatShortcut } from '../../shortcuts';
 
 export interface TextPanelOptions {
@@ -83,6 +83,7 @@ export function openTextPanel(o: TextPanelOptions): TextPanel {
       preview.innerHTML = outcome.svg;
       const svg = preview.querySelector<SVGSVGElement>(':scope > svg');
       if (svg) applyDiagramSizing(svg);
+      disarmDiagramLinks(preview);
       preview.classList.remove('stale');
       problem.hidden = true;
     } else {

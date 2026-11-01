@@ -740,6 +740,21 @@ export function applyDiagramSizing(svg: SVGSVGElement): void {
   if (!svg.style.maxWidth) svg.style.maxWidth = `${Math.round(natural * 1000) / 1000}px`;
 }
 
+// A diagram may declare links (`click A href "…"`, gantt and class
+// diagram links); mermaid keeps them under strict security, wrapping the
+// node in an svg <a>. Clicked, one would take the whole window to the
+// page it names, and in the editor a click on a node only means "select
+// it". So every diagram link loses its target once the svg is in place;
+// the node and its look stay.
+export function disarmDiagramLinks(root: ParentNode): void {
+  for (const a of root.querySelectorAll('a')) {
+    a.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    a.removeAttribute('xlink:href');
+    a.removeAttribute('href');
+    a.removeAttribute('target');
+  }
+}
+
 // What a reader sees in place of a diagram mermaid can't draw: plain
 // words up front, mermaid's parser output tucked into a collapsed
 // <details> for whoever wants it.
