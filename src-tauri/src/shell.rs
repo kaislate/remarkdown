@@ -88,7 +88,7 @@ pub fn reveal_target(path: &Path) -> Option<Reveal> {
 /// would start some other program, the webview's own *.localhost hosts) is
 /// refused.
 pub fn external_url(raw: &str) -> Option<String> {
-    let url = tauri::Url::parse(raw.trim()).ok()?;
+    let mut url = tauri::Url::parse(raw.trim()).ok()?;
     match url.scheme() {
         "http" | "https" => {
             // Hosts that only mean something inside the app's webview.
@@ -97,7 +97,24 @@ pub fn external_url(raw: &str) -> Option<String> {
                 return None;
             }
         }
-        "mailto" if !url.path().is_empty() => {}
+        "mailto" if !url.path().is_empty() => {
+            // Some mail apps have read attach= (or attachment=, …) as "attach
+            // this local file", one Send away from mailing it out. A mail link
+            // keeps its recipients, subject and body, and nothing else. The
+            // kept pairs stay as written: re-encoding would turn spaces to '+'.
+            let kept = url
+                .query()
+                .unwrap_or("")
+                .split('&')
+                .filter(|pair| {
+                    let key = pair.split('=').next().unwrap_or("");
+                    ["to", "cc", "bcc", "subject", "body"].iter().any(|k| key.eq_ignore_ascii_case(k))
+                })
+                .collect::<Vec<_>>()
+                .join("&");
+            url.set_query((!kept.is_empty()).then_some(kept.as_str()));
+            url.set_fragment(None);
+        }
         _ => return None,
     }
     Some(url.to_string())
@@ -147,15 +164,16 @@ pub fn open_external(url: String) -> Result<(), CommandError> {
         }
     });
     // The URL starts with its scheme, so neither tool can read it as an option.
-    #[cfg(target_os = "macos")]
-    std::process::Command::new("open").arg(&url).spawn().map_err(|e| CommandError::Io(e.to_string()))?;
-    #[cfg(not(any(windows, target_os = "macos")))]
-    std::thread::spawn(move || match std::process::Command::new("xdg-open").arg(&url).spawn() {
-        // Waited on so it's reaped rather than left a zombie.
-        Ok(mut child) => {
-            let _ = child.wait();
+    #[cfg(not(windows))]
+    std::thread::spawn(move || {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        match std::process::Command::new(opener).arg(&url).spawn() {
+            // Waited on so it's reaped rather than left a zombie.
+            Ok(mut child) => {
+                let _ = child.wait();
+            }
+            Err(e) => eprintln!("[remarkdown] could not open the link: {e}"),
         }
-        Err(e) => eprintln!("[remarkdown] could not open the link: {e}"),
     });
     Ok(())
 }
@@ -302,6 +320,26 @@ mod tests {
         );
         assert_eq!(external_url("mailto:me@example.com").as_deref(), Some("mailto:me@example.com"));
         assert_eq!(external_url("http://localhost:3000/docs").as_deref(), Some("http://localhost:3000/docs"));
+    }
+
+    // Some mail apps have taken attach= (and the like) as "attach this
+    // local file": a mail link keeps only its recipients and the headers a
+    // link is meant to fill in.
+    #[test]
+    fn mail_links_keep_only_recipients_subject_and_body() {
+        assert_eq!(
+            external_url(r"mailto:a@b.example?attach=C:\Users\me\.ssh\id_rsa").as_deref(),
+            Some("mailto:a@b.example")
+        );
+        assert_eq!(
+            external_url("mailto:a@b.example?attachment=/etc/passwd&Attach=x&%61ttach=y").as_deref(),
+            Some("mailto:a@b.example")
+        );
+        assert_eq!(
+            external_url("mailto:a@b.example?subject=Hi%20there&attachment=~/.ssh/id_rsa&body=See%20below&CC=c@d.example&bcc=e@f.example&to=g@h.example#x")
+                .as_deref(),
+            Some("mailto:a@b.example?subject=Hi%20there&body=See%20below&CC=c@d.example&bcc=e@f.example&to=g@h.example")
+        );
     }
 
     #[test]
