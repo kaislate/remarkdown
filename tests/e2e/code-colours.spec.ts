@@ -1,7 +1,8 @@
 // Code colours follow the page: GitHub's dark colouring on dark pages,
 // its light one on light pages and light reader themes — in the reader
 // and in the editor alike.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const PATH = '/e2e/docs/code.md';
 const MD = '# Code\n\n```js\nfunction add(a, b) {\n  return a + b;\n}\n```\n';

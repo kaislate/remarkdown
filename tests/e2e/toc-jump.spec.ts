@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // Picking a heading from the contents: the marker slides to it, the page
 // glides there, and a drop of ink runs from the contents to the heading.

@@ -2,7 +2,8 @@
 // kind of target, edit through the popover, and check that the saved
 // markdown changes only the intended lines and the diagram still
 // renders. Helpers copied from mermaid-audit.spec.ts.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { withoutPaintWorklet } from './support/webkit';
 
 const PATH = '/e2e/class-er.md';

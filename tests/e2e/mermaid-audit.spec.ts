@@ -8,7 +8,8 @@
 // title clipping, C4 relation label colour.
 import { chooseSetting } from './support/settings';
 import { withoutPaintWorklet } from './support/webkit';
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

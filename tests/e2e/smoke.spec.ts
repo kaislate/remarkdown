@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 test('app loads and shows empty reader state', async ({ page }) => {
   await page.goto('/');

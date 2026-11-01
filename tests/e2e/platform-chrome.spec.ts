@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Browser } from '@playwright/test';
+import type { Page, Browser } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // The window chrome per OS. On a Mac the real red / yellow / green buttons
 // sit in the top-left corner (tauri.macos.conf.json: an Overlay title bar),

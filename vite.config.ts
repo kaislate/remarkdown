@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'node:path';
+import { e2eCsp } from './tests/e2e/support/csp';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [svelte()],
+  // e2e builds carry the app's CSP, so the suite runs under it.
+  plugins: mode === 'e2e' ? [svelte(), e2eCsp()] : [svelte()],
   clearScreen: false,
   server: {
     port: 1566,

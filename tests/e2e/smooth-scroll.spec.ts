@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { isWebKit } from './support/webkit';
 
 // Edge-style smooth scrolling, in a real browser: a wheel notch sets the

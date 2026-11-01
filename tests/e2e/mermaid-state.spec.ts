@@ -3,7 +3,8 @@
 // popover, edits through it change only the intended lines of the saved
 // markdown, the result still renders, and connect mode adds a
 // transition. Helpers copied from mermaid-audit.spec.ts.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { withoutPaintWorklet } from './support/webkit';
 
 async function clickMenuItem(page: Page, name: RegExp): Promise<void> {

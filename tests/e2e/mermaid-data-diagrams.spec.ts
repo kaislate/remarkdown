@@ -1,7 +1,8 @@
 // The data diagram types with real mermaid: each one inserted from the
 // toolbar draws, opens its table on a click, and still draws after every
 // kind of change the table makes.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const PATH = '/e2e/docs/data-diagrams.md';
 

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // While editing, the minimap's box must still stand for exactly what's on
 // screen. Diagrams are taller in edit mode (they carry their editing

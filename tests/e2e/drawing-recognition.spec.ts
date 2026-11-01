@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const TEST_DOC_PATH = '/test/drawings.md';
 const TEST_DOC_MARKDOWN = `# Sample document

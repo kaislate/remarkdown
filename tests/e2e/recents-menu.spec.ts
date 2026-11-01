@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const A = '/e2e/recents/Alpha.md';
 const B = '/e2e/recents/Beta.md';

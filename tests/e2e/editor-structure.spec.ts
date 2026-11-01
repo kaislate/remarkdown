@@ -2,7 +2,8 @@
 // the toolbar's Text style menu (headings, lists, quotes, a divider),
 // pictures and formulas — and formulas and document details surviving a
 // save untouched.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { editorMod } from './support/webkit';
 
 const PATH = '/e2e/docs/structure.md';

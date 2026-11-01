@@ -4,7 +4,8 @@
 // minimap. Annotations stay visible but read-only, and the reader theme
 // recolours the page — diagrams included. Set READER_SHOTS_DIR to also
 // write a screenshot per reader theme for manual review.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
