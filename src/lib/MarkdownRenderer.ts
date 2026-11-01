@@ -134,11 +134,13 @@ export interface RenderOptions {
 }
 
 function rewriteImageSrcs(html: string, opts: RenderOptions): string {
-  if (!opts.baseDir || !opts.toAssetUrl) return html;
+  // Without a folder, files stay as written, but an unsafe src (an asset
+  // URL or a network share) is still emptied: every src goes through.
   const { baseDir, toAssetUrl } = opts;
+  const toAsset = baseDir ? toAssetUrl : undefined;
   // markdown-it encodes a backslash as %5C; resolveImageSrc decodes it.
   return html.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (_m, pre, src, post) =>
-    `<img${pre}src="${resolveImageSrc(src, baseDir, toAssetUrl)}"${post}>`,
+    `<img${pre}src="${resolveImageSrc(src, baseDir, toAsset)}"${post}>`,
   );
 }
 
