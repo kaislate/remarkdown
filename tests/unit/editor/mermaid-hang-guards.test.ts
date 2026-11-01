@@ -67,6 +67,15 @@ describe('gantt dates', () => {
     expect(ms).toBeLessThan(BUDGET_MS);
     expect(value).toBeNull();
   });
+
+  // Each task's dates split the whole dateFormat into tokens again, so
+  // a long format times many tasks was quadratic in the source.
+  it('splits a long dateFormat once, not once per task', () => {
+    const source = ['gantt', `dateFormat ${'H'.repeat(20_000)}`, ...Array.from({ length: 2_000 }, (_, i) => `T${i} : 1, 1d`)].join('\n');
+    const { ms, value } = timed(() => parseGantt(source));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok).toBe(true);
+  });
 });
 
 describe('flowchart', () => {

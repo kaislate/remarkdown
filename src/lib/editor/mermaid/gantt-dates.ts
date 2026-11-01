@@ -38,16 +38,33 @@ const SHORT = MONTHS.map((m) => m.slice(0, 3));
 const TOKEN = /\[[^\]]*\]|YYYY|YY|MMMM|MMM|MM|M|DD|D|HH|H|mm|m|ss|s|SSS|[A-Za-z]|[^A-Za-z[]+|\[/g;
 const KNOWN = new Set(['YYYY', 'YY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'HH', 'H', 'mm', 'm', 'ss', 's', 'SSS']);
 
+// A chart has one dateFormat and reads every task's dates in it, so
+// the last format's tokens (and whether it's supported) are kept:
+// splitting a long format again for each task was quadratic.
+let lastFormat: string | null = null;
+let lastTokens: string[] = [];
+let lastSupported = false;
+
 function tokens(format: string): string[] {
-  return format.match(TOKEN) ?? [];
+  if (format !== lastFormat) {
+    lastFormat = format;
+    lastTokens = format.match(TOKEN) ?? [];
+    lastSupported = supported(format, lastTokens);
+  }
+  return lastTokens;
 }
 
 // Can dates be read and written in `format`? Not with tokens outside
 // the list above, and not with a `,` `#` `;` — those would end or split
 // the task's data in the source.
 export function ganttDateFormatSupported(format: string): boolean {
+  tokens(format);
+  return lastSupported;
+}
+
+function supported(format: string, toks: string[]): boolean {
   if (!format.trim() || /[,#;]/.test(format)) return false;
-  return tokens(format).every((t) => {
+  return toks.every((t) => {
     if (KNOWN.has(t)) return true;
     // `[literal]`; a lone `[` is an unclosed one.
     if (t.startsWith('[')) return t !== '[';
