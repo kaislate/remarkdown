@@ -41,14 +41,16 @@ describe('CorruptSidecarModal', () => {
     render(CorruptSidecarModal);
     flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'unreadable' }));
     const text = screen.getByRole('dialog').textContent!;
-    expect(text).toMatch(/too large, or isn't an ordinary file/);
+    expect(text).toMatch(/couldn't be read/);
     expect(text).not.toMatch(/malformed/);
   });
 
   it('says a file with too many annotations has too many', () => {
     render(CorruptSidecarModal);
     flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'too-many' }));
-    expect(screen.getByRole('dialog').textContent).toMatch(/more than 20,000 annotations/);
+    const text = screen.getByRole('dialog').textContent!;
+    expect(text).toMatch(/more than 20,000 annotations/);
+    expect(text).toMatch(/500,000 drawn points/);
   });
 
   it('Leave as-is closes the modal without calling backup', async () => {
