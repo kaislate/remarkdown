@@ -187,3 +187,39 @@ describe('ordinary pictures still load', () => {
     expect(isUnsafeImageSrc('img/asset.localhost.png')).toBe(false);
   });
 });
+
+describe('automounted network folders on macos and linux', () => {
+  // /net/<host> (and a Mac's /Network) mounts that host's share the first
+  // time anything looks there.
+  it.each(['macos', 'linux'] as const)('on %s: a picture under /net or /Network asks for nothing', (os) => {
+    setPlatformForTests(os);
+    const toAsset = vi.fn((p: string) => `asset:${p}`);
+    for (const [src, dir] of [
+      ['/net/attacker.example/export/x.png', '/Users/me/docs'],
+      ['/NET/attacker.example/x.png', '/Users/me/docs'],
+      ['/./net/attacker.example/x.png', '/Users/me/docs'],
+      ['/Network/Servers/attacker.example/x.png', '/Users/me/docs'],
+      ['%2Fnet%2Fattacker.example%2Fx.png', '/Users/me/docs'],
+      ['../../../net/attacker.example/x.png', '/Users/me/docs'],
+      ['attacker.example/x.png', '/net'],
+    ]) {
+      expect(resolveImageSrc(src, dir, toAsset), src).toBe('');
+    }
+    expect(toAsset).not.toHaveBeenCalled();
+  });
+
+  it.each(['macos', 'linux'] as const)('on %s: a folder only named like one is fine', (os) => {
+    setPlatformForTests(os);
+    const toAsset = vi.fn((p: string) => `asset:${p}`);
+    expect(resolveImageSrc('/Users/me/net/x.png', '/Users/me', toAsset)).toBe('asset:/Users/me/net/x.png');
+    expect(resolveImageSrc('net/x.png', '/Users/me', toAsset)).toBe('asset:/Users/me/net/x.png');
+    expect(resolveImageSrc('/network.png', '/Users/me', toAsset)).toBe('asset:/network.png');
+  });
+
+  it('on windows a /net path is left as written, as any rooted path is', () => {
+    setPlatformForTests('windows');
+    const toAsset = vi.fn((p: string) => p);
+    expect(resolveImageSrc('/net/x.png', 'C:/docs', toAsset)).toBe('/net/x.png');
+    expect(toAsset).not.toHaveBeenCalled();
+  });
+});

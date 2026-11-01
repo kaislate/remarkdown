@@ -89,6 +89,16 @@ export function imageSrcFor(docDir: string, picked: string): string {
   return [...up, ...to.slice(i).map(encodePart)].join('/');
 }
 
+// macOS mounts /net/<host> (and /Network/…) from that host the first time
+// anything looks there, and Linux's autofs often does the same for /net:
+// a picture there would reach out to whatever host the document names.
+const isAutomounted = (path: string) => /^\/(net|network)(\/|$)/i.test(joinPath('', path));
+
+// A file the window loads through the asset protocol.
+function fileUrl(path: string, toAssetUrl: (path: string) => string): string {
+  return platform() !== 'windows' && isAutomounted(path) ? '' : toAssetUrl(path);
+}
+
 function decode(src: string): string {
   try {
     return decodeURIComponent(src);
@@ -105,7 +115,7 @@ export function resolveImageSrc(src: string, baseDir: string | undefined, toAsse
   const path = decode(src);
   if (isDrivePath(path)) return toAssetUrl(slashes(path));
   // A leading slash is a full file path on macOS and Linux; Windows leaves it be.
-  if (path.startsWith('/') && platform() !== 'windows') return toAssetUrl(path);
+  if (path.startsWith('/') && platform() !== 'windows') return fileUrl(path, toAssetUrl);
   if (path.startsWith('/') || !baseDir) return src;
-  return toAssetUrl(joinPath(baseDir, path));
+  return fileUrl(joinPath(baseDir, path), toAssetUrl);
 }

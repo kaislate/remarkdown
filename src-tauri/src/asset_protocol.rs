@@ -91,6 +91,16 @@ pub fn is_network_or_device_path(path: &str) -> bool {
     (sep(0) && sep(1)) || (sep(0) && b.get(1..3) == Some(b"??") && sep(3))
 }
 
+/// A folder macOS mounts from another host the first time anything looks
+/// in it: /net/<host> and /Network/…, as Linux's autofs often does for /net
+/// too. Refused everywhere, as the app never sends one on Windows.
+pub fn is_automount_path(path: &str) -> bool {
+    let mut parts = Path::new(path).components();
+    parts.next() == Some(Component::RootDir)
+        && matches!(parts.next(), Some(Component::Normal(name))
+            if name.eq_ignore_ascii_case("net") || name.eq_ignore_ascii_case("network"))
+}
+
 /// Whether a link's target stays on this machine's disks: a drive, a
 /// mounted volume, or a path with no prefix that isn't a network one.
 fn is_local_disk(target: &Path) -> bool {
@@ -182,7 +192,7 @@ fn serve(
     check_links: bool,
     allowed: impl Fn(&Path) -> bool,
 ) -> Result<(String, Vec<u8>), StatusCode> {
-    if is_network_or_device_path(path) {
+    if is_network_or_device_path(path) || is_automount_path(path) {
         return Err(StatusCode::FORBIDDEN);
     }
     let safe = SafePathBuf::new(PathBuf::from(path)).map_err(|_| StatusCode::FORBIDDEN)?;
@@ -274,6 +284,29 @@ mod tests {
         for p in NETWORK_AND_DEVICE {
             let got = serve(p, true, |_| panic!("the scope was asked about {p:?}"));
             assert_eq!(got.unwrap_err(), StatusCode::FORBIDDEN, "{p:?}");
+        }
+    }
+
+    #[test]
+    fn refuses_an_automounted_network_folder() {
+        for p in [
+            "/net/attacker.example/export/x.png",
+            "/NET/attacker.example/x.png",
+            "/./net/attacker.example/x.png",
+            "/Network/Servers/attacker.example/x.png",
+            "/net",
+        ] {
+            assert!(is_automount_path(p), "{p:?}");
+            let got = serve(p, false, |_| panic!("the scope was asked about {p:?}"));
+            assert_eq!(got.unwrap_err(), StatusCode::FORBIDDEN, "{p:?}");
+        }
+        for p in [
+            "/Users/me/net/x.png",
+            "/network.png",
+            "net/x.png",
+            "C:/net/x.png",
+        ] {
+            assert!(!is_automount_path(p), "{p:?}");
         }
     }
 
