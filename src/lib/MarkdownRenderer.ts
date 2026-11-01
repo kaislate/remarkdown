@@ -4,10 +4,11 @@ import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
 import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
-import { getSingletonHighlighter, type Highlighter } from 'shiki';
+import type { Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
 import { frontMatterPlugin } from './markdown-it-frontmatter';
-import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
+import { resolveLanguage } from './editor/code-block-languages';
+import { getHighlighter } from './shiki-highlighter';
 import { isMermaidFence } from './mermaid-fence';
 import { resolveImageSrc } from './image-paths';
 
@@ -56,20 +57,15 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
 
 const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g;
 
-let highlighterPromise: Promise<Highlighter> | null = null;
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: [...SUPPORTED_LANGUAGES],
-    });
-  }
-  return highlighterPromise;
-}
-
 async function highlightFences(html: string): Promise<string> {
   if (!html.includes('<pre><code class="language-')) return html;
-  const highlighter = await getHighlighter();
+  let highlighter: Highlighter;
+  try {
+    highlighter = await getHighlighter();
+  } catch {
+    // No highlighter could start: the code reads fine plain.
+    return html;
+  }
   // Use the callback form so every match is replaced, even if two fences share identical text.
   return html.replace(fenceRe, (_m, lang, body) => {
     const raw = decodeEntities(body);
