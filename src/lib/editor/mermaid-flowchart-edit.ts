@@ -444,7 +444,15 @@ function removeVertices(p: Patcher, map: FlowchartSourceMap, graph: MermaidGraph
 
 function topBlock(map: FlowchartSourceMap, group: string): SubgraphStatement {
   let sg = groupStatement(map, group)!;
-  while (sg.group !== null) sg = groupStatement(map, sg.group)!;
+  // Each step finds an earlier block, so this ends; the visited set
+  // makes sure of it even if a parse ever names a block its own group.
+  const seen = new Set([sg]);
+  while (sg.group !== null) {
+    const outer = groupStatement(map, sg.group)!;
+    if (seen.has(outer)) break;
+    seen.add(outer);
+    sg = outer;
+  }
   return sg;
 }
 
