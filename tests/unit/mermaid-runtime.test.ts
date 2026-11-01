@@ -47,7 +47,11 @@ vi.mock('mermaid', () => ({
     render: () => {
       throw new Error('runtime must use mermaidAPI.render, not the queued mermaid.render');
     },
-    mermaidAPI: { render: (id: string, source: string) => {
+    mermaidAPI: {
+      // The picture check parses a diagram that has node data (`@{`) first.
+      getDiagramFromText: (source: string) =>
+        source.includes('HANG') ? new Promise(() => {}) : Promise.resolve({ db: {} }),
+      render: (id: string, source: string) => {
       mocked.log.push(`render:${source}`);
       // Mimic mermaid's temp container on <body>, which it leaves behind
       // when a render fails.
@@ -97,6 +101,22 @@ describe('mermaid runtime: a render that never settles', () => {
       await flush();
       expect(mocked.renders.map((r) => r.source)).toEqual(['flowchart TD\nHANG', 'flowchart TD\nB']);
       mocked.renders[1].resolve();
+      expect((await next).ok).toBe(true);
+    } finally {
+      setMermaidRenderTimeoutForTests(null);
+    }
+  });
+
+  it('times out while checking its pictures, and does not stall the renders behind it', async () => {
+    setMermaidRenderTimeoutForTests(40);
+    try {
+      const hung = renderMermaid('flowchart TD\nHANG@{ img: "https://example.com/x.png" }', DARK);
+      const next = renderMermaid('flowchart TD\nB', DARK);
+      const out = await hung;
+      expect(out.ok === false && out.transient).toBe(true);
+      await flush();
+      expect(mocked.renders.map((r) => r.source)).toEqual(['flowchart TD\nB']);
+      mocked.renders[0].resolve();
       expect((await next).ok).toBe(true);
     } finally {
       setMermaidRenderTimeoutForTests(null);

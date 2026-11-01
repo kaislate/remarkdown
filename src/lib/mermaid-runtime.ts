@@ -524,6 +524,16 @@ interface MermaidApi {
 // mermaid's own list, which `secure` replaces rather than adds to.
 const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges'];
 
+// A label can hold HTML, and strict mode only takes the script out of it:
+// an <img> in a label is put in this page while mermaid measures it, and
+// stays in the svg. mermaid cleans every label with DOMPurify and this
+// config, which takes out everything that loads a picture. The words and
+// their formatting stay. (FORBID_TAGS style is mermaid's own default.)
+const LABEL_PURIFY = {
+  FORBID_TAGS: ['style', 'image', 'feimage'],
+  FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'xlink:href'],
+};
+
 const UNSAFE_PICTURE = "This diagram has a picture that can't be shown here.";
 
 // A flowchart node can be a picture (`A@{ img: "…" }`), and mermaid loads
@@ -580,17 +590,22 @@ async function renderNow(
       startOnLoad: false,
       theme: mermaidThemeFor(ctx.theme),
       fontFamily: ctx.fontFamily,
-      // Opening a .md file must never run its diagram's HTML or click
-      // handlers — strict disables HTML labels and click bindings.
+      // Opening a .md file must never run its diagram's script or click
+      // handlers — strict takes script out of HTML labels and disables
+      // click bindings. It leaves pictures in them: see LABEL_PURIFY.
       securityLevel: 'strict',
+      dompurifyConfig: LABEL_PURIFY,
       // Throw instead of drawing mermaid's own error svg; we show a
       // friendly message (buildDiagramError) in the diagram's place.
       suppressErrorRendering: true,
-      // A diagram's own config can't set CSS: a url() in it would load
-      // whatever it names, a network share included.
-      secure: [...MERMAID_SECURE_KEYS, 'themeCSS', 'fontFamily', 'altFontFamily'],
+      // A diagram's own %%{init}%% can't put the pictures back. It keeps
+      // its fonts and CSS: a url() there reaches only the web, the app's
+      // own pages or the asset protocol, whose handler refuses a share.
+      secure: [...MERMAID_SECURE_KEYS, 'dompurifyConfig'],
     });
-    if (await namesUnsafePicture(api, source)) throw new Error(UNSAFE_PICTURE);
+    // Parsing can lazy-load the diagram's module, so it gets the timeout
+    // too: one that never settles would block every later render.
+    if (await withTimeout(namesUnsafePicture(api, source), renderTimeoutMs)) throw new Error(UNSAFE_PICTURE);
     const { svg } = await withTimeout(render(id, source), renderTimeoutMs);
     entry = { outcome: { ok: true, svg }, id };
   } catch (err) {
