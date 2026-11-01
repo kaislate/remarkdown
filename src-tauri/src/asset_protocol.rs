@@ -349,6 +349,9 @@ mod tests {
         assert!(serve(&link.to_string_lossy(), true, |_| true).is_ok());
     }
 
+    // Only Windows reads \\host as a share; elsewhere those backslashes
+    // are a file name, and links aren't checked there at all.
+    #[cfg(windows)]
     #[test]
     fn a_link_to_a_share_is_refused_without_following_it() {
         let dir = tempdir().unwrap();
