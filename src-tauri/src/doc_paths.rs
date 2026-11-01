@@ -20,6 +20,15 @@ pub fn is_document_path(path: &Path) -> bool {
     if !path.is_absolute() {
         return false;
     }
+    // `\\.\pipe\x.md` and `\\?\GLOBALROOT\...` name devices and pipes, not
+    // files on a drive or a share.
+    #[cfg(windows)]
+    if let Some(std::path::Component::Prefix(p)) = path.components().next() {
+        use std::path::Prefix::{DeviceNS, Verbatim};
+        if matches!(p.kind(), DeviceNS(_) | Verbatim(_)) {
+            return false;
+        }
+    }
     let Some(name) = path.file_name().map(|n| n.to_string_lossy()) else {
         return false;
     };
@@ -96,6 +105,21 @@ mod tests {
     fn alternate_data_streams_are_not() {
         assert!(!is_document_path(Path::new(r"C:\Users\v\notes.txt:x.md")));
         assert!(!is_document_path(Path::new(r"C:\Users\v\a.md:secret.md")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn device_paths_are_not() {
+        assert!(!is_document_path(Path::new(r"\\.\pipe\x.md")));
+        assert!(!is_document_path(Path::new(r"\\?\GLOBALROOT\Device\NamedPipe\x.md")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn drive_share_and_long_paths_are_documents() {
+        for p in [r"C:\Users\v\a.md", r"\\server\share\a.md", r"\\?\C:\Users\v\a.md", r"\\?\UNC\server\share\a.md"] {
+            assert!(is_document_path(Path::new(p)), "{p}");
+        }
     }
 
     #[test]
