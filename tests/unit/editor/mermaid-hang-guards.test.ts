@@ -9,6 +9,10 @@ import { parseGanttDate } from '../../../src/lib/editor/mermaid/gantt-dates';
 import { parseMermaidSource, type SubgraphStatement } from '../../../src/lib/editor/mermaid-parser';
 import { applyFlowchartEdit } from '../../../src/lib/editor/mermaid-flowchart-edit';
 import { parseSequenceSource } from '../../../src/lib/editor/mermaid-sequence-parser';
+import { parseClassSource } from '../../../src/lib/editor/mermaid/class-parser';
+import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
+import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
+import { styleSemicolons } from '../../../src/lib/editor/mermaid/entity-text';
 
 // Generous, so a slow CI machine doesn't fail a fixed parser, and far
 // below what the old code took.
@@ -126,5 +130,40 @@ describe('sequence', () => {
       ['B', 'A', 'back', 'deactivate'],
       ['A', 'B', '', 'activate'],
     ]);
+  });
+});
+
+describe('style lines in class, ER and state diagrams', () => {
+  // G74: mermaid's `style.*:\S*#.*;` pass, copied as a regex, tried
+  // every `style` × `:` × `#` on a line with no `;` (about L^4).
+  const line = 'style:#'.repeat(400);
+  for (const [name, parse] of [
+    ['class', () => parseClassSource(`classDiagram\nclass A\n${line}`)],
+    ['ER', () => parseErSource(`erDiagram\nA ||--o{ B : has\n${line}`)],
+    ['state', () => parseStateSource(`stateDiagram-v2\nA --> B\n${line}`)],
+  ] as const) {
+    it(`reads a long style line in a ${name} diagram in linear time`, () => {
+      const { ms } = timed(parse);
+      expect(ms).toBeLessThan(BUDGET_MS);
+    });
+  }
+
+  // The linear scan must find exactly the `;` the regex would, so every
+  // diagram lexes as it did. Short random lines over the characters
+  // that matter cover the cases.
+  it('drops the same `;` as the regex it replaces', () => {
+    const alphabet = ['style', 'classDef', ':', '#', ';', ' ', 'x', '\u2028', '\r', '\n'];
+    let seed = 7;
+    const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+    for (let i = 0; i < 20_000; i++) {
+      let s = '';
+      const len = 1 + rand(12);
+      for (let k = 0; k < len; k++) s += alphabet[rand(alphabet.length)];
+      for (const keyword of ['style', 'classDef'] as const) {
+        const re = new RegExp(`${keyword}.*:\S*#.*;`, 'g');
+        const expected = [...s.matchAll(re)].map((m) => m.index! + m[0].length - 1);
+        expect(styleSemicolons(s, keyword), JSON.stringify(s)).toEqual(expected);
+      }
+    }
   });
 });

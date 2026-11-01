@@ -94,11 +94,8 @@ function transformLine(line: string): { out: string; map: number[] } {
   let s = line.replace(/<(\w+)([^>]*)>/g, (_m, tag: string, attrs: string) => `<${tag}${attrs.replace(/="([^"]*)"/g, "='$1'")}>`);
   let cols = Array.from({ length: s.length }, (_, i) => i);
   // style…:…#…; / classDef…:…#…; lose their last `;`.
-  for (const re of [/style.*:\S*#.*;/g, /classDef.*:\S*#.*;/g]) {
-    let m: RegExpExecArray | null;
-    const drop = new Set<number>();
-    re.lastIndex = 0;
-    while ((m = re.exec(s))) drop.add(m.index + m[0].length - 1);
+  for (const keyword of ['style', 'classDef'] as const) {
+    const drop = new Set(styleSemicolons(s, keyword));
     if (drop.size) {
       cols = cols.filter((_, i) => !drop.has(i));
       s = [...s].filter((_, i) => !drop.has(i)).join('');
@@ -138,6 +135,34 @@ function transformLine(line: string): { out: string; map: number[] } {
     map.push(cols[i]);
   }
   return { out, map };
+}
+
+// The `;` mermaid's encodeEntities drops with /style.*:\S*#.*;/g (or
+// the classDef one): on each line, the last `;`, when the first
+// `keyword` is followed by a `:` whose run of non-spaces holds a `#`
+// before it. Found in one pass; the regex itself backtracks through
+// every `keyword` × `:` × `#` on a line with no `;`, so one crafted
+// line of a few KB took minutes. Offsets are into `s`, which may hold
+// several lines (a `.` stops at any line break, so the regex did too).
+export function styleSemicolons(s: string, keyword: 'style' | 'classDef'): number[] {
+  const out: number[] = [];
+  for (const line of s.matchAll(/[^\n\r\u2028\u2029]+/g)) {
+    const text = line[0];
+    const from = text.indexOf(keyword);
+    const semi = text.lastIndexOf(';');
+    if (from < 0 || semi < 0) continue;
+    // Whether the characters since the last `:` are all non-spaces.
+    let afterColon = false;
+    for (let p = from + keyword.length; p < semi; p++) {
+      const c = text[p];
+      if (c === ':') afterColon = true;
+      else if (c === '#' && afterColon) {
+        out.push(line.index! + semi);
+        break;
+      } else if (/\s/.test(c)) afterColon = false;
+    }
+  }
+  return out;
 }
 
 // Entity codes → mermaid's placeholders (encodeEntities), for running

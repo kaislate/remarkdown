@@ -28,6 +28,7 @@
 // drives the source-preserving edits in state-edit.ts.
 import { decodeMermaidEntities } from '../mermaid-parser';
 import { findPreamble, type Span } from './source-text';
+import { styleSemicolons } from './entity-text';
 
 export type StateDirection = 'TB' | 'BT' | 'LR' | 'RL';
 export type StateKind = 'normal' | 'fork' | 'join' | 'choice';
@@ -264,8 +265,8 @@ function preprocess(source: string): Mapped {
   if (lead) m = dropRanges(m, [[0, lead]]);
   // encodeEntities: a style / classDef line holding `#…;` loses its
   // last `;` (so `#f00;` isn't read as an entity) …
-  for (const re of [/style.*:\S*#.*;/g, /classDef.*:\S*#.*;/g]) {
-    m = dropRanges(m, matchRanges(m.text, re).map(([, e]) => [e - 1, e] as [number, number]));
+  for (const keyword of ['style', 'classDef'] as const) {
+    m = dropRanges(m, styleSemicolons(m.text, keyword).map((e) => [e, e + 1] as [number, number]));
   }
   // … and every `#name;` / `#123;` becomes a placeholder the lexer
   // can't see into (mermaid turns it back into an entity in the SVG).
