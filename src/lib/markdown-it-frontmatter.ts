@@ -47,9 +47,13 @@ function frontMatter(state: StateBlock, startLine: number, endLine: number, sile
 export function frontMatterFields(content: string): Array<{ key: string; value: string }> {
   const fields: Array<{ key: string; value: string }> = [];
   for (const line of content.split('\n')) {
-    const m = /^([A-Za-z0-9_][\w .-]*):\s*(.*)$/.exec(line);
-    if (m) {
-      fields.push({ key: m[1].trim(), value: m[2].trim().replace(/^(["'])(.*)\1$/, '$2') });
+    // `key: value`, the value running to the end of the line. Done in
+    // two steps: one /^key:\s*(.*)$/ retried every split of a run of
+    // spaces when a line separator (which `.` stops at) came after it.
+    const key = /^([A-Za-z0-9_][\w .-]*):\s*/.exec(line);
+    const value = key ? line.slice(key[0].length) : '';
+    if (key && !/[\r\u2028\u2029]/.test(value)) {
+      fields.push({ key: key[1].trim(), value: value.trim().replace(/^(["'])(.*)\1$/, '$2') });
     } else if (fields.length && line.trim()) {
       // A continuation (a list item, a nested key): add it to the last value.
       const last = fields[fields.length - 1];
