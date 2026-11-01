@@ -13,6 +13,7 @@ import { parseClassSource } from '../../../src/lib/editor/mermaid/class-parser';
 import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
 import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
 import { styleSemicolons } from '../../../src/lib/editor/mermaid/entity-text';
+import { aheadOnLine } from '../../../src/lib/editor/mermaid/line-ahead';
 
 // Generous, so a slow CI machine doesn't fail a fixed parser, and far
 // below what the old code took.
@@ -153,17 +154,79 @@ describe('style lines in class, ER and state diagrams', () => {
   // that matter cover the cases.
   it('drops the same `;` as the regex it replaces', () => {
     const alphabet = ['style', 'classDef', ':', '#', ';', ' ', 'x', '\u2028', '\r', '\n'];
+    let hits = 0;
     let seed = 7;
-    const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+    const rand = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
     for (let i = 0; i < 20_000; i++) {
       let s = '';
       const len = 1 + rand(12);
       for (let k = 0; k < len; k++) s += alphabet[rand(alphabet.length)];
       for (const keyword of ['style', 'classDef'] as const) {
-        const re = new RegExp(`${keyword}.*:\S*#.*;`, 'g');
+        const re = new RegExp(`${keyword}.*:\\S*#.*;`, 'g');
         const expected = [...s.matchAll(re)].map((m) => m.index! + m[0].length - 1);
         expect(styleSemicolons(s, keyword), JSON.stringify(s)).toEqual(expected);
+        hits += expected.length;
       }
     }
+    // Enough lines that do lose a `;` to mean something.
+    expect(hits).toBeGreaterThan(50);
+  });
+});
+
+describe('class, ER and state lexers', () => {
+  // G75: the `.*direction\s+TB` rules (and BT/RL/LR) ran to the end of
+  // the line and back for every token, so one long line was quadratic.
+  for (const [name, parse] of [
+    ['class', () => parseClassSource(`classDiagram\n${'A <|-- B '.repeat(5_000)}`)],
+    ['ER', () => parseErSource(`erDiagram\n${'A ||--o{ B : x '.repeat(3_000)}`)],
+    ['state', () => parseStateSource(`stateDiagram-v2\n${'A --> B '.repeat(5_000)}`)],
+    ['state block', () => parseStateSource(`stateDiagram-v2\nstate X {\n${'A --> B '.repeat(5_000)}\n}`)],
+  ] as const) {
+    it(`lexes a long line of a ${name} diagram in linear time`, () => {
+      const { ms } = timed(parse);
+      expect(ms).toBeLessThan(BUDGET_MS);
+    });
+  }
+
+  it('still reads a direction anywhere on its line', () => {
+    const cls = parseClassSource('classDiagram\nclass A\nA <|-- B direction LR');
+    expect(cls.ok && cls.model.direction).toBe('LR');
+    const er = parseErSource('erDiagram\nA ||--o{ B : x DIRECTION   rl');
+    expect(er.ok && er.model.direction).toBe('RL');
+    const st = parseStateSource('stateDiagram-v2\nA --> B direction BT');
+    expect(st.ok && st.model.direction).toBe('BT');
+  });
+
+  // The lexers skip a `.*X` rule where aheadOnLine says no, so it must
+  // say yes exactly where the rule's regex matches.
+  it('says a rule can match exactly where its regex does', () => {
+    const alphabet = ['direction', 'DIRECTION', ' ', '\n', '\r', '\u2028', 'LR', 'TB', 'x', '<<fork>>', '[[fork]]'];
+    let seed = 11;
+    const rand = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
+    let hits = 0;
+    for (let i = 0; i < 3_000; i++) {
+      let text = '';
+      const len = 1 + rand(10);
+      for (let k = 0; k < len; k++) text += alphabet[rand(alphabet.length)];
+      for (const pattern of ['direction\\s+LR', 'direction\\s+TB', '<<fork>>', '\\[\\[fork\\]\\]']) {
+        for (const flags of ['', 'i']) {
+          const ahead = aheadOnLine(text, pattern, flags);
+          const re = new RegExp(`.*${pattern}`, `y${flags}`);
+          for (let pos = 0; pos <= text.length; pos++) {
+            re.lastIndex = pos;
+            const expected = re.test(text);
+            expect(ahead(pos), `${JSON.stringify(text)} at ${pos}`).toBe(expected);
+            if (expected) hits++;
+          }
+        }
+      }
+    }
+    expect(hits).toBeGreaterThan(200);
   });
 });

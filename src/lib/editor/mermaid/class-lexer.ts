@@ -3,6 +3,7 @@
 // rules, same order — jison takes the FIRST rule that matches, not the
 // longest, and so does this. Tokens carry offsets into the lexer text
 // (see entity-text.ts) so the parser can map them back to the source.
+import { aheadOnLine } from './line-ahead';
 
 export interface Tok {
   type: string;
@@ -166,11 +167,17 @@ const STATES: Record<string, number[]> = {
   INITIAL: withCommon([0, 1, 2, 3, 4, 5, 6, 8, 10, 13, 14, 15, 16, 17, 18, 27, 28, 29, 38, 82, 83, 84, 85, 96]),
 };
 
+// The `.*direction` rules, by index, and what must follow on the line
+// for them to match (see line-ahead.ts).
+const DIRECTION_RULES: Record<number, string> = { 0: 'direction\\s+TB', 1: 'direction\\s+BT', 2: 'direction\\s+RL', 3: 'direction\\s+LR' };
+
 // Lex `text` from `start`. Returns the tokens (ending with EOF) or the
 // offset where no rule matched.
 export function lexClass(text: string, start: number): { ok: true; tokens: Tok[] } | { ok: false; at: number } {
   const lx = new Lexer();
   const tokens: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(DIRECTION_RULES)) ahead[+idx] = aheadOnLine(text, pattern);
   let pos = start;
   let guard = 0;
   for (;;) {
@@ -178,6 +185,7 @@ export function lexClass(text: string, start: number): { ok: true; tokens: Tok[]
     let matched = false;
     const rest = text.slice(pos);
     for (const idx of STATES[lx.state]) {
+      if (ahead[idx] && !ahead[idx](pos)) continue;
       const rule = RULES[idx];
       const m = rule.re.exec(rest);
       if (!m) continue;

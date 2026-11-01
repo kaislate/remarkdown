@@ -29,6 +29,7 @@
 import { decodeMermaidEntities } from '../mermaid-parser';
 import { findPreamble, type Span } from './source-text';
 import { styleSemicolons } from './entity-text';
+import { aheadOnLine } from './line-ahead';
 
 export type StateDirection = 'TB' | 'BT' | 'LR' | 'RL';
 export type StateKind = 'normal' | 'fork' | 'join' | 'choice';
@@ -356,8 +357,19 @@ interface Tok {
 
 const DIRS: StateDirection[] = ['TB', 'BT', 'RL', 'LR'];
 
+// The rules that start with `.*`, by index, and what must follow on the
+// line for them to match (see line-ahead.ts).
+const LINE_RULES: Record<number, string> = {
+  4: 'direction\\s+TB', 5: 'direction\\s+BT', 6: 'direction\\s+RL', 7: 'direction\\s+LR',
+  39: '<<fork>>', 40: '<<join>>', 41: '<<choice>>',
+  42: '\\[\\[fork\\]\\]', 43: '\\[\\[join\\]\\]', 44: '\\[\\[choice\\]\\]',
+  45: 'direction\\s+TB', 46: 'direction\\s+BT', 47: 'direction\\s+RL', 48: 'direction\\s+LR',
+};
+
 function lex(text: string): Tok[] | string {
   const toks: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(LINE_RULES)) ahead[+idx] = aheadOnLine(text, pattern, 'i');
   const stack = ['INITIAL'];
   const push = (s: string) => stack.push(s);
   const pop = () => {
@@ -373,6 +385,7 @@ function lex(text: string): Tok[] | string {
     let idx = -1;
     let raw = '';
     for (const r of rules) {
+      if (ahead[r] && !ahead[r](pos)) continue;
       const re = RULES[r];
       re.lastIndex = pos;
       const mm = re.exec(text);

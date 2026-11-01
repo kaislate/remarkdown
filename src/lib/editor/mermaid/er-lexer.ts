@@ -2,6 +2,7 @@
 // (src/diagrams/er/parser/erDiagram.jison): same states, same rules,
 // same order, case-insensitive like the original. See class-lexer.ts.
 import type { Tok } from './class-lexer';
+import { aheadOnLine } from './line-ahead';
 
 type Action = (lx: Lexer, text: string) => string | null;
 
@@ -118,9 +119,15 @@ const STATES: Record<string, number[]> = {
   INITIAL: [0, 2, 4, ...range(7, 22), 31, 32, 33, 39, ...range(40, 73), 76, 77, 78],
 };
 
+// The `.*direction` rules, by index, and what must follow on the line
+// for them to match (see line-ahead.ts).
+const DIRECTION_RULES: Record<number, string> = { 7: 'direction\\s+TB', 8: 'direction\\s+BT', 9: 'direction\\s+RL', 10: 'direction\\s+LR' };
+
 export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } | { ok: false; at: number } {
   const lx = new Lexer();
   const tokens: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(DIRECTION_RULES)) ahead[+idx] = aheadOnLine(text, pattern, 'i');
   let pos = start;
   let guard = 0;
   for (;;) {
@@ -128,6 +135,7 @@ export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } 
     const rest = text.slice(pos);
     let matched = false;
     for (const idx of STATES[lx.state]) {
+      if (ahead[idx] && !ahead[idx](pos)) continue;
       const rule = RULES[idx];
       const m = rule.re.exec(rest);
       if (!m) continue;
