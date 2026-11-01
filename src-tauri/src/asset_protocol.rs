@@ -241,9 +241,12 @@ fn steps(path: &Path) -> Vec<PathBuf> {
 /// need no filesystem come first, then the links on the way: on Windows one
 /// can lead to a share, and on macOS and Linux into /net (a cloned repo
 /// keeps its symlinks there). Only then does the scope, which follows them,
-/// see the path.
+/// see the path. The app only ever asks for a full path; a relative one
+/// would be looked up from wherever the app was started (/ for a Mac app
+/// opened from Finder), so `net/host/x.png` would reach /net/host.
 fn serve(path: &str, allowed: impl Fn(&Path) -> bool) -> Result<(String, Vec<u8>), StatusCode> {
-    if is_network_or_device_path(path) || is_automount_path(path) {
+    if is_network_or_device_path(path) || is_automount_path(path) || !Path::new(path).is_absolute()
+    {
         return Err(StatusCode::FORBIDDEN);
     }
     let safe = SafePathBuf::new(PathBuf::from(path)).map_err(|_| StatusCode::FORBIDDEN)?;
@@ -358,6 +361,23 @@ mod tests {
             "C:/net/x.png",
         ] {
             assert!(!is_automount_path(p), "{p:?}");
+        }
+    }
+
+    // A relative path would be looked up from wherever the app was started
+    // (/ for a Mac app opened from Finder), so `net/host/x.png` would reach
+    // /net/host. The app only ever asks for full paths.
+    #[test]
+    fn refuses_a_relative_path_before_the_scope_or_the_disk_sees_it() {
+        for p in [
+            "net/attacker.example/x.png",
+            "Network/Servers/attacker.example/x.png",
+            "img/x.png",
+            "./img/x.png",
+            "../x.png",
+        ] {
+            let got = serve(p, |_| panic!("the scope was asked about {p:?}"));
+            assert_eq!(got.unwrap_err(), StatusCode::FORBIDDEN, "{p:?}");
         }
     }
 
