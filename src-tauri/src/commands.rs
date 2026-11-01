@@ -91,16 +91,31 @@ impl From<std::io::Error> for ReadRefused {
     fn from(e: std::io::Error) -> Self { ReadRefused::Io(e) }
 }
 
+/// Opens `path` to read. On macOS and Linux it doesn't wait: opening a FIFO
+/// blocks until something writes to it, and a path looked at a moment ago
+/// can have been swapped for one since. O_NONBLOCK changes nothing for an
+/// ordinary file.
+fn open_to_read(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    options.open(path)
+}
+
 /// Reads `path` whole, if it's an ordinary file of at most `limit` bytes.
 /// Symlinks are followed, so a linked file still opens.
 fn read_capped(path: &Path, limit: u64) -> Result<Vec<u8>, ReadRefused> {
     use std::io::Read;
-    // Check before opening: opening a FIFO blocks until something writes
-    // to it. Check the opened file too, in case the path changed between.
+    // Check before opening, and the opened file too, in case the path
+    // changed between (see open_to_read).
     if !fs::metadata(path)?.is_file() {
         return Err(ReadRefused::NotAFile);
     }
-    let file = fs::File::open(path)?;
+    let file = open_to_read(path)?;
     let meta = file.metadata()?;
     if !meta.is_file() {
         return Err(ReadRefused::NotAFile);
@@ -313,7 +328,7 @@ pub fn write_document(
             if !meta.is_file() {
                 return Err(CommandError::Io("it isn't an ordinary file".into()));
             }
-            if let Ok(disk) = fs::File::open(&p).and_then(sha256_of_reader) {
+            if let Ok(disk) = open_to_read(&p).and_then(sha256_of_reader) {
                 if disk != expected {
                     return Err(CommandError::Conflict(disk));
                 }
@@ -509,6 +524,37 @@ mod tests {
         let result = read_document(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
+    }
+
+    // read_capped looks at the path before opening it, but a local process
+    // can swap a FIFO in between; the open itself mustn't wait for a writer.
+    #[cfg(unix)]
+    #[test]
+    fn open_to_read_does_not_wait_for_a_fifo_writer() {
+        let dir = tempdir().unwrap();
+        let fifo = dir.path().join("f");
+        let status = std::process::Command::new("mkfifo").arg(&fifo).status().unwrap();
+        assert!(status.success());
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(open_to_read(&fifo).and_then(|f| f.metadata()).map(|m| m.is_file()));
+        });
+        let opened = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("opening the FIFO waited for a writer");
+        assert!(!opened.unwrap());
+    }
+
+    #[test]
+    fn open_to_read_reads_an_ordinary_file() {
+        use std::io::Read;
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("f");
+        fs::write(&f, b"hello").unwrap();
+        let mut text = String::new();
+        open_to_read(&f).unwrap().read_to_string(&mut text).unwrap();
+        assert_eq!(text, "hello");
     }
 
     #[cfg(unix)]

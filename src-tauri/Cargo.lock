@@ -2983,6 +2983,7 @@ name = "remarkdown"
 version = "0.9.0"
 dependencies = [
  "directories",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
