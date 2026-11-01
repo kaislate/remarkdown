@@ -39,8 +39,11 @@ installed copy accepts it. Two settings close this:
 2. **Optionally, a `release` environment** (Settings > Environments > New
    environment), which also covers runs started by hand from a branch.
    Under Deployment branches and tags choose Selected branches and tags,
-   and add the branch `main` and the tag pattern `v*`. Add yourself as a
-   required reviewer if every signed build should wait for a click. Add the
+   and add the branch `main` and the tag pattern `v*`. The `main` entry only
+   helps if `main` itself is protected (a branch ruleset that requires a pull
+   request), so add yourself as a required reviewer too, with "Prevent
+   self-review" off: then every signed build waits for your click. Pre-releases
+   must then also be started from `main` or a `v*` tag. Add the
    two signing secrets as environment secrets there, and add
    `environment: release` to the `release` job in
    `.github/workflows/release.yml`, without which the job cannot see them.
