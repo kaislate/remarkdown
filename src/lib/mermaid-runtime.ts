@@ -21,6 +21,7 @@ import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
 import { formatShortcut } from './shortcuts';
 import { detectDiagramType, type MermaidDiagramType } from './editor/mermaid-detect';
+import { isUnsafeImageSrc } from './image-paths';
 
 type Mermaid = typeof import('mermaid').default;
 
@@ -515,6 +516,33 @@ function tooSlowToRead(source: string): string | null {
     : null;
 }
 
+interface MermaidApi {
+  render?: Mermaid['render'];
+  getDiagramFromText?: (text: string) => Promise<{ db?: { getVertices?: () => unknown } }>;
+}
+
+// mermaid's own list, which `secure` replaces rather than adds to.
+const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges'];
+
+const UNSAFE_PICTURE = "This diagram has a picture that can't be shown here.";
+
+// A flowchart node can be a picture (`A@{ img: "…" }`), and mermaid loads
+// it in this window while it lays the diagram out. It gets the check a
+// markdown picture gets, read from the parsed diagram (the value may be
+// written with escapes), and a diagram that names an unsafe one isn't
+// drawn at all. Only node data (`@{`) can name a picture.
+async function namesUnsafePicture(api: MermaidApi | undefined, source: string): Promise<boolean> {
+  if (!source.includes('@{') || !api?.getDiagramFromText) return false;
+  const diagram = await api.getDiagramFromText(source);
+  const vertices = diagram.db?.getVertices?.();
+  if (!vertices || typeof vertices !== 'object') return false;
+  const nodes = vertices instanceof Map ? [...vertices.values()] : Object.values(vertices);
+  return nodes.some((n) => {
+    const img = (n as { img?: unknown } | null)?.img;
+    return typeof img === 'string' && isUnsafeImageSrc(img);
+  });
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -545,7 +573,7 @@ async function renderNow(
   // every later render would hang too, timeout or not. Renders are
   // already serialized here, so go to mermaidAPI.render directly (the
   // same function mermaid.render queues).
-  const api = (m as unknown as { mermaidAPI?: { render?: Mermaid['render'] } }).mermaidAPI;
+  const api = (m as unknown as { mermaidAPI?: MermaidApi }).mermaidAPI;
   const render: Mermaid['render'] = api?.render ? api.render.bind(api) : m.render.bind(m);
   try {
     m.initialize({
@@ -558,7 +586,11 @@ async function renderNow(
       // Throw instead of drawing mermaid's own error svg; we show a
       // friendly message (buildDiagramError) in the diagram's place.
       suppressErrorRendering: true,
+      // A diagram's own config can't set CSS: a url() in it would load
+      // whatever it names, a network share included.
+      secure: [...MERMAID_SECURE_KEYS, 'themeCSS', 'fontFamily', 'altFontFamily'],
     });
+    if (await namesUnsafePicture(api, source)) throw new Error(UNSAFE_PICTURE);
     const { svg } = await withTimeout(render(id, source), renderTimeoutMs);
     entry = { outcome: { ok: true, svg }, id };
   } catch (err) {
