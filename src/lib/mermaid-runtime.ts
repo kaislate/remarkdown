@@ -516,9 +516,14 @@ function tooSlowToRead(source: string): string | null {
     : null;
 }
 
+interface MermaidDb {
+  getVertices?: () => unknown;
+  getActors?: () => unknown;
+}
+
 interface MermaidApi {
   render?: Mermaid['render'];
-  getDiagramFromText?: (text: string) => Promise<{ db?: { getVertices?: () => unknown } }>;
+  getDiagramFromText?: (text: string) => Promise<{ db?: MermaidDb }>;
 }
 
 // mermaid's own list, which `secure` replaces rather than adds to.
@@ -536,21 +541,68 @@ const LABEL_PURIFY = {
 
 const UNSAFE_PICTURE = "This diagram has a picture that can't be shown here.";
 
+function valuesOf(collection: unknown): unknown[] {
+  if (!collection || typeof collection !== 'object') return [];
+  return collection instanceof Map ? [...collection.values()] : Object.values(collection);
+}
+
+// mermaid reads `#92;` as `\` (and `#name;` as `&name;`) only in the svg it
+// writes: it parses with each code swapped for a marker of its own
+// (`ﬂ°°92¶ß`) and turns the markers into HTML codes at the very end. So a
+// picture is checked the way the svg will name it. A textarea's content
+// is only ever text, so nothing in it loads.
+function asDrawn(src: string): string {
+  if (typeof document === 'undefined') return src;
+  const text = document.createElement('textarea');
+  text.innerHTML = src
+    .replace(/#(\w+);/g, (_m, code: string) => (/^\+?\d+$/.test(code) ? `ﬂ°°${code}¶ß` : `ﬂ°${code}¶ß`))
+    .replace(/&/g, '&amp;')
+    .replace(/ﬂ°°/g, '&#')
+    .replace(/ﬂ°/g, '&')
+    .replace(/¶ß/g, ';');
+  return text.value;
+}
+
+const isUnsafeDrawnPicture = (src: unknown) => typeof src === 'string' && (isUnsafeImageSrc(src) || isUnsafeImageSrc(asDrawn(src)));
+
 // A flowchart node can be a picture (`A@{ img: "…" }`), and mermaid loads
-// it in this window while it lays the diagram out. It gets the check a
-// markdown picture gets, read from the parsed diagram (the value may be
-// written with escapes), and a diagram that names an unsafe one isn't
-// drawn at all. Only node data (`@{`) can name a picture.
+// it in this window while it lays the diagram out. A sequence diagram's
+// actor can have an icon (`properties` or `details`), which mermaid puts
+// in this page while it draws. Each gets the check a markdown picture
+// gets, read from the parsed diagram (the value may be written with
+// escapes), and a diagram that names an unsafe one isn't drawn at all.
+// Only those three can name a picture this way.
 async function namesUnsafePicture(api: MermaidApi | undefined, source: string): Promise<boolean> {
-  if (!source.includes('@{') || !api?.getDiagramFromText) return false;
-  const diagram = await api.getDiagramFromText(source);
-  const vertices = diagram.db?.getVertices?.();
-  if (!vertices || typeof vertices !== 'object') return false;
-  const nodes = vertices instanceof Map ? [...vertices.values()] : Object.values(vertices);
-  return nodes.some((n) => {
-    const img = (n as { img?: unknown } | null)?.img;
-    return typeof img === 'string' && isUnsafeImageSrc(img);
-  });
+  if (!/@\{|properties|details/i.test(source) || !api?.getDiagramFromText) return false;
+  const { db } = await api.getDiagramFromText(source);
+  const nodes = valuesOf(db?.getVertices?.()).map((n) => (n as { img?: unknown } | null)?.img);
+  const icons = valuesOf(db?.getActors?.()).map((a) => (a as { properties?: { icon?: unknown } } | null)?.properties?.icon);
+  return [...nodes, ...icons].some(isUnsafeDrawnPicture);
+}
+
+// Every attribute that loads a picture, on any element, and the svg
+// elements that load the file their href names.
+const PICTURE_ATTRS = ['src', 'srcset', 'poster', 'background'];
+const LINKED_PICTURES = ['image', 'feimage', 'use'];
+
+// The check after drawing, on the svg mermaid hands back and the app puts
+// in the page: whatever a diagram's source spelled, this is what loads.
+// A template's content is inert, so reading it loads nothing.
+export function drawsUnsafePicture(svg: string): boolean {
+  if (typeof document === 'undefined') return false;
+  const box = document.createElement('template');
+  box.innerHTML = svg;
+  for (const el of box.content.querySelectorAll('*')) {
+    const linked = LINKED_PICTURES.includes(el.localName.toLowerCase());
+    for (const { name, value } of el.attributes) {
+      const attr = name.toLowerCase();
+      if (!PICTURE_ATTRS.includes(attr) && !(linked && (attr === 'href' || attr === 'xlink:href'))) continue;
+      // A srcset lists several pictures, each followed by its size.
+      const srcs = attr === 'srcset' ? [value, ...value.split(',').map((c) => c.trim().split(/\s+/)[0])] : [value];
+      if (srcs.some(isUnsafeImageSrc)) return true;
+    }
+  }
+  return false;
 }
 
 async function renderNow(
@@ -607,6 +659,7 @@ async function renderNow(
     // too: one that never settles would block every later render.
     if (await withTimeout(namesUnsafePicture(api, source), renderTimeoutMs)) throw new Error(UNSAFE_PICTURE);
     const { svg } = await withTimeout(render(id, source), renderTimeoutMs);
+    if (drawsUnsafePicture(svg)) throw new Error(UNSAFE_PICTURE);
     entry = { outcome: { ok: true, svg }, id };
   } catch (err) {
     // Not cached (`finally` still cleans up): a timeout says nothing

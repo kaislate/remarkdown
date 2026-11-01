@@ -3,7 +3,8 @@
 // Real mermaid: the picture is asked for while mermaid lays the diagram
 // out, before any svg comes back.
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { renderMermaid, resetMermaidRuntimeForTests, warmMermaidRuntime } from '../../src/lib/mermaid-runtime';
+import { drawsUnsafePicture, renderMermaid, resetMermaidRuntimeForTests, warmMermaidRuntime } from '../../src/lib/mermaid-runtime';
+import { isUnsafeImageSrc } from '../../src/lib/image-paths';
 
 (SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({ x: 0, y: 0, width: 10, height: 10 });
 
@@ -129,5 +130,76 @@ describe('pictures in a diagram label', () => {
     expect(outcome.ok).toBe(true);
     expect(outcome.ok && outcome.svg).toContain('<b>bold</b>');
     expect(outcome.ok && outcome.svg).toContain('words');
+  });
+});
+
+describe('pictures a diagram spells with codes, or gives a sequence actor', () => {
+  // mermaid reads #92; as a backslash (and #58; as a colon, #47; as a
+  // slash) only once it writes the svg, so the picture the svg names is
+  // not the one written in the source. A sequence diagram's actor can have
+  // an icon too, which mermaid draws as an svg picture.
+  const asset = 'http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png';
+  // Escaped for JSON: the icon is \\attacker.example\s\x.png.
+  const share = String.raw`\\\\attacker.example\\s\\x.png`;
+  const actor = (props: string) => `sequenceDiagram\nparticipant A\n${props}\nA->>A: hi`;
+  beforeAll(() => {
+    const details = document.createElement('div');
+    details.id = 'rmd-test-actor-details';
+    details.textContent = JSON.stringify({ properties: { icon: asset } });
+    document.body.appendChild(details);
+  });
+
+  it.each([
+    ['#58; in an asset url', 'flowchart TD\nA@{ img: "http#58;//asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png" }'],
+    ['#92; in a share', 'flowchart TD\nA@{ img: "#92;#92;attacker.example#92;s#92;x.png" }'],
+    ['#47; in a protocol-relative host', 'flowchart TD\nA@{ img: "#47;#47;attacker.example/x.png" }'],
+    ['a sequence icon, an asset url', actor(`properties A: {"icon":"${asset}"}`)],
+    ['a sequence icon, a share', actor(`properties A: {"icon":"${share}"}`)],
+    ['a sequence icon, #58; in an asset url', actor('properties A: {"icon":"http#58;//asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png"}')],
+    ['a sequence icon, #92; in a share', actor('properties A: {"icon":"#92;#92;attacker.example#92;s#92;x.png"}')],
+    ['a sequence icon from details', actor('details A: rmd-test-actor-details')],
+  ])('%s is never drawn', async (_name, source) => {
+    const stop = watchDocument();
+    const outcome = await renderMermaid(source, CTX);
+    const seen = stop();
+    expect(outcome.ok).toBe(false);
+    expect(seen.filter((s) => s.includes('attacker.example'))).toEqual([]);
+    expect(asked.filter(isUnsafeImageSrc)).toEqual([]);
+  });
+
+  // mermaid keeps an HTML code's & as an &, so this names a file in the
+  // app's own folder, not a share.
+  it('draws &#92; as written', async () => {
+    const outcome = await renderMermaid('flowchart TD\nA@{ img: "&#92;&#92;attacker.example&#92;s&#92;x.png" }', CTX);
+    expect(outcome.ok && outcome.svg).toContain(String.raw`href="&amp;\&amp;\attacker.example`);
+  });
+
+  it('still draws a web icon for a sequence actor', async () => {
+    const outcome = await renderMermaid(actor('properties A: {"icon":"https://example.com/i.png"}'), CTX);
+    expect(outcome.ok && outcome.svg).toContain('https://example.com/i.png');
+  });
+});
+
+describe('the svg a diagram comes back as', () => {
+  const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  it.each([
+    ['an svg image', '<image href="http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png"/>'],
+    ['an svg image by xlink', String.raw`<image xlink:href="\\attacker.example\s\x.png"/>`],
+    ['an feImage', '<filter><feImage href="//attacker.example/f.png"/></filter>'],
+    ['a use', '<use href="asset://localhost/%2Fnet%2Fattacker.example%2Fx.svg#a"/>'],
+    ['an img', '<foreignObject><div><img src="file:///C:/x.png"></div></foreignObject>'],
+    ['a srcset', '<foreignObject><img srcset="https://example.com/a.png 1x, //attacker.example/s.png 2x"></foreignObject>'],
+    ['a poster', '<foreignObject><video poster="//attacker.example/p.png"></video></foreignObject>'],
+    ['a background', '<foreignObject><table background="//attacker.example/b.png"></table></foreignObject>'],
+  ])('with an unsafe picture in %s is refused', (_name, inner) => {
+    expect(drawsUnsafePicture(svg(inner))).toBe(true);
+  });
+
+  it('with web pictures, its own links and words is fine', () => {
+    expect(
+      drawsUnsafePicture(
+        svg('<image href="https://example.com/x.png"/><use xlink:href="#rmd-mermaid-1x-arrow"/><path marker-end="url(#m)"/><text>&lt;img src="//attacker.example/x.png"&gt;</text>'),
+      ),
+    ).toBe(false);
   });
 });
