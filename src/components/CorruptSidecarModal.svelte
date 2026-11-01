@@ -2,6 +2,7 @@
   import { activeModal, closeModal } from '../stores/modals';
   import { backupCorruptSidecar } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
+  import { MAX_ANNOTATIONS } from '../lib/sidecar';
 
   async function backupAndStartFresh() {
     if ($activeModal?.kind !== 'corrupt-sidecar') return;
@@ -28,7 +29,13 @@
     <div class="modal glass" role="dialog" aria-modal="true" aria-label="Corrupt sidecar" tabindex="-1" onclick={(e) => e.stopPropagation()}>
       <header><h2>Annotations couldn't be loaded</h2></header>
       <p>
-        The annotations file for this document is malformed JSON.
+        {#if $activeModal.reason === 'unreadable'}
+          The annotations file for this document is too large, or isn't an ordinary file, so it wasn't opened.
+        {:else if $activeModal.reason === 'too-many'}
+          The annotations file for this document holds more than {MAX_ANNOTATIONS.toLocaleString('en-US')} annotations, too many to show.
+        {:else}
+          The annotations file for this document is malformed JSON.
+        {/if}
         Would you like to back it up and start with a fresh empty annotations file?
       </p>
       <div class="actions">

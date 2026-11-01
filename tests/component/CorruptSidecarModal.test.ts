@@ -31,6 +31,26 @@ describe('CorruptSidecarModal', () => {
     expect(screen.getByRole('dialog', { name: /corrupt sidecar/i })).toBeInTheDocument();
   });
 
+  it('says a malformed file is malformed', () => {
+    render(CorruptSidecarModal);
+    flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md' }));
+    expect(screen.getByRole('dialog').textContent).toMatch(/malformed JSON/);
+  });
+
+  it('says why a file Rust refused to read was not opened', () => {
+    render(CorruptSidecarModal);
+    flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'unreadable' }));
+    const text = screen.getByRole('dialog').textContent!;
+    expect(text).toMatch(/too large, or isn't an ordinary file/);
+    expect(text).not.toMatch(/malformed/);
+  });
+
+  it('says a file with too many annotations has too many', () => {
+    render(CorruptSidecarModal);
+    flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'too-many' }));
+    expect(screen.getByRole('dialog').textContent).toMatch(/more than 20,000 annotations/);
+  });
+
   it('Leave as-is closes the modal without calling backup', async () => {
     render(CorruptSidecarModal);
     flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md' }));

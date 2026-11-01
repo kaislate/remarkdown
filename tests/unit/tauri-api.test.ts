@@ -46,6 +46,22 @@ describe('tauri-api wrapper', () => {
     });
     const result = await readDocument('/tmp/x.md');
     expect(result.sidecarRaw).toBe('{"annotations":[]}');
+    expect(result.sidecarUnreadable).toBe(false);
+  });
+
+  it('readDocument passes on a sidecar Rust refused to read', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      path: '/tmp/x.md',
+      dir: '/tmp',
+      markdown: '',
+      sidecar_raw: null,
+      sidecar_unreadable: true,
+      sha256: 'abc',
+      bytes: 0,
+    });
+    const result = await readDocument('/tmp/x.md');
+    expect(result.sidecarRaw).toBeNull();
+    expect(result.sidecarUnreadable).toBe(true);
   });
 
   it('writeSidecar forwards mdPath and json', async () => {

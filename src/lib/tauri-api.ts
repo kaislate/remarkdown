@@ -6,6 +6,9 @@ export interface ReadDocumentResult {
   dir: string;
   markdown: string;
   sidecarRaw: string | null;
+  // A sidecar is there but Rust didn't read it: it's too large, or isn't
+  // an ordinary file (a folder, or a link to a device).
+  sidecarUnreadable?: boolean;
   sha256: string;
   bytes: number;
 }
@@ -29,6 +32,7 @@ export async function readDocument(path: string): Promise<ReadDocumentResult> {
     dir: raw.dir,
     markdown: raw.markdown,
     sidecarRaw: raw.sidecar_raw ?? raw.sidecarRaw ?? null,
+    sidecarUnreadable: raw.sidecar_unreadable ?? raw.sidecarUnreadable ?? false,
     sha256: raw.sha256,
     bytes: raw.bytes,
   };
