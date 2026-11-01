@@ -55,18 +55,22 @@ function outside(raw: string, scheme: string): LinkAction {
 }
 
 function otherDocument(raw: string, docDir: string | null | undefined): LinkAction {
-  if (!docDir) return NONE;
+  const dir = docDir ? plainPath(docDir) : null;
+  if (!dir) return NONE;
+  // A colon is a drive or an NTFS stream on Windows; on macOS and Linux
+  // (a folder from '/', no backslashes) it's just part of a name.
+  const windows = !/^\/(?!\/)/.test(dir) || dir.includes('\\');
   const rel = decode(raw.split(/[?#]/, 1)[0]);
   // A leading slash or backslash (before or after decoding) is an absolute
-  // path or another machine; a colon a drive or an NTFS stream.
-  if (!rel || /^[\\/]/.test(raw) || /^[\\/]/.test(rel) || rel.includes(':')) return NONE;
+  // path or another machine.
+  if (!rel || /^[\\/]/.test(raw) || /^[\\/]/.test(rel) || (windows && rel.includes(':'))) return NONE;
   if (/[\x00-\x1f]/.test(rel) || !MD_RE.test(rel)) return NONE;
 
   // A document on a network share (\\server\share\…): joinPath knows only
   // drives and '/', so the share is joined as a plain folder, and a link
   // that climbs out of it (to another server) is refused.
-  const unc = /^[\\/]{2}/.test(docDir);
-  const base = unc ? docDir.slice(1) : docDir;
+  const unc = /^[\\/]{2}/.test(dir);
+  const base = unc ? dir.slice(1) : dir;
   let path = joinPath(base, rel);
   if (unc) {
     const [server, share] = base.split(/[\\/]/).filter(Boolean);
@@ -76,5 +80,18 @@ function otherDocument(raw: string, docDir: string | null | undefined): LinkActi
   }
   // Same separators as the document's own path, so the tab and recent list
   // name the file the way the rest of the app does.
-  return { kind: 'open', path: docDir.includes('\\') ? path.replace(/\//g, '\\') : path };
+  return { kind: 'open', path: dir.includes('\\') ? path.replace(/\//g, '\\') : path };
+}
+
+// Windows' long and device spellings (\\?\C:\…, \\?\UNC\server\share\…,
+// and the same with \\.\) as the plain path they name, so the share check
+// above sees the real server rather than '?'. Null for any other device
+// path (a volume GUID, a pipe…), which no link should start from.
+function plainPath(dir: string): string | null {
+  const long = /^([\\/])[\\/][?.][\\/]/.exec(dir);
+  if (!long) return dir;
+  const rest = dir.slice(long[0].length);
+  if (/^UNC[\\/]/i.test(rest)) return `${long[1]}${long[1]}${rest.slice(4)}`;
+  if (/^[a-z]:[\\/]/i.test(rest)) return rest;
+  return null;
 }

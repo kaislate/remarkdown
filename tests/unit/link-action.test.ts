@@ -45,6 +45,37 @@ describe('links to other documents', () => {
     expect(linkAction('../../evil/s/x.md', '\\\\server\\share\\docs')).toEqual(NONE);
   });
 
+  // \\?\UNC\server\share is the same share as \\server\share, spelled
+  // long; read as server '?' and share 'UNC', a link could climb from it
+  // to another server.
+  it('reads a long-form network path as the share it names', () => {
+    for (const dir of ['\\\\?\\UNC\\srv\\share\\d', '\\\\.\\UNC\\srv\\share\\d', '//?/UNC/srv/share/d']) {
+      expect(linkAction('../../../x.md', dir), dir).toEqual(NONE);
+      expect(linkAction('../../../evil/s/x.md', dir), dir).toEqual(NONE);
+    }
+    expect(linkAction('../other.md', '\\\\?\\UNC\\srv\\share\\d')).toEqual({ kind: 'open', path: '\\\\srv\\share\\other.md' });
+  });
+
+  it('reads a long-form drive path as the drive', () => {
+    expect(linkAction('../other.md', '\\\\?\\C:\\docs\\sub')).toEqual({ kind: 'open', path: 'C:\\docs\\other.md' });
+    expect(linkAction('../../../x.md', '\\\\.\\C:\\docs')).toEqual({ kind: 'open', path: 'C:\\x.md' });
+  });
+
+  it('refuses any other long-form or device path', () => {
+    for (const dir of ['\\\\?\\Volume{1234}\\docs', '\\\\.\\pipe\\x', '\\\\?\\GLOBALROOT\\Device\\x']) {
+      expect(linkAction('other.md', dir), dir).toEqual(NONE);
+    }
+  });
+
+  // A colon is a drive or an NTFS stream on Windows, but just a character
+  // in a macOS or Linux filename.
+  it('opens a name with a colon next to a macOS or Linux document', () => {
+    expect(linkAction('Meeting%3A%20notes.md', '/home/me/docs')).toEqual({ kind: 'open', path: '/home/me/docs/Meeting: notes.md' });
+    expect(linkAction('Meeting%3A%20notes.md', 'C:/Users/me/docs')).toEqual(NONE);
+    expect(linkAction('Meeting%3A%20notes.md', 'C:\\docs')).toEqual(NONE);
+    expect(linkAction('Meeting%3A%20notes.md', '\\\\srv\\share')).toEqual(NONE);
+  });
+
   it('needs the document folder', () => {
     expect(linkAction('other.md', null)).toEqual(NONE);
     expect(linkAction('other.md', undefined)).toEqual(NONE);
