@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { imageSrcFor, isUnsafeImageSrc, resolveImageSrc } from '../../src/lib/image-paths';
+import { fileSrcFromAssetUrl, imageSrcFor, isUnsafeImageSrc, resolveImageSrc } from '../../src/lib/image-paths';
 import { setPlatformForTests } from '../../src/lib/platform';
 
 afterEach(() => setPlatformForTests('windows'));
@@ -221,5 +221,32 @@ describe('automounted network folders on macos and linux', () => {
     const toAsset = vi.fn((p: string) => p);
     expect(resolveImageSrc('/net/x.png', 'C:/docs', toAsset)).toBe('/net/x.png');
     expect(toAsset).not.toHaveBeenCalled();
+  });
+});
+
+describe('a picture copied from the reader', () => {
+  // The reader's asset url back to a path, and that path to the same file.
+  it.each([
+    ['windows', 'C:/Users/me/Ünïcode\'s #1 (2).png', (p: string) => `http://asset.localhost/${encodeURIComponent(p)}`],
+    ['linux', '/home/me/100% done.png', (p: string) => `asset://localhost/${encodeURIComponent(p)}`],
+    ['macos', '/Users/me/a b.png', (p: string) => `asset://localhost/${encodeURIComponent(p)}`],
+  ] as const)('on %s goes back to its own file', (os, file, toAsset) => {
+    setPlatformForTests(os);
+    const src = fileSrcFromAssetUrl(toAsset(file));
+    expect(src).not.toBeNull();
+    expect(resolveImageSrc(src!, undefined, toAsset)).toBe(toAsset(file));
+  });
+
+  it('is left alone when it names no plain file path', () => {
+    for (const src of [
+      'http://asset.localhost/%5C%5Chost%5Cs%5Cx.png',
+      'asset://localhost/%2F%2Fhost%2Fs%2Fx.png',
+      'http://asset.localhost/img%2Fa.png',
+      'http://asset.localhost/',
+      'http://asset.localhost.attacker.example/C%3A%2Fa.png',
+      'http://example.com/C%3A%2Fa.png',
+    ]) {
+      expect(fileSrcFromAssetUrl(src), src).toBeNull();
+    }
   });
 });

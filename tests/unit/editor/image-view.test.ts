@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createEditorView } from '../../../src/lib/editor/view';
 import { editorSchema } from '../../../src/lib/editor/schema';
-import { DOMSerializer } from 'prosemirror-model';
+import { DOMParser as PMDOMParser, DOMSerializer } from 'prosemirror-model';
 import { resolveImageSrc } from '../../../src/lib/image-paths';
 
 // Setting an <img>'s src starts the request, even before the picture is
@@ -62,5 +62,30 @@ describe('editor pictures', () => {
     expect(html.innerHTML).not.toContain('attacker');
     expect(html.innerHTML).toContain('src="img/a.png"');
     v.destroy();
+  });
+  // The reader's pictures carry the asset url the app made for them; one
+  // copied from the reader and pasted here goes back to its file path, so
+  // it still shows and still gets every check a path gets.
+  it.each([
+    ['http://asset.localhost/C%3A%2FUsers%2Fme%2Fmy%20pics%2Fa.png', 'C:/Users/me/my%20pics/a.png'],
+    ['asset://localhost/%2Fhome%2Fme%2Fmy%20pics%2Fa.png', '/home/me/my%20pics/a.png'],
+    ['HTTP://ASSET.LOCALHOST/C%3A%5CUsers%5Cme%5Ca.png', 'C:/Users/me/a.png'],
+  ])('a pasted reader picture %s becomes its file path', (src, path) => {
+    const html = document.createElement('div');
+    html.innerHTML = `<p><img src="${src}" alt="a"></p>`;
+    const doc = PMDOMParser.fromSchema(editorSchema).parse(html);
+    expect(doc.firstChild!.firstChild!.attrs.src).toBe(path);
+  });
+
+  it.each([
+    'http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png',
+    'asset://localhost/%2F%2Fattacker.example%2Fs%2Fx.png',
+    'https://example.com/a.png',
+    'img/a.png',
+  ])('a pasted %s keeps its src as it is', (src) => {
+    const html = document.createElement('div');
+    html.innerHTML = `<p><img src="${src}" alt="a"></p>`;
+    const doc = PMDOMParser.fromSchema(editorSchema).parse(html);
+    expect(doc.firstChild!.firstChild!.attrs.src).toBe(src);
   });
 });

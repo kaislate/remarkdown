@@ -107,6 +107,20 @@ function decode(src: string): string {
   }
 }
 
+// The file an asset url the app made names, written as a markdown src (a
+// full path, encoded as imageSrcFor encodes one), or null for any other
+// src, or one naming a path that isn't a plain file path. A picture copied
+// from the reader carries such a url.
+export function fileSrcFromAssetUrl(src: string): string | null {
+  const m = /^(?:https?:\/\/asset\.localhost|asset:\/\/localhost)\/([^?#]+)$/i.exec(src);
+  if (!m) return null;
+  const path = decode(m[1]);
+  if (isUnsafeImageSrc(path)) return null;
+  const parts = splitPath(path).map(encodePart);
+  if (isDrivePath(path)) return [path.slice(0, 2), ...parts.slice(1)].join('/');
+  return path.startsWith('/') ? `/${parts.join('/')}` : null;
+}
+
 export function resolveImageSrc(src: string, baseDir: string | undefined, toAssetUrl: ((path: string) => string) | undefined): string {
   if (!src) return src;
   // An empty src is a picture that asks for nothing.

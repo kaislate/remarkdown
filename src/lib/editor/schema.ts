@@ -19,10 +19,10 @@
 
 import { schema as baseSchema } from 'prosemirror-markdown';
 import { Schema } from 'prosemirror-model';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, TagParseRule } from 'prosemirror-model';
 import { calloutIcon } from './callout-icons';
 import { tableNodes } from './table-nodes';
-import { isUnsafeImageSrc } from '../image-paths';
+import { fileSrcFromAssetUrl, isUnsafeImageSrc } from '../image-paths';
 
 const calloutNode: NodeSpec = {
   attrs: {
@@ -264,6 +264,17 @@ const frontMatterNode: NodeSpec = {
 const baseImageNode = baseSchema.spec.nodes.get('image')!;
 const imageNode: NodeSpec = {
   ...baseImageNode,
+  // A picture pasted from the reader names the asset url the reader made
+  // for it; it goes back to the file path, so it shows here and is checked
+  // like any path.
+  parseDOM: baseImageNode.parseDOM!.map((rule) => ({
+    ...rule,
+    getAttrs: (dom: HTMLElement) => {
+      const attrs = (rule as TagParseRule).getAttrs?.(dom);
+      if (!attrs) return attrs ?? null;
+      return { ...attrs, src: fileSrcFromAssetUrl(String(attrs.src)) ?? attrs.src };
+    },
+  })),
   toDOM(node) {
     const src = String(node.attrs.src);
     return ['img', { ...node.attrs, src: isUnsafeImageSrc(src) ? '' : src }];
