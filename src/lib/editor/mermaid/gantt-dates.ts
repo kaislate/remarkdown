@@ -82,26 +82,34 @@ export function formatGanttDate(d: Date, format: string): string {
     .join('');
 }
 
-const PART: Record<string, string> = {
-  YYYY: '(\\d{4})', YY: '(\\d\\d)', MMMM: '([A-Za-z]+)', MMM: '([A-Za-z]+)', MM: '(\\d\\d)', M: '(\\d\\d?)',
-  DD: '(\\d\\d)', D: '(\\d\\d?)', HH: '(\\d\\d?)', H: '(\\d\\d?)', mm: '(\\d\\d?)', m: '(\\d\\d?)',
-  ss: '(\\d\\d?)', s: '(\\d\\d?)', SSS: '(\\d{3})',
+// Each token is matched where the last one ended, as much as it takes,
+// and never tried again with less: that is how dayjs reads a date. One
+// regex over the whole format would backtrack through every way to
+// split a run of digits between one-or-two-digit tokens, 2^n tries for
+// `HHHH…` against a long number, so a crafted chart froze the editor.
+const PART: Record<string, RegExp> = {
+  YYYY: /\d{4}/y, YY: /\d\d/y, MMMM: /[A-Za-z]+/y, MMM: /[A-Za-z]+/y, MM: /\d\d/y, M: /\d\d?/y,
+  DD: /\d\d/y, D: /\d\d?/y, HH: /\d\d?/y, H: /\d\d?/y, mm: /\d\d?/y, m: /\d\d?/y,
+  ss: /\d\d?/y, s: /\d\d?/y, SSS: /\d{3}/y,
 };
 
 // `text` as a date in `format`, strictly; null when it isn't one.
 export function parseGanttDate(text: string, format: string): Date | null {
   if (!ganttDateFormatSupported(format)) return null;
-  const toks = tokens(format);
-  const re = new RegExp(
-    '^' + toks.map((t) => PART[t] ?? (t.startsWith('[') ? t.slice(1, -1) : t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('') + '$',
-  );
-  const m = re.exec(text);
-  if (!m) return null;
   const f: Record<string, number> = {};
-  let g = 1;
-  for (const t of toks) {
-    if (!PART[t]) continue;
-    const v = m[g++];
+  let pos = 0;
+  for (const t of tokens(format)) {
+    const re = PART[t];
+    if (!re) {
+      const literal = t.startsWith('[') ? t.slice(1, -1) : t;
+      if (!text.startsWith(literal, pos)) return null;
+      pos += literal.length;
+      continue;
+    }
+    re.lastIndex = pos;
+    const v = re.exec(text)?.[0];
+    if (v === undefined) return null;
+    pos += v.length;
     if (t === 'MMMM' || t === 'MMM') {
       const i = (t === 'MMMM' ? MONTHS : SHORT).indexOf(v);
       if (i < 0) return null;
@@ -109,6 +117,7 @@ export function parseGanttDate(text: string, format: string): Date | null {
     } else if (t === 'YY') f.year = (Number(v) > 68 ? 1900 : 2000) + Number(v);
     else f[{ YYYY: 'year', MM: 'month', M: 'month', DD: 'day', D: 'day', HH: 'hours', H: 'hours', mm: 'minutes', m: 'minutes', ss: 'seconds', s: 'seconds', SSS: 'ms' }[t]!] = Number(v);
   }
+  if (pos !== text.length) return null;
   // dayjs fills what the format leaves out from today (time: midnight).
   const now = new Date();
   const year = f.year || now.getFullYear();
