@@ -9,7 +9,7 @@ import { parseGanttDate } from '../../../src/lib/editor/mermaid/gantt-dates';
 import { parseMermaidSource, type SubgraphStatement } from '../../../src/lib/editor/mermaid-parser';
 import { applyFlowchartEdit } from '../../../src/lib/editor/mermaid-flowchart-edit';
 import { parseSequenceSource } from '../../../src/lib/editor/mermaid-sequence-parser';
-import { parseClassSource } from '../../../src/lib/editor/mermaid/class-parser';
+import { matchMethod, parseClassSource, parseGenericTypes } from '../../../src/lib/editor/mermaid/class-parser';
 import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
 import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
 import { styleSemicolons, swapTagQuotes } from '../../../src/lib/editor/mermaid/entity-text';
@@ -323,6 +323,75 @@ describe('class, ER and state lexers', () => {
       }
     }
     expect(hits).toBeGreaterThan(200);
+  });
+});
+
+describe('class members', () => {
+  // Found by the sweep: mermaid's method pattern, /([#+~-])?(.+)\((.*)\)…/,
+  // is unanchored, and on a member with no `(` before a `)` it runs
+  // `.+` to the end and back from every start, and `(.*)` to the end
+  // and back from every `(`: cubic. 1.5 KB took seconds. mermaid can't
+  // read such a member either, so the diagram stays text-edited.
+  it('turns down a method with a long run of parentheses in linear time', () => {
+    const { ms, value } = timed(() => parseClassSource(`classDiagram\nclass A {\n  a)${'('.repeat(1_500)}\n}\n`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok).toBe(false);
+  });
+
+  // `name: type`'s `\s*(.*)$` retried every split of a run of spaces
+  // when a line separator stopped the `.` (and then the field threw).
+  it('reads a `name: type` field with a long run of spaces in linear time', () => {
+    const LS = String.fromCharCode(0x2028);
+    const { ms, value } = timed(() => parseClassSource(`classDiagram\nclass A {\n  a:${' '.repeat(40_000)}x${LS}y\n}\n`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok && value.model.classes.get('A')?.members[0]).toMatchObject({ kind: 'field', name: 'a', type: `x${LS}y` });
+  });
+
+  // mermaid's parseGenericTypes turned `~`s into `<…>` pairs by looking
+  // for the first and the last `~` from scratch each time: quadratic.
+  it('reads a long run of generic markers in linear time', () => {
+    const { ms } = timed(() => parseGenericTypes('~'.repeat(80_000)));
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it('reads methods the way mermaid’s pattern does', () => {
+    const LS = String.fromCharCode(0x2028);
+    let hits = 0;
+    for (const s of randomRows(['a', ' ', '(', ')', '((', '))', '#', '+', '~', '-', '$', '*', '\n', '\r', LS], 20_000, 12)) {
+      const old = /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/.exec(s);
+      expect(matchMethod(s), JSON.stringify(s)).toEqual(old && [old[0], old[1], old[2], old[3], old[4], old[5]]);
+      if (old) hits++;
+    }
+    expect(hits).toBeGreaterThan(2_000);
+  });
+
+  it('pairs generic markers the way mermaid does', () => {
+    // mermaid's own processSet, step by step.
+    const processSet = (input: string): string => {
+      const tildes = input.split('~').length - 1;
+      let startingTilde = false;
+      if (tildes <= 1) return input;
+      if (tildes % 2 !== 0 && input.startsWith('~')) {
+        input = input.substring(1);
+        startingTilde = true;
+      }
+      const chars = [...input];
+      let first = chars.indexOf('~');
+      let last = chars.lastIndexOf('~');
+      while (first !== -1 && last !== -1 && first !== last) {
+        chars[first] = '<';
+        chars[last] = '>';
+        first = chars.indexOf('~');
+        last = chars.lastIndexOf('~');
+      }
+      if (startingTilde) chars.unshift('~');
+      return chars.join('');
+    };
+    for (const s of randomRows(['~', 'a', ' ', '~~'], 5_000, 10)) {
+      expect(parseGenericTypes(s), JSON.stringify(s)).toBe(processSet(s));
+    }
+    expect(parseGenericTypes('List~int~')).toBe('List<int>');
+    expect(parseGenericTypes('Map~K, V~')).toBe('Map<K, V>');
   });
 });
 
