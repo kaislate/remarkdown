@@ -2,32 +2,53 @@ use std::io::Write;
 use std::path::Path;
 #[cfg(unix)]
 use std::fs::File;
+use tempfile::NamedTempFile;
 
+/// Writes the app's own state (settings, session, recent files, reading
+/// progress). These list every document the user opens, so they stay
+/// private: tempfile makes its files 0600, and that mode is kept.
 pub fn atomic_write(target: &Path, contents: &[u8]) -> std::io::Result<()> {
-    let dir = target.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
-    })?;
-    let mut builder = tempfile::Builder::new();
-    builder.prefix(".remarkdown-tmp-");
-    // tempfile makes its files 0600, and the rename below would carry that
-    // onto the document, so a shared 0644 file stopped being readable by
-    // anyone else after the first save. Ask for 0666 instead: open() takes
-    // the umask off it, so a new file gets the mode any other program would
-    // give it.
+    let dir = parent_of(target)?;
+    let tmp = write_temp(dir, contents)?;
+    persist(tmp, target, dir)
+}
+
+/// Writes one of the user's own files: a document or its sidecar. On macOS
+/// and Linux the rename would carry the temp file's 0600 onto it, so a shared
+/// 0644 document stopped being readable by anyone else after the first save.
+/// The finished file gets the mode the target had, or, for a new file, the
+/// mode any other program would give it.
+pub fn atomic_write_user_file(target: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let dir = parent_of(target)?;
+    let tmp = write_temp(dir, contents)?;
+    // Only now, with everything written: anyone who opens the temp file
+    // keeps that descriptor whatever the mode becomes later, so it must not
+    // be readable by others while it fills. A chmod that fails (a filesystem
+    // without Unix modes) leaves it 0600, which is the safe way to be wrong.
     #[cfg(unix)]
-    {
+    if let Some(mode) = user_file_mode(target, dir) {
         use std::os::unix::fs::PermissionsExt;
-        builder.permissions(std::fs::Permissions::from_mode(0o666));
+        let _ = tmp.as_file().set_permissions(std::fs::Permissions::from_mode(mode));
     }
-    let mut tmp = builder.tempfile_in(dir)?;
-    // Replacing a file keeps its mode. Set before writing, so the contents
-    // are never readable under a wider mode than the target's.
-    #[cfg(unix)]
-    if let Ok(meta) = std::fs::metadata(target) {
-        tmp.as_file().set_permissions(meta.permissions())?;
-    }
+    persist(tmp, target, dir)
+}
+
+fn parent_of(target: &Path) -> std::io::Result<&Path> {
+    target.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
+    })
+}
+
+/// A temp file beside the target holding `contents`, synced to disk. It is
+/// 0600 on Unix (tempfile's default) from the moment it exists.
+fn write_temp(dir: &Path, contents: &[u8]) -> std::io::Result<NamedTempFile> {
+    let mut tmp = tempfile::Builder::new().prefix(".remarkdown-tmp-").tempfile_in(dir)?;
     tmp.write_all(contents)?;
     tmp.as_file().sync_all()?;
+    Ok(tmp)
+}
+
+fn persist(tmp: NamedTempFile, target: &Path, dir: &Path) -> std::io::Result<()> {
     // persist performs an atomic rename-over-existing on both POSIX (rename syscall) and
     // Windows (SetFileInformationByHandle/FileRenameInfo). Best-effort on SMB/filter drivers.
     tmp.persist(target).map_err(|e| e.error)?;
@@ -36,7 +57,37 @@ pub fn atomic_write(target: &Path, contents: &[u8]) -> std::io::Result<()> {
     if let Ok(dir_file) = File::open(dir) {
         let _ = dir_file.sync_all();
     }
+    #[cfg(not(unix))]
+    let _ = dir;
     Ok(())
+}
+
+/// The mode a saved user file should end up with. An ordinary file keeps
+/// its permission bits, but not setuid/setgid/sticky: a document is never
+/// meant to carry those. Anything else (nothing there, or a symlink the
+/// rename will replace) gets the mode of a new file.
+#[cfg(unix)]
+fn user_file_mode(target: &Path, dir: &Path) -> Option<u32> {
+    use std::os::unix::fs::PermissionsExt;
+    match std::fs::symlink_metadata(target) {
+        Ok(meta) if meta.is_file() => Some(meta.permissions().mode() & 0o777),
+        _ => new_file_mode(dir),
+    }
+}
+
+/// What open() makes of 0666 in `dir`: the umask taken off, as for any new
+/// file. Read off an empty probe file, because the umask can only be read by
+/// setting it, and setting it changes it for every thread in the process.
+#[cfg(unix)]
+fn new_file_mode(dir: &Path) -> Option<u32> {
+    use std::os::unix::fs::PermissionsExt;
+    let probe = tempfile::Builder::new()
+        .prefix(".remarkdown-tmp-")
+        .permissions(std::fs::Permissions::from_mode(0o666))
+        .tempfile_in(dir)
+        .ok()?;
+    let mode = probe.as_file().metadata().ok()?.permissions().mode();
+    Some(mode & 0o777)
 }
 
 #[cfg(test)]
@@ -55,6 +106,18 @@ mod tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), "second");
     }
 
+    #[test]
+    fn atomic_write_user_file_creates_and_replaces() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("a.md");
+        atomic_write_user_file(&target, b"first").unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "first");
+        atomic_write_user_file(&target, b"second").unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "second");
+        // The probe file and the temp file are both gone.
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
     #[cfg(unix)]
     fn mode_of(path: &Path) -> u32 {
         use std::os::unix::fs::PermissionsExt;
@@ -69,48 +132,93 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn atomic_write_keeps_a_readable_files_mode() {
+    fn the_temp_file_is_private_while_it_is_written() {
+        // Unix checks permissions at open(), so a temp file that was ever
+        // readable by others could be read later through a kept descriptor.
+        let dir = tempdir().unwrap();
+        let tmp = write_temp(dir.path(), b"secret").unwrap();
+        assert_eq!(mode_of(tmp.path()), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_keeps_new_app_state_private() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("recent.json");
+        atomic_write(&target, b"[]").unwrap();
+        assert_eq!(mode_of(&target), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_user_file_keeps_a_readable_files_mode() {
         let dir = tempdir().unwrap();
         let target = dir.path().join("shared.md");
         fs::write(&target, b"old").unwrap();
         set_mode(&target, 0o644);
-        atomic_write(&target, b"new").unwrap();
+        atomic_write_user_file(&target, b"new").unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "new");
         assert_eq!(mode_of(&target), 0o644);
     }
 
     #[cfg(unix)]
     #[test]
-    fn atomic_write_keeps_a_group_writable_files_mode() {
+    fn atomic_write_user_file_keeps_a_group_writable_files_mode() {
         let dir = tempdir().unwrap();
         let target = dir.path().join("team.md");
         fs::write(&target, b"old").unwrap();
         set_mode(&target, 0o664);
-        atomic_write(&target, b"new").unwrap();
+        atomic_write_user_file(&target, b"new").unwrap();
         assert_eq!(mode_of(&target), 0o664);
     }
 
     #[cfg(unix)]
     #[test]
-    fn atomic_write_keeps_a_private_files_mode() {
+    fn atomic_write_user_file_keeps_a_private_files_mode() {
         let dir = tempdir().unwrap();
         let target = dir.path().join("private.md");
         fs::write(&target, b"old").unwrap();
         set_mode(&target, 0o600);
-        atomic_write(&target, b"new").unwrap();
+        atomic_write_user_file(&target, b"new").unwrap();
         assert_eq!(mode_of(&target), 0o600);
     }
 
     #[cfg(unix)]
     #[test]
-    fn atomic_write_gives_a_new_file_the_usual_mode() {
+    fn atomic_write_user_file_drops_setuid_and_friends() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("odd.md");
+        fs::write(&target, b"old").unwrap();
+        set_mode(&target, 0o4755);
+        atomic_write_user_file(&target, b"new").unwrap();
+        assert_eq!(mode_of(&target), 0o755);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_user_file_gives_a_new_file_the_usual_mode() {
         // Whatever the umask is, a new file should come out exactly as one
         // made by any other program in the same folder.
         let dir = tempdir().unwrap();
         let reference = dir.path().join("reference.md");
         fs::File::create(&reference).unwrap();
         let target = dir.path().join("new.md");
-        atomic_write(&target, b"hello").unwrap();
+        atomic_write_user_file(&target, b"hello").unwrap();
+        assert_eq!(mode_of(&target), mode_of(&reference));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_user_file_does_not_copy_the_mode_through_a_symlink() {
+        // /dev/null is 0666; a sidecar linked to it is replaced by an
+        // ordinary file with a new file's mode, not a world-writable one.
+        let dir = tempdir().unwrap();
+        let reference = dir.path().join("reference.json");
+        fs::File::create(&reference).unwrap();
+        let target = dir.path().join("a.md.remarkdown.json");
+        std::os::unix::fs::symlink("/dev/null", &target).unwrap();
+        atomic_write_user_file(&target, b"{}").unwrap();
+        assert!(fs::symlink_metadata(&target).unwrap().is_file());
         assert_eq!(mode_of(&target), mode_of(&reference));
     }
 }

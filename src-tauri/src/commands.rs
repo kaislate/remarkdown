@@ -121,8 +121,9 @@ pub struct ReadDocumentResult {
     pub dir: String,
     pub markdown: String,
     pub sidecar_raw: Option<String>,
-    /// A sidecar is there but wasn't read: it's too large or isn't an
-    /// ordinary file. The frontend offers to back it up, as for a corrupt one.
+    /// A sidecar is there but couldn't be read: it's too large, isn't an
+    /// ordinary file, isn't text, or may not be read. The frontend offers to
+    /// back it up, as for a corrupt one.
     pub sidecar_unreadable: bool,
     pub sha256: String,
     pub bytes: u64,
@@ -148,16 +149,22 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     let sc_path = sidecar_path_for(&md_path);
     let mut sidecar_unreadable = false;
     let sidecar_raw = if sc_path.exists() {
+        // Whatever is wrong with the sidecar, the document still opens; the
+        // frontend offers to back the sidecar up. Only a sidecar that has
+        // gone since exists() looked counts as no sidecar at all.
         match read_capped(&sc_path, SIDECAR_LIMIT) {
-            Ok(raw) => Some(String::from_utf8(raw).map_err(|_| {
-                // The same error read_to_string gave before reads were capped.
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "stream did not contain valid UTF-8")
-            })?),
-            Err(ReadRefused::NotAFile | ReadRefused::TooLarge) => {
+            Ok(raw) => match String::from_utf8(raw) {
+                Ok(text) => Some(text),
+                Err(_) => {
+                    sidecar_unreadable = true;
+                    None
+                }
+            },
+            Err(ReadRefused::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => {
                 sidecar_unreadable = true;
                 None
             }
-            Err(ReadRefused::Io(e)) => return Err(e.into()),
         }
     } else {
         None
@@ -183,7 +190,7 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
 pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);
-    crate::sidecar::atomic_write(&sc, json.as_bytes())?;
+    crate::sidecar::atomic_write_user_file(&sc, json.as_bytes())?;
     Ok(())
 }
 
@@ -301,7 +308,7 @@ pub fn write_document(
             }
         }
     }
-    crate::sidecar::atomic_write(&p, markdown.as_bytes())?;
+    crate::sidecar::atomic_write_user_file(&p, markdown.as_bytes())?;
     Ok(sha256_hex(markdown.as_bytes()))
 }
 
@@ -364,7 +371,7 @@ mod tests {
         fs::create_dir(&folder).unwrap();
 
         let result = read_document(folder.to_string_lossy().into_owned());
-        assert!(matches!(result, Err(CommandError::Io(_))));
+        assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("ordinary file")));
     }
 
     #[test]
@@ -397,6 +404,43 @@ mod tests {
         fs::write(&md, b"# Hello\n").unwrap();
         let sc = dir.path().join("a.md.remarkdown.json");
         fs::File::create(&sc).unwrap().set_len(SIDECAR_LIMIT + 1).unwrap();
+
+        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.sidecar_raw, None);
+        assert!(result.sidecar_unreadable);
+    }
+
+    #[test]
+    fn read_document_opens_with_a_sidecar_that_is_not_text() {
+        // A sidecar is someone else's file as often as the document is; a
+        // broken one must not keep the document from opening.
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        fs::write(&md, b"# Hello
+").unwrap();
+        fs::write(dir.path().join("a.md.remarkdown.json"), [0xff, 0xfe, 0x00]).unwrap();
+
+        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.markdown, "# Hello
+");
+        assert_eq!(result.sidecar_raw, None);
+        assert!(result.sidecar_unreadable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_document_opens_with_a_sidecar_it_may_not_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("a.md");
+        fs::write(&md, b"# Hello
+").unwrap();
+        let sc = dir.path().join("a.md.remarkdown.json");
+        fs::write(&sc, b"{}").unwrap();
+        fs::set_permissions(&sc, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read(&sc).is_ok() {
+            return; // running as root: nothing is unreadable
+        }
 
         let result = read_document(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.sidecar_raw, None);
