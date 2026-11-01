@@ -186,6 +186,68 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+// Before it lexes anything, mermaid's encodeEntities runs
+// /style.*:\S*#.*;/g and the same with classDef over the source. Where
+// it can't match, that regex tries every keyword × `:` × `#` on the
+// line: one crafted 2 KB line held the UI thread for seconds, and no
+// timeout stops synchronous work. This bounds, in one pass per line,
+// the steps it would take (measured: a million or more per ms), so a
+// render that would hang is turned away before mermaid sees it. Lines
+// people write come out far below the limit.
+const STYLE_WORK_LIMIT = 1e8;
+
+export function styleRegexWork(source: string): number {
+  let worst = 0;
+  for (const line of source.split(/[\n\r\u2028\u2029]/)) {
+    const len = line.length;
+    for (const keyword of ['style', 'classDef']) {
+      const first = line.indexOf(keyword);
+      if (first < 0) continue;
+      const semi = line.lastIndexOf(';');
+      let starts = 0;
+      let startsAfterSemi = 0;
+      for (let i = first; i >= 0; i = line.indexOf(keyword, i + 1)) {
+        starts++;
+        if (i > semi) startsAfterSemi++;
+      }
+      // From the end of the line, as the regex backtracks: each `:`
+      // costs its run of non-spaces, plus a scan to the end of the line
+      // for each `#` in that run, until one whose run holds a `#`
+      // before the last `;` (where the match succeeds).
+      let perStart = len;
+      let tail = 0;
+      let runEnd = len;
+      let hashes = 0;
+      let firstHash = Infinity;
+      let matched = false;
+      for (let p = len - 1; p >= first + keyword.length; p--) {
+        const c = line[p];
+        if (p === semi) tail = perStart - len;
+        if (c === ':') {
+          if (firstHash < semi) {
+            matched = true;
+            break;
+          }
+          perStart += runEnd - p + hashes * len;
+        }
+        if (/\s/.test(c)) {
+          runEnd = p;
+          hashes = 0;
+          firstHash = Infinity;
+        } else if (c === '#') {
+          hashes++;
+          firstHash = p;
+        }
+      }
+      if (semi < first + keyword.length) tail = perStart - len;
+      // A match ends at the last `;`; every keyword after it fails
+      // against what follows. Without a match every keyword fails.
+      worst = Math.max(worst, matched ? perStart + startsAfterSemi * tail : starts * perStart);
+    }
+  }
+  return worst;
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -194,6 +256,12 @@ async function renderNow(
   // A job queued behind an identical one finds the result already here.
   const cached = cache.get(key);
   if (cached) return rekey(cached);
+
+  if (styleRegexWork(source) > STYLE_WORK_LIMIT) {
+    const entry: CacheEntry = { outcome: { ok: false, error: 'A style line in this diagram is too long and tangled to read.' }, id: nextId() };
+    remember(key, entry);
+    return entry.outcome;
+  }
 
   let m: Mermaid;
   try {

@@ -10,6 +10,7 @@ import {
   applyDiagramSizing,
   buildDiagramError,
   MIN_DIAGRAM_SCALE,
+  styleRegexWork,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -163,6 +164,42 @@ describe('mermaid runtime', () => {
     expect(document.getElementById(`d${id}`)).toBeNull();
     // Failures are cached too — the same broken source doesn't re-run.
     expect(peekMermaidRender('flowchart TD\nA[', DARK)).toEqual(out);
+  });
+
+  // G74: before it lexes anything, mermaid runs /style.*:\S*#.*;/g (and
+  // a classDef one) over the source, which on a crafted line tries
+  // every `style` × `:` × `#`: 2 KB took seconds, synchronously, so the
+  // render timeout could never fire. Such a source is turned away.
+  it('turns away a style line mermaid would take seconds over, without calling mermaid', async () => {
+    for (const line of ['style:#'.repeat(300), 'style' + ':#'.repeat(2_000), 'classDef:#;' + 'classDef:#'.repeat(300)]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(`flowchart TD\nA\n${line}`, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('weighs a style line in linear time', () => {
+    const t0 = performance.now();
+    expect(styleRegexWork('style' + ':#'.repeat(100_000))).toBeGreaterThan(1e8);
+    expect(styleRegexWork('style:#;'.repeat(25_000))).toBeLessThan(1e8);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it('draws style lines people write, however long', async () => {
+    for (const source of [
+      'flowchart TD\nA --> B\nstyle A fill:#f9f,stroke:#333,stroke-width:4px',
+      `flowchart TD\n${'style A fill:#f00;'.repeat(1_500)}`,
+      `flowchart TD\nA["${'a style: #1 '.repeat(2_000)}"]`,
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
   });
 
   it('a failing render does not wedge the queue', async () => {
