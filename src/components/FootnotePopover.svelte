@@ -19,9 +19,18 @@
   import TextB from 'phosphor-svelte/lib/TextB';
   import TextItalic from 'phosphor-svelte/lib/TextItalic';
   import MarkdownIt from 'markdown-it';
+  import { resolveImageSrc } from '../lib/image-paths';
 
   // How the footnote will read, drawn under the box as it's typed.
   const inline = new MarkdownIt({ html: false, linkify: true });
+  // The body is the document's own markdown, so a picture in it gets the
+  // reader's check: an asset url or a network share asks for nothing.
+  const drawImage = inline.renderer.rules.image!;
+  inline.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.attrSet('src', resolveImageSrc(token.attrGet('src') ?? '', undefined, undefined));
+    return drawImage(tokens, idx, options, env, self);
+  };
 
   // Props are sourced from a Svelte store so the NodeView (plain TS,
   // outside any Svelte component context) can update them imperatively
