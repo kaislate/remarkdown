@@ -3,12 +3,14 @@ import { get } from 'svelte/store';
 
 vi.mock('../../src/lib/tauri-api', () => ({
   writeSidecar: vi.fn().mockResolvedValue(undefined),
+  backupCorruptSidecar: vi.fn(),
 }));
 
-import { writeSidecar } from '../../src/lib/tauri-api';
+import { writeSidecar, backupCorruptSidecar } from '../../src/lib/tauri-api';
 import { annots } from '../../src/stores/annots';
 import { doc } from '../../src/stores/doc';
-import { installSaveWatcher, flushSave, SAVE_DEBOUNCE_MS } from '../../src/lib/save';
+import { installSaveWatcher, flushSave, SAVE_DEBOUNCE_MS, persistentSaveError } from '../../src/lib/save';
+import { activeSession } from '../../src/stores/sessions';
 
 describe('save', () => {
   beforeEach(() => {
@@ -223,6 +225,68 @@ describe('save size warning', () => {
     const warnings = get(toasts).filter((t) => t.kind === 'warning');
     expect(warnings.length).toBeGreaterThan(0);
     expect(warnings[0].message).toMatch(/large/i);
+    dispose();
+  });
+});
+
+// A sidecar that wasn't loaded (malformed, too large, unreadable) leaves the
+// tab with no annotations. Saving that would write an empty file over the
+// user's annotations without them ever choosing to.
+describe('a sidecar that was not loaded', () => {
+  const highlight = {
+    id: '01A', type: 'highlight' as const, color: '#ffd25a',
+    anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:1' },
+    createdAt: 'now', updatedAt: 'now',
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(writeSidecar).mockReset().mockResolvedValue(undefined);
+    vi.mocked(backupCorruptSidecar).mockReset().mockResolvedValue('/tmp/a.md.remarkdown.json.corrupt-1');
+    persistentSaveError.set(null);
+    annots.set([]);
+    doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    get(activeSession).sidecarRefused = true;
+  });
+
+  afterEach(() => {
+    get(activeSession).sidecarRefused = false;
+    vi.useRealTimers();
+  });
+
+  it('is not written over while nothing has been annotated', async () => {
+    const dispose = installSaveWatcher();
+    annots.set([]); // what loading the document does
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    await flushSave();
+    expect(writeSidecar).not.toHaveBeenCalled();
+    expect(backupCorruptSidecar).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it('is backed up before the first real annotation is saved', async () => {
+    const dispose = installSaveWatcher();
+    annots.set([highlight]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    expect(backupCorruptSidecar).toHaveBeenCalledWith('/tmp/a.md');
+    expect(writeSidecar).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(backupCorruptSidecar).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(writeSidecar).mock.invocationCallOrder[0]);
+    expect(get(activeSession).sidecarRefused).toBe(false);
+    dispose();
+  });
+
+  it('is not written over when it could not be backed up', async () => {
+    vi.mocked(backupCorruptSidecar).mockRejectedValue(new Error('denied'));
+    const dispose = installSaveWatcher();
+    annots.set([highlight]);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 50);
+    expect(writeSidecar).not.toHaveBeenCalled();
+    expect(get(persistentSaveError)).toMatch(/denied/);
+    expect(get(activeSession).sidecarRefused).toBe(true);
     dispose();
   });
 });

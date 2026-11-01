@@ -3,12 +3,16 @@
   import { backupCorruptSidecar } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
   import { MAX_ANNOTATIONS, MAX_DRAWN_POINTS } from '../lib/sidecar';
+  import { findSessionByPath } from '../stores/tabs';
 
   async function backupAndStartFresh() {
     if ($activeModal?.kind !== 'corrupt-sidecar') return;
     const path = $activeModal.path;
     try {
       const backup = await backupCorruptSidecar(path);
+      // Nothing is left to protect: the tab may save its annotations again.
+      const session = findSessionByPath(path);
+      if (session) session.sidecarRefused = false;
       addToast({ kind: 'info', message: `Backed up corrupt sidecar to ${backup.split(/[\\/]/).pop()}` });
       closeModal();
     } catch (err) {

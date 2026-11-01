@@ -60,6 +60,10 @@ export interface DocSession {
   // when the tab is about to load a different file anyway.
   skipExitReload: boolean;
   discardPendingEdits: boolean;
+  // The sidecar on disk wasn't loaded (malformed, too large, unreadable), so
+  // the tab shows no annotations. It is never saved over as it stands: the
+  // first real annotation backs it up first (lib/save.ts).
+  sidecarRefused: boolean;
 }
 
 let counter = 0;
@@ -84,6 +88,7 @@ export function createSession(): DocSession {
     saveChain: Promise.resolve(),
     skipExitReload: false,
     discardPendingEdits: false,
+    sidecarRefused: false,
   };
 }
 

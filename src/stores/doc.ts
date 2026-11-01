@@ -88,13 +88,16 @@ export async function loadIntoSession(
   });
 
   let parsedAnnotations: Annotation[] = [];
+  session.sidecarRefused = false;
   if (r.sidecarUnreadable) {
+    session.sidecarRefused = true;
     openModal({ kind: 'corrupt-sidecar', path: r.path, reason: 'unreadable' });
   } else if (r.sidecarRaw) {
     const result = loadSidecar(r.sidecarRaw);
     if (result.ok) {
       parsedAnnotations = result.value.annotations;
     } else {
+      session.sidecarRefused = true;
       console.warn('[remarkdown] sidecar load failed:', result.error);
       openModal(
         result.error.kind === 'too-many'

@@ -12,6 +12,7 @@ import { backupCorruptSidecar } from '../../src/lib/tauri-api';
 import CorruptSidecarModal from '../../src/components/CorruptSidecarModal.svelte';
 import { activeModal, openModal, closeModal } from '../../src/stores/modals';
 import { toasts, clearToasts } from '../../src/stores/toasts';
+import { activeSession } from '../../src/stores/sessions';
 
 beforeEach(() => {
   closeModal();
@@ -71,5 +72,21 @@ describe('CorruptSidecarModal', () => {
     expect(backupCorruptSidecar).toHaveBeenCalledWith('/tmp/a.md');
     expect(get(activeModal)).toBeNull();
     expect(get(toasts).some((t) => t.kind === 'info')).toBe(true);
+  });
+
+  it('once backed up, lets the tab save annotations again', async () => {
+    vi.mocked(backupCorruptSidecar).mockResolvedValue('/tmp/a.md.remarkdown.json.corrupt-1234');
+    const session = get(activeSession);
+    session.doc.set({
+      path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',
+      html: '', plaintext: '', blocks: [], sidecarRaw: null,
+    });
+    session.sidecarRefused = true;
+    render(CorruptSidecarModal);
+    flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /back up/i }));
+    expect(session.sidecarRefused).toBe(false);
+    session.doc.set(null);
   });
 });
