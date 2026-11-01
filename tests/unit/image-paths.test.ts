@@ -79,6 +79,9 @@ const unsafe = [
   'asset://localhost/%2Fetc%2Fpasswd',
   'ASSET://localhost/x.png',
   'asset:x.png',
+  // protocol-relative: the window reads it as http://asset.localhost/…
+  '//asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png',
+  '%2F%2Fasset.localhost%2Fx.png',
   // file URLs
   'file:///C:/Users/me/x.png',
   'file://host/share/x.png',
@@ -90,6 +93,8 @@ const unsafe = [
   '/\\host\\share\\x.png',
   '\\\\host@SSL\\share\\x.png',
   '\\\\?\\UNC\\host\\share\\x.png',
+  '\\\\?\\unc\\host\\share\\x.png',
+  '//?/UNC/host/share/x.png',
   '\\\\?\\C:\\x.png',
   '//?/C:/x.png',
   '\\\\.\\pipe\\x',
