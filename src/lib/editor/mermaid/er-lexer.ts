@@ -140,6 +140,7 @@ export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } 
       const m = rule.re.exec(rest);
       if (!m) continue;
       const before = lx.states.length;
+      const stateBefore = lx.state;
       const type = rule.act(lx, m[0]);
       const t = { type: type ?? '', text: m[0], start: pos, end: pos + m[0].length };
       pos += m[0].length;
@@ -147,6 +148,9 @@ export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } 
       if (type) {
         tokens.push(t);
         if (type === 'EOF') return { ok: true, tokens };
+        // An empty token that leaves the state as it was would come
+        // back forever (see class-lexer.ts).
+        if (m[0].length === 0 && lx.states.length === before && lx.state === stateBefore) return { ok: false, at: pos };
       } else if (m[0].length === 0 && lx.states.length === before) {
         return { ok: false, at: pos };
       }

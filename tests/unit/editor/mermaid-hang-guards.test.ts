@@ -225,6 +225,25 @@ describe('class, ER and state lexers', () => {
     });
   }
 
+  // A diagram that ends inside a generic, a class or namespace body, an
+  // accDescr block or a callback: there the state's rule matches the
+  // empty rest, and that empty token came back again and again until a
+  // guard stopped it a million tokens later (most of a second, each
+  // time the diagram was read). Same answer, now at once.
+  it('stops at the end of a diagram that ends inside a block', () => {
+    const sources = [
+      () => parseClassSource('classDiagram\nA ~x'),
+      () => parseClassSource('classDiagram\nnamespace N {\nclass A'),
+      () => parseClassSource('classDiagram\nclass A {\nx'),
+      () => parseClassSource('classDiagram\naccDescr {\nx'),
+      () => parseClassSource('classDiagram\ncallback A "x'),
+      () => parseErSource('erDiagram\naccDescr {\nx'),
+    ];
+    const { ms, value } = timed(() => sources.map((parse) => parse()));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.map((r) => r.ok)).toEqual(sources.map(() => false));
+  });
+
   it('still reads a direction anywhere on its line', () => {
     const cls = parseClassSource('classDiagram\nclass A\nA <|-- B direction LR');
     expect(cls.ok && cls.model.direction).toBe('LR');
