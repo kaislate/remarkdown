@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createAnchor, resolveAnchor, type Anchor } from '../../src/lib/anchoring';
+import { createAnchor, resolveAnchor, resolvingPass, type Anchor } from '../../src/lib/anchoring';
 
 // Small helper: build a viewer root from HTML for testing.
 function buildRoot(html: string): HTMLElement {
@@ -287,5 +287,72 @@ describe('cross-block anchors over a diagram', () => {
     expect(resolveAnchor(a, root)).not.toBeNull();
     root.querySelector('.mermaid-block')!.innerHTML = svg('mermaid-7');
     expect(resolveAnchor(a, root)).not.toBeNull();
+  });
+});
+
+// A crafted sidecar can hold thousands of one-letter anchors. Scoring every
+// place a letter occurs in a long article, for each of them, froze the app
+// for minutes; the work per anchor has to stay small however common its text.
+describe('anchors whose text is everywhere', () => {
+  const words = ['the', 'reader', 'sees', 'every', 'line', 'here', 'before', 'we', 'edit'];
+  // About 330 KB of text, with tens of thousands of each common letter.
+  const longText = (): string => {
+    const out: string[] = [];
+    for (let i = 0; out.join(' ').length < 1000; i++) out.push(words[i % words.length]);
+    const chunk = out.join(' ') + ' ';
+    return chunk.repeat(330);
+  };
+
+  it('resolve quickly, even thousands of them over a long article', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">${longText()}</p><p data-block-id="p:2">${longText()}</p>`,
+    );
+    const anchor: Anchor = { text: 'e', prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:2' };
+    const start = performance.now();
+    // As the annotation store resolves them: in one pass over the article.
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(anchor, root);
+    });
+    // Scoring every "e" took about 15 ms per anchor; this is 2,000 of them.
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('stay quick on the per-block path too', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${longText()}</p>`);
+    const anchor: Anchor = { text: 'e', prefix: 'x', suffix: 'y', blockHint: 'gone' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(anchor, root);
+    });
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('still resolve when their whole context is found in exactly one place', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">${longText()}</p><p data-block-id="p:2">a unique marker sentence. ${longText()}</p>`,
+    );
+    const anchor: Anchor = { text: 'e', prefix: 'a uniqu', suffix: ' marker', blockHint: 'gone' };
+    const range = resolveAnchor(anchor, root);
+    expect(range?.toString()).toBe('e');
+    const block = (range!.startContainer.parentElement as HTMLElement).dataset.blockId;
+    expect(block).toBe('p:2');
+    expect(range!.startOffset).toBe('a uniqu'.length);
+  });
+
+  it('give the same answer inside a pass as outside one', () => {
+    const root = buildRoot(
+      '<p data-block-id="p:1">One fish, two fish.</p><p data-block-id="p:2">Red fish, blue fish.</p>',
+    );
+    const anchor = createAnchor(rangeOf(root, 'p:2', 'blue'), root)!;
+    const outside = resolveAnchor(anchor, root)?.toString();
+    const inside = resolvingPass(() => resolveAnchor(anchor, root)?.toString());
+    expect(inside).toBe('blue');
+    expect(inside).toBe(outside);
+  });
+
+  it('are orphaned when their context is found nowhere, or in several places', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${longText()}</p>`);
+    expect(resolveAnchor({ text: 'e', prefix: 'zzz', suffix: 'qqq', blockHint: 'p:1' }, root)).toBeNull();
+    expect(resolveAnchor({ text: 'e', prefix: 'th', suffix: ' reader', blockHint: 'p:1' }, root)).toBeNull();
   });
 });

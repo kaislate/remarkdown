@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { resolveAnchor } from '../lib/anchoring';
+import { resolveAnchor, resolvingPass } from '../lib/anchoring';
 import type { Annotation, Drawing } from '../lib/schema';
 import { activeProxy, activeSession, type DocSession } from './sessions';
 
@@ -171,15 +171,17 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
   return { resolved, orphanedIds };
 }
 
-export const resolvedAnnots = derived(
-  [annots, currentViewerRoot, docEpoch],
-  ([$annots, $root]) => partition($annots, $root).resolved,
-);
-
-export const orphanedAnnots = derived(
+// Resolving is the expensive part with many annotations (every anchor is
+// searched for in the article), so it runs once per change, in one pass that
+// builds the article's text once, and both lists below share the result.
+const partitioned = derived(
   [annots, currentViewerRoot, docEpoch],
   ([$annots, $root]) => {
-    const { orphanedIds } = partition($annots, $root);
-    return $annots.filter((a) => orphanedIds.has(a.id));
+    const { resolved, orphanedIds } = resolvingPass(() => partition($annots, $root));
+    return { resolved, orphaned: $annots.filter((a) => orphanedIds.has(a.id)) };
   },
 );
+
+export const resolvedAnnots = derived(partitioned, ($p) => $p.resolved);
+
+export const orphanedAnnots = derived(partitioned, ($p) => $p.orphaned);

@@ -6,6 +6,12 @@ export type { Anchor };
 const CONTEXT_LEN = 32;
 const SCORE_THRESHOLD = 0.7;
 const MIN_GAP = 0.08; // winning candidate must beat runner-up by this margin
+// Every place an anchor's text occurs is scored, so a one-letter anchor in a
+// long article costs thousands of scores, and a crafted sidecar holds
+// thousands of such anchors. Past this many places the text is too common to
+// tell them apart by scoring anyway; only its whole saved context, found
+// word for word in exactly one place, still places it (see uniqueInContext).
+const MAX_CANDIDATES = 1000;
 
 function findContainingBlock(node: Node): HTMLElement | null {
   let n: Node | null = node;
@@ -33,11 +39,34 @@ function textWalker(scope: HTMLElement, skipDiagrams: boolean): TreeWalker {
   });
 }
 
+// Texts already built during the current resolvingPass, per scope.
+let passTexts: { plain: Map<HTMLElement, string>; noDiagrams: Map<HTMLElement, string> } | null = null;
+
+// Runs `fn` with the text of each block (and of the whole article) built
+// once and shared by every anchor resolved inside it, instead of once per
+// anchor. Only for synchronous work that doesn't change the DOM.
+export function resolvingPass<T>(fn: () => T): T {
+  if (passTexts) return fn();
+  passTexts = { plain: new Map(), noDiagrams: new Map() };
+  try {
+    return fn();
+  } finally {
+    passTexts = null;
+  }
+}
+
 function blockText(block: HTMLElement, skipDiagrams = false): string {
-  if (!skipDiagrams) return block.textContent ?? '';
+  const cache = passTexts && (skipDiagrams ? passTexts.noDiagrams : passTexts.plain);
+  const cached = cache?.get(block);
+  if (cached !== undefined) return cached;
   let out = '';
-  const walker = textWalker(block, true);
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) out += (n as Text).data;
+  if (!skipDiagrams) {
+    out = block.textContent ?? '';
+  } else {
+    const walker = textWalker(block, true);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) out += (n as Text).data;
+  }
+  cache?.set(block, out);
   return out;
 }
 
@@ -118,12 +147,13 @@ export function createAnchor(range: Range, viewerRoot: HTMLElement): Anchor | nu
   return anchor;
 }
 
-// Find all plaintext offsets of `needle` in `hay`. Linear scan.
-function allIndexOf(hay: string, needle: string): number[] {
+// Find all plaintext offsets of `needle` in `hay`, stopping after `limit`
+// of them. Linear scan.
+function allIndexOf(hay: string, needle: string, limit = Infinity): number[] {
   if (!needle) return [];
   const out: number[] = [];
   let from = 0;
-  while (from <= hay.length - needle.length) {
+  while (out.length < limit && from <= hay.length - needle.length) {
     const i = hay.indexOf(needle, from);
     if (i < 0) break;
     out.push(i);
@@ -161,6 +191,16 @@ function scoreCandidate(anchor: Anchor, full: string, index: number): number {
   return (trailMatch(anchor.prefix, cPrefix) + headMatch(anchor.suffix, cSuffix)) / 2;
 }
 
+// Where the anchor's text is, if its saved prefix, text and suffix occur
+// together in exactly one place in `full`; otherwise -1. Two plain searches,
+// so it costs the same however common the text is.
+function uniqueInContext(anchor: Anchor, full: string): number {
+  const needle = anchor.prefix + anchor.text + anchor.suffix;
+  const at = full.indexOf(needle);
+  if (at < 0 || full.indexOf(needle, at + 1) >= 0) return -1;
+  return at + anchor.prefix.length;
+}
+
 function rangeFromBlockOffsets(block: HTMLElement, start: number, end: number, skipDiagrams = false): Range | null {
   const s = plaintextOffsetToPos(block, start, skipDiagrams);
   const e = plaintextOffsetToPos(block, end, skipDiagrams);
@@ -179,8 +219,12 @@ function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean
   // Same text createAnchor used: the article without its diagrams. (This
   // also keeps the lenient fallback from landing in diagram labels.)
   const full = blockText(viewerRoot, true);
-  const indices = allIndexOf(full, anchor.text);
+  const indices = allIndexOf(full, anchor.text, MAX_CANDIDATES + 1);
   if (indices.length === 0) return null;
+  if (indices.length > MAX_CANDIDATES) {
+    const i = uniqueInContext(anchor, full);
+    return i < 0 ? null : rangeFromBlockOffsets(viewerRoot, i, i + anchor.text.length, true);
+  }
   if (indices.length === 1) {
     const score = scoreCandidate(anchor, full, indices[0]);
     if (lenient || score >= SCORE_THRESHOLD / 2) {
@@ -196,17 +240,35 @@ function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean
   return null;
 }
 
+// uniqueInContext over every block: the one block, and place in it, where
+// the anchor's whole context occurs, if there is exactly one.
+function uniqueInContextOfBlocks(anchor: Anchor, blocks: HTMLElement[]): Range | null {
+  const needle = anchor.prefix + anchor.text + anchor.suffix;
+  let found: { block: HTMLElement; i: number } | null = null;
+  for (const block of blocks) {
+    const full = blockText(block);
+    const at = full.indexOf(needle);
+    if (at < 0) continue;
+    if (found || full.indexOf(needle, at + 1) >= 0) return null;
+    found = { block, i: at + anchor.prefix.length };
+  }
+  return found && rangeFromBlockOffsets(found.block, found.i, found.i + anchor.text.length);
+}
+
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
   if (anchor.endBlockHint) return resolveInRoot(anchor, viewerRoot, false);
 
   const hinted = viewerRoot.querySelector(`[data-block-id="${CSS.escape(anchor.blockHint)}"]`) as HTMLElement | null;
   if (hinted) {
     const full = blockText(hinted);
-    const indices = allIndexOf(full, anchor.text);
+    const indices = allIndexOf(full, anchor.text, MAX_CANDIDATES + 1);
     if (indices.length === 1) {
       return rangeFromBlockOffsets(hinted, indices[0], indices[0] + anchor.text.length);
     }
-    if (indices.length > 1) {
+    if (indices.length > MAX_CANDIDATES) {
+      const i = uniqueInContext(anchor, full);
+      if (i >= 0) return rangeFromBlockOffsets(hinted, i, i + anchor.text.length);
+    } else if (indices.length > 1) {
       const scored = indices.map((i) => ({ i, s: scoreCandidate(anchor, full, i) }));
       scored.sort((a, b) => b.s - a.s);
       if (scored[0].s >= SCORE_THRESHOLD && scored[0].s - (scored[1]?.s ?? 0) >= MIN_GAP) {
@@ -219,9 +281,13 @@ export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | 
   const blocks = Array.from(viewerRoot.querySelectorAll<HTMLElement>('[data-block-id]'));
   let best: { block: HTMLElement; i: number; score: number } | null = null;
   let secondBest = 0;
+  let candidates = 0;
   for (const block of blocks) {
     const full = blockText(block);
-    for (const i of allIndexOf(full, anchor.text)) {
+    const indices = allIndexOf(full, anchor.text, MAX_CANDIDATES + 1 - candidates);
+    candidates += indices.length;
+    if (candidates > MAX_CANDIDATES) return uniqueInContextOfBlocks(anchor, blocks);
+    for (const i of indices) {
       const s = scoreCandidate(anchor, full, i);
       if (!best || s > best.score) {
         if (best) secondBest = Math.max(secondBest, best.score);
