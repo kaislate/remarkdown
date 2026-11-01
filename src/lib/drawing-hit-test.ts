@@ -38,11 +38,13 @@ function lineHit(x1: number, y1: number, x2: number, y2: number, x: number, y: n
   return Math.hypot(x - px, y - py) <= tol;
 }
 
-export function hitTestDrawing(d: Drawing, x: number, y: number, root: HTMLElement, zoom: number): boolean {
+// `found` is where a shape anchored to text is, when the caller has found
+// it already (as renderDrawing takes it).
+export function hitTestDrawing(d: Drawing, x: number, y: number, root: HTMLElement, zoom: number, found?: Range | null): boolean {
   const tol = HIT_TOLERANCE_EM * remPx();
   switch (d.shape.kind) {
     case 'circle': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return false;
       const r = range.getBoundingClientRect();
       const pad = 0.4 * remPx();
@@ -52,21 +54,21 @@ export function hitTestDrawing(d: Drawing, x: number, y: number, root: HTMLEleme
       );
     }
     case 'rectangle': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return false;
       const r = range.getBoundingClientRect();
       const pad = 0.25 * remPx();
       return rectBoundaryHit(r.left - pad, r.top - pad, r.width + pad * 2, r.height + pad * 2, x, y, tol);
     }
     case 'underline': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return false;
       const r = range.getBoundingClientRect();
       const ly = r.bottom + 0.15 * remPx();
       return lineHit(r.left, ly, r.right, ly, x, y, tol);
     }
     case 'strikethrough': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return false;
       const r = range.getBoundingClientRect();
       const ly = r.top + r.height / 2;

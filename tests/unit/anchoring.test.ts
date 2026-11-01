@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createAnchor, resolveAnchor, resolvingPass, type Anchor } from '../../src/lib/anchoring';
 
 // Small helper: build a viewer root from HTML for testing.
@@ -337,6 +337,54 @@ describe('anchors whose text is everywhere', () => {
     const block = (range!.startContainer.parentElement as HTMLElement).dataset.blockId;
     expect(block).toBe('p:2');
     expect(range!.startOffset).toBe('a uniqu'.length);
+  });
+
+  // Turning a found offset back into a place in the page walked every text
+  // node of the article, twice per anchor: about 70 ms an anchor on a long
+  // article in Chromium, minutes for a sidecar of cross-paragraph anchors.
+  // Inside a pass each scope is walked once, however many anchors land in it.
+  it('walk the article once per pass, not once per anchor', () => {
+    const paras = Array.from({ length: 60 }, (_, i) => `<p data-block-id="p:${i}">Paragraph ${i} says its piece.</p>`);
+    const root = buildRoot(paras.join(''));
+    const across = document.createRange();
+    across.setStart(root.querySelector('[data-block-id="p:40"]')!.firstChild!, 13);
+    across.setEnd(root.querySelector('[data-block-id="p:41"]')!.firstChild!, 9);
+    const crossing = createAnchor(across, root)!;
+    const within = createAnchor(rangeOf(root, 'p:50', 'its piece'), root)!;
+    const expected = [across.toString(), 'its piece'];
+
+    const walkers = vi.spyOn(document, 'createTreeWalker');
+    try {
+      const found = resolvingPass(() => {
+        const out: Array<string | undefined> = [];
+        for (let i = 0; i < 100; i++) {
+          out.push(resolveAnchor(crossing, root)?.toString(), resolveAnchor(within, root)?.toString());
+        }
+        return out;
+      });
+      expect(found).toEqual(Array.from({ length: 100 }, () => expected).flat());
+      // One walk of the article (its text and where each node starts) and one
+      // of the paragraph, instead of two for every anchor.
+      expect(walkers.mock.calls.length).toBeLessThanOrEqual(2);
+    } finally {
+      walkers.mockRestore();
+    }
+  });
+
+  it('find an offset at the edge between two text nodes the same way inside a pass', () => {
+    const root = buildRoot(
+      '<p data-block-id="p:1">one <b>two</b><i></i> three</p><p data-block-id="p:2">four <em>five</em> six</p>',
+    );
+    const across = document.createRange();
+    across.setStart(root.querySelector('b')!.firstChild!, 3);
+    across.setEnd(root.querySelector('em')!.firstChild!, 0);
+    const anchor = createAnchor(across, root)!;
+    const outside = resolveAnchor(anchor, root)!;
+    const inside = resolvingPass(() => resolveAnchor(anchor, root))!;
+    expect(inside.startContainer).toBe(outside.startContainer);
+    expect(inside.startOffset).toBe(outside.startOffset);
+    expect(inside.endContainer).toBe(outside.endContainer);
+    expect(inside.endOffset).toBe(outside.endOffset);
   });
 
   it('give the same answer inside a pass as outside one', () => {

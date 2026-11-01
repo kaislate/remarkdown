@@ -38,6 +38,9 @@ export function renderDrawing(
   zoom: number,
   svg: SVGSVGElement,
   roughness: number,
+  // Where a shape anchored to text is, when the caller has found it already
+  // (the annotation store does, for every drawing it shows).
+  found?: Range | null,
 ): SVGElement[] {
   const roughOpts = {
     roughness,
@@ -48,7 +51,7 @@ export function renderDrawing(
   switch (d.shape.kind) {
     case 'circle':
     case 'rectangle': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return [];
       const r = range.getBoundingClientRect();
       const svg_r = svg.getBoundingClientRect();
@@ -65,7 +68,7 @@ export function renderDrawing(
     }
 
     case 'underline': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return [];
       const r = range.getBoundingClientRect();
       const svg_r = svg.getBoundingClientRect();
@@ -79,7 +82,7 @@ export function renderDrawing(
     }
 
     case 'strikethrough': {
-      const range = resolveAnchor(d.shape.anchor, root);
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
       if (!range) return [];
       const r = range.getBoundingClientRect();
       const svg_r = svg.getBoundingClientRect();

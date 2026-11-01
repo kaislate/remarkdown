@@ -39,34 +39,65 @@ function textWalker(scope: HTMLElement, skipDiagrams: boolean): TreeWalker {
   });
 }
 
-// Texts already built during the current resolvingPass, per scope.
-let passTexts: { plain: Map<HTMLElement, string>; noDiagrams: Map<HTMLElement, string> } | null = null;
+// A scope's text nodes, and the offset in its text at which each one starts.
+interface TextNodes { nodes: Text[]; starts: number[] }
+
+// An article's blocks, in order and by id; and, once an anchor has needed
+// to search all of them, their texts joined (see blockHits).
+interface Blocks { list: HTMLElement[]; byId: Map<string, HTMLElement>; joined?: { text: string; starts: number[] } }
+
+// What the current resolvingPass has built already: per scope, its text and
+// its text nodes; per article, its blocks.
+interface ScopeCache { text: Map<HTMLElement, string>; nodes: Map<HTMLElement, TextNodes> }
+let pass: { plain: ScopeCache; noDiagrams: ScopeCache; blocks: Map<HTMLElement, Blocks> } | null = null;
+
+const scopeCache = (skipDiagrams: boolean): ScopeCache | null =>
+  pass && (skipDiagrams ? pass.noDiagrams : pass.plain);
 
 // Runs `fn` with the text of each block (and of the whole article) built
 // once and shared by every anchor resolved inside it, instead of once per
 // anchor. Only for synchronous work that doesn't change the DOM.
 export function resolvingPass<T>(fn: () => T): T {
-  if (passTexts) return fn();
-  passTexts = { plain: new Map(), noDiagrams: new Map() };
+  if (pass) return fn();
+  const fresh = (): ScopeCache => ({ text: new Map(), nodes: new Map() });
+  pass = { plain: fresh(), noDiagrams: fresh(), blocks: new Map() };
   try {
     return fn();
   } finally {
-    passTexts = null;
+    pass = null;
   }
 }
 
+function blocksOf(viewerRoot: HTMLElement): Blocks {
+  let blocks = pass?.blocks.get(viewerRoot);
+  if (!blocks) {
+    const list = Array.from(viewerRoot.querySelectorAll<HTMLElement>('[data-block-id]'));
+    const byId = new Map<string, HTMLElement>();
+    // The first of any two with one id, as querySelector finds it.
+    for (const b of list) if (!byId.has(b.dataset.blockId!)) byId.set(b.dataset.blockId!, b);
+    blocks = { list, byId };
+    pass?.blocks.set(viewerRoot, blocks);
+  }
+  return blocks;
+}
+
+function blockById(viewerRoot: HTMLElement, id: string): HTMLElement | null {
+  if (pass) return blocksOf(viewerRoot).byId.get(id) ?? null;
+  return viewerRoot.querySelector(`[data-block-id="${CSS.escape(id)}"]`);
+}
+
 function blockText(block: HTMLElement, skipDiagrams = false): string {
-  const cache = passTexts && (skipDiagrams ? passTexts.noDiagrams : passTexts.plain);
-  const cached = cache?.get(block);
+  const cache = scopeCache(skipDiagrams);
+  const cached = cache?.text.get(block);
   if (cached !== undefined) return cached;
   let out = '';
   if (!skipDiagrams) {
     out = block.textContent ?? '';
   } else {
-    const walker = textWalker(block, true);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) out += (n as Text).data;
+    // The same walk lists the nodes, for turning offsets back into places.
+    for (const n of cachedTextNodes(block, true)) out += n.data;
   }
-  cache?.set(block, out);
+  cache?.text.set(block, out);
   return out;
 }
 
@@ -83,20 +114,49 @@ function posToPlaintextOffset(block: HTMLElement, node: Node, offset: number, sk
   return acc;
 }
 
-// Convert a plaintext offset within a block back to a DOM (node, offset) pair.
-function plaintextOffsetToPos(block: HTMLElement, target: number, skipDiagrams = false): { node: Text; offset: number } | null {
+function textNodes(block: HTMLElement, skipDiagrams: boolean): TextNodes {
+  const out: TextNodes = { nodes: [], starts: [] };
   let acc = 0;
   const walker = textWalker(block, skipDiagrams);
-  let tn = walker.nextNode() as Text | null;
-  while (tn) {
-    const next = acc + tn.data.length;
-    if (target <= next) {
-      return { node: tn, offset: target - acc };
-    }
-    acc = next;
-    tn = walker.nextNode() as Text | null;
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    out.nodes.push(n);
+    out.starts.push(acc);
+    acc += n.data.length;
   }
-  return null;
+  return out;
+}
+
+// Walking the article for each anchor's two ends is the cost a pass over
+// thousands of anchors can't pay, so inside one each scope is walked once.
+function cachedTextNodes(block: HTMLElement, skipDiagrams: boolean): Text[] {
+  return cachedTextIndex(block, skipDiagrams).nodes;
+}
+
+function cachedTextIndex(block: HTMLElement, skipDiagrams: boolean): TextNodes {
+  const cache = scopeCache(skipDiagrams);
+  let list = cache?.nodes.get(block);
+  if (!list) {
+    list = textNodes(block, skipDiagrams);
+    cache?.nodes.set(block, list);
+  }
+  return list;
+}
+
+// Convert a plaintext offset within a block back to a DOM (node, offset)
+// pair: the first text node that reaches the offset, so an offset on the
+// edge between two nodes lands at the end of the earlier one. Found by
+// halves in the scope's list of nodes.
+function plaintextOffsetToPos(block: HTMLElement, target: number, skipDiagrams = false): { node: Text; offset: number } | null {
+  const { nodes, starts } = cachedTextIndex(block, skipDiagrams);
+  let lo = 0;
+  let hi = nodes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (target <= starts[mid] + nodes[mid].data.length) hi = mid;
+    else lo = mid + 1;
+  }
+  if (lo === nodes.length) return null;
+  return { node: nodes[lo], offset: target - starts[lo] };
 }
 
 // Text inside a rendered diagram can't carry a text anchor: the svg is
@@ -167,28 +227,43 @@ function allIndexOf(hay: string, needle: string, limit = Infinity): number[] {
 // than the anchor's window pays a length penalty rather than scoring 1.0 on a single
 // matching character. This prevents any short candidate context from silently
 // scoring a perfect match and resolving to the wrong position.
-function trailMatch(a: string, b: string): number {
-  if (!a && !b) return 1;
-  if (!a || !b) return 0;
-  const lim = Math.min(a.length, b.length);
+// The candidate's context `b` is the `bLen` characters of `full` that end
+// (trailMatch) or start (headMatch) at `at`, read in place rather than
+// sliced out, as up to a thousand candidates are scored for each anchor.
+function trailMatch(a: string, full: string, at: number, bLen: number): number {
+  if (!a && !bLen) return 1;
+  if (!a || !bLen) return 0;
+  const lim = Math.min(a.length, bLen);
   let n = 0;
-  while (n < lim && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1;
-  return n / Math.max(a.length, b.length);
+  while (n < lim && a.charCodeAt(a.length - 1 - n) === full.charCodeAt(at - 1 - n)) n += 1;
+  return n / Math.max(a.length, bLen);
 }
 
-function headMatch(a: string, b: string): number {
-  if (!a && !b) return 1;
-  if (!a || !b) return 0;
-  const lim = Math.min(a.length, b.length);
+function headMatch(a: string, full: string, at: number, bLen: number): number {
+  if (!a && !bLen) return 1;
+  if (!a || !bLen) return 0;
+  const lim = Math.min(a.length, bLen);
   let n = 0;
-  while (n < lim && a[n] === b[n]) n += 1;
-  return n / Math.max(a.length, b.length);
+  while (n < lim && a.charCodeAt(n) === full.charCodeAt(at + n)) n += 1;
+  return n / Math.max(a.length, bLen);
 }
 
 function scoreCandidate(anchor: Anchor, full: string, index: number): number {
-  const cPrefix = full.slice(Math.max(0, index - CONTEXT_LEN), index);
-  const cSuffix = full.slice(index + anchor.text.length, index + anchor.text.length + CONTEXT_LEN);
-  return (trailMatch(anchor.prefix, cPrefix) + headMatch(anchor.suffix, cSuffix)) / 2;
+  const end = index + anchor.text.length;
+  const prefixLen = Math.min(CONTEXT_LEN, index);
+  const suffixLen = Math.max(0, Math.min(CONTEXT_LEN, full.length - end));
+  return (trailMatch(anchor.prefix, full, index, prefixLen) + headMatch(anchor.suffix, full, end, suffixLen)) / 2;
+}
+
+// The best-scoring candidate, and the score of the next best.
+function bestOf(anchor: Anchor, full: string, indices: number[]): { i: number; s: number; next: number } {
+  let best = { i: indices[0], s: -1, next: 0 };
+  for (const i of indices) {
+    const s = scoreCandidate(anchor, full, i);
+    if (s > best.s) best = { i, s, next: Math.max(best.next, best.s) };
+    else if (s > best.next) best.next = s;
+  }
+  return best;
 }
 
 // Where the anchor's text is, if its saved prefix, text and suffix occur
@@ -232,33 +307,63 @@ function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean
     }
     return null;
   }
-  const scored = indices.map((i) => ({ i, s: scoreCandidate(anchor, full, i) }));
-  scored.sort((a, b) => b.s - a.s);
-  if (scored[0].s >= SCORE_THRESHOLD && scored[0].s - scored[1].s >= MIN_GAP) {
-    return rangeFromBlockOffsets(viewerRoot, scored[0].i, scored[0].i + anchor.text.length, true);
+  const best = bestOf(anchor, full, indices);
+  if (best.s >= SCORE_THRESHOLD && best.s - best.next >= MIN_GAP) {
+    return rangeFromBlockOffsets(viewerRoot, best.i, best.i + anchor.text.length, true);
   }
   return null;
 }
 
+// Every place `needle` occurs inside a block, in block order, up to `limit`
+// of them. The blocks' texts are joined with a NUL between them and searched
+// once, instead of block by block: thousands of searches an anchor, in a
+// long article, which a crafted sidecar repeats for each of its anchors. A
+// match that runs past the end of its block's text isn't in the block, and
+// is skipped.
+function blockHits(viewerRoot: HTMLElement, needle: string, limit: number): { block: HTMLElement; i: number }[] {
+  if (!needle) return [];
+  const blocks = blocksOf(viewerRoot);
+  if (!blocks.joined) {
+    const texts = blocks.list.map((b) => blockText(b));
+    const starts: number[] = [];
+    let at = 0;
+    for (const t of texts) {
+      starts.push(at);
+      at += t.length + 1;
+    }
+    blocks.joined = { text: texts.join('\0'), starts };
+  }
+  const { text, starts } = blocks.joined;
+  const out: { block: HTMLElement; i: number }[] = [];
+  for (let h = text.indexOf(needle); h >= 0 && out.length < limit; h = text.indexOf(needle, h + 1)) {
+    // The last block starting at or before the match.
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= h) lo = mid;
+      else hi = mid - 1;
+    }
+    const block = blocks.list[lo];
+    const i = h - starts[lo];
+    if (i + needle.length <= blockText(block).length) out.push({ block, i });
+  }
+  return out;
+}
+
 // uniqueInContext over every block: the one block, and place in it, where
 // the anchor's whole context occurs, if there is exactly one.
-function uniqueInContextOfBlocks(anchor: Anchor, blocks: HTMLElement[]): Range | null {
-  const needle = anchor.prefix + anchor.text + anchor.suffix;
-  let found: { block: HTMLElement; i: number } | null = null;
-  for (const block of blocks) {
-    const full = blockText(block);
-    const at = full.indexOf(needle);
-    if (at < 0) continue;
-    if (found || full.indexOf(needle, at + 1) >= 0) return null;
-    found = { block, i: at + anchor.prefix.length };
-  }
-  return found && rangeFromBlockOffsets(found.block, found.i, found.i + anchor.text.length);
+function uniqueInContextOfBlocks(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
+  const found = blockHits(viewerRoot, anchor.prefix + anchor.text + anchor.suffix, 2);
+  if (found.length !== 1) return null;
+  const i = found[0].i + anchor.prefix.length;
+  return rangeFromBlockOffsets(found[0].block, i, i + anchor.text.length);
 }
 
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
   if (anchor.endBlockHint) return resolveInRoot(anchor, viewerRoot, false);
 
-  const hinted = viewerRoot.querySelector(`[data-block-id="${CSS.escape(anchor.blockHint)}"]`) as HTMLElement | null;
+  const hinted = blockById(viewerRoot, anchor.blockHint);
   if (hinted) {
     const full = blockText(hinted);
     const indices = allIndexOf(full, anchor.text, MAX_CANDIDATES + 1);
@@ -269,32 +374,25 @@ export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | 
       const i = uniqueInContext(anchor, full);
       if (i >= 0) return rangeFromBlockOffsets(hinted, i, i + anchor.text.length);
     } else if (indices.length > 1) {
-      const scored = indices.map((i) => ({ i, s: scoreCandidate(anchor, full, i) }));
-      scored.sort((a, b) => b.s - a.s);
-      if (scored[0].s >= SCORE_THRESHOLD && scored[0].s - (scored[1]?.s ?? 0) >= MIN_GAP) {
-        return rangeFromBlockOffsets(hinted, scored[0].i, scored[0].i + anchor.text.length);
+      const best = bestOf(anchor, full, indices);
+      if (best.s >= SCORE_THRESHOLD && best.s - best.next >= MIN_GAP) {
+        return rangeFromBlockOffsets(hinted, best.i, best.i + anchor.text.length);
       }
     }
   }
 
   // Slow path: scan every block.
-  const blocks = Array.from(viewerRoot.querySelectorAll<HTMLElement>('[data-block-id]'));
+  const hits = blockHits(viewerRoot, anchor.text, MAX_CANDIDATES + 1);
+  if (hits.length > MAX_CANDIDATES) return uniqueInContextOfBlocks(anchor, viewerRoot);
   let best: { block: HTMLElement; i: number; score: number } | null = null;
   let secondBest = 0;
-  let candidates = 0;
-  for (const block of blocks) {
-    const full = blockText(block);
-    const indices = allIndexOf(full, anchor.text, MAX_CANDIDATES + 1 - candidates);
-    candidates += indices.length;
-    if (candidates > MAX_CANDIDATES) return uniqueInContextOfBlocks(anchor, blocks);
-    for (const i of indices) {
-      const s = scoreCandidate(anchor, full, i);
-      if (!best || s > best.score) {
-        if (best) secondBest = Math.max(secondBest, best.score);
-        best = { block, i, score: s };
-      } else if (s > secondBest) {
-        secondBest = s;
-      }
+  for (const { block, i } of hits) {
+    const s = scoreCandidate(anchor, blockText(block), i);
+    if (!best || s > best.score) {
+      if (best) secondBest = Math.max(secondBest, best.score);
+      best = { block, i, score: s };
+    } else if (s > secondBest) {
+      secondBest = s;
     }
   }
   if (!best) {

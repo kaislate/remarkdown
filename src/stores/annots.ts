@@ -5,7 +5,9 @@ import { activeProxy, activeSession, type DocSession } from './sessions';
 
 export interface ResolvedAnnotation {
   annotation: Annotation;
-  range: Range; // for highlights/notes. For drawings this is a placeholder; DrawLayer uses anchorBlock directly.
+  // For highlights, notes and drawings anchored to text. For drawings
+  // anchored to a block it's a placeholder; DrawLayer uses the block directly.
+  range: Range;
 }
 
 // The active tab's annotations (proxy onto the active session's store).
@@ -141,13 +143,16 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
     if (a.type === 'drawing') {
       const d = a as Drawing;
       let resolves: boolean;
+      let range: Range | null = null;
       switch (d.shape.kind) {
         case 'circle':
         case 'rectangle':
         case 'underline':
         case 'strikethrough':
-          // TextAnchor shapes — resolve the same way highlights/notes do.
-          resolves = resolveAnchor(d.shape.anchor, $root) !== null;
+          // TextAnchor shapes — resolve the same way highlights/notes do,
+          // and keep the range, so drawing them doesn't search again.
+          range = resolveAnchor(d.shape.anchor, $root);
+          resolves = range !== null;
           break;
         case 'circle-empty':
         case 'margin-bar':
@@ -160,7 +165,7 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
           resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchorBlock)}"]`);
           break;
       }
-      if (resolves) resolved.push({ annotation: d, range: null as unknown as Range });
+      if (resolves) resolved.push({ annotation: d, range: range as Range });
       else orphanedIds.add(d.id);
       continue;
     }
