@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::path::{Component, Path, PathBuf, Prefix};
 
-use tauri::http::{header, Request, Response, StatusCode};
+use tauri::http::{header, HeaderMap, Request, Response, StatusCode};
 use tauri::path::SafePathBuf;
 use tauri::utils::mime_type::MimeType;
 use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
@@ -35,9 +35,26 @@ pub fn handle<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let path = request_path(request.uri().path());
         let scope = app.asset_protocol_scope();
-        let served = serve(&path, cfg!(windows), |p| scope.is_allowed(p));
+        let served = if opened_as_page(request.headers()) {
+            Err(StatusCode::FORBIDDEN)
+        } else {
+            serve(&path, cfg!(windows), |p| scope.is_allowed(p))
+        };
         responder.respond(response(served, &app_origin(&app)));
     });
+}
+
+/// Whether the window asked for this as a page (a link followed, a frame)
+/// rather than as a picture. The protocol only shows pictures, so that is
+/// refused outright, on top of `sandbox`. A webview that doesn't say is
+/// served as before.
+fn opened_as_page(headers: &HeaderMap) -> bool {
+    let dest = headers.get("sec-fetch-dest").and_then(|v| v.to_str().ok());
+    dest.is_some_and(|d| {
+        ["document", "iframe", "frame", "embed", "object"]
+            .iter()
+            .any(|page| d.eq_ignore_ascii_case(page))
+    })
 }
 
 /// The answer to a request. `sandbox` keeps script from running in
@@ -307,6 +324,25 @@ mod tests {
             "C:/net/x.png",
         ] {
             assert!(!is_automount_path(p), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn a_picture_opened_as_a_page_is_refused() {
+        let asked = |dest: Option<&str>| {
+            let mut r = Request::builder().uri("http://asset.localhost/C%3A%2Fa.svg");
+            if let Some(d) = dest {
+                r = r.header("sec-fetch-dest", d);
+            }
+            opened_as_page(r.body(Vec::<u8>::new()).unwrap().headers())
+        };
+        for dest in ["document", "iframe", "frame", "embed", "object", "Document"] {
+            assert!(asked(Some(dest)), "{dest}");
+        }
+        // An <img>, a CSS background, a fetch, or a webview that doesn't
+        // say: served as before.
+        for dest in [Some("image"), Some("empty"), None] {
+            assert!(!asked(dest), "{dest:?}");
         }
     }
 
