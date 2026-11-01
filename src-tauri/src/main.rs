@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod appimage;
+mod asset_protocol;
 mod commands;
 mod default_app;
 mod desktop_env;
@@ -72,6 +73,10 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Pictures. Registering "asset" takes the place of Tauri's own
+        // handler, which looks a network path up before any check can
+        // refuse it (see asset_protocol.rs).
+        .register_asynchronous_uri_scheme_protocol("asset", asset_protocol::handle)
         .manage(launch::PendingOpens::default())
         .setup(|app| {
             // Before any window reads them: 0.8.0 resets settings once.

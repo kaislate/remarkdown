@@ -2983,7 +2983,11 @@ name = "remarkdown"
 version = "0.9.0"
 dependencies = [
  "directories",
+<<<<<<< HEAD
  "libc",
+=======
+ "percent-encoding",
+>>>>>>> 61b9af5 (fix(assets): refuse a network share before anything looks it up)
  "serde",
  "serde_json",
  "sha2",
