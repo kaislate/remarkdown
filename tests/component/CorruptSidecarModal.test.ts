@@ -51,7 +51,7 @@ describe('CorruptSidecarModal', () => {
     flushSync(() => openModal({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'too-many' }));
     const text = screen.getByRole('dialog').textContent!;
     expect(text).toMatch(/more than 20,000 annotations/);
-    expect(text).toMatch(/500,000 drawn points/);
+    expect(text).toMatch(/or more drawing than the app can show/);
   });
 
   it('Leave as-is closes the modal without calling backup', async () => {

@@ -2,7 +2,7 @@
   import { activeModal, closeModal } from '../stores/modals';
   import { backupCorruptSidecar } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
-  import { MAX_ANNOTATIONS, MAX_DRAWN_POINTS } from '../lib/sidecar';
+  import { MAX_ANNOTATIONS } from '../lib/sidecar';
   import { findSessionByPath } from '../stores/tabs';
 
   async function backupAndStartFresh() {
@@ -37,7 +37,7 @@
         {#if $activeModal.reason === 'unreadable'}
           The annotations file for this document couldn't be read: it's too large, isn't an ordinary file, or isn't text.
         {:else if $activeModal.reason === 'too-many'}
-          The annotations file for this document holds more than {MAX_ANNOTATIONS.toLocaleString('en-US')} annotations or {MAX_DRAWN_POINTS.toLocaleString('en-US')} drawn points, too many to show.
+          The annotations file for this document holds more than {MAX_ANNOTATIONS.toLocaleString('en-US')} annotations, or more drawing than the app can show.
         {:else}
           The annotations file for this document is malformed JSON.
         {/if}

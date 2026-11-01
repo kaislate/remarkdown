@@ -8,33 +8,58 @@ import { migrateDrawing } from './drawing-migration';
 // in the file is lost.
 export const MAX_ANNOTATIONS = 20_000;
 
-// One drawing can hold any number of points and every point is drawn, so the
-// points are capped too, across all drawings. Half a million is about 70
-// minutes of drawing without lifting the pen; a sidecar that size is ten
-// times past the size save.ts already warns about. Refused whole, as above.
-export const MAX_DRAWN_POINTS = 500_000;
+// Drawing is the slow part of showing a sidecar: every drawing is drawn
+// again whenever an annotation changes, the window is resized or the zoom
+// changes. So what its drawings cost to draw is capped too, counted in
+// points along a line (each about 10 µs to draw). A line counts as a short
+// line at least, and a drawing as two, as it's found on the page and laid
+// out as well as drawn: so empty lines and shapes with no points (an
+// ellipse, a box) don't get in free. An ellipse counts by its size.
+// The limit is about half a second of drawing on a fast machine. It is 7 to
+// 14 minutes of pen on the page in one document; save.ts warns the file is
+// getting large well before, at about 24,000 points. Refused whole, as above.
+export const MAX_DRAWN_POINTS = 50_000;
+const SHORT_LINE = 8;
 
-// Points in the parsed (not yet validated) drawings: new-style shape.points
-// and old-style strokes[].points. A point is counted by its size, two
-// numbers to a point, so stuffing one with extra numbers doesn't get past.
+// rough.js draws an ellipse of radius r px through about 1.6√r points. At
+// the largest zoom an em is 32 px: 9√r for r in em. An ellipse round text
+// is as tall as the text: at that zoom, in a column 15 letters wide, about
+// 3.6 px a letter, so 2√n points for n letters.
+const ellipsePoints = (radiusEm: number) => 9 * Math.sqrt(radiusEm);
+const ellipseRoundText = (letters: number) => 2 * Math.sqrt(letters);
+const size = (n: unknown) => (typeof n === 'number' ? Math.abs(n) : 0);
+
+// What the parsed (not yet validated) drawings cost to draw, in points:
+// new-style shapes and old-style strokes[]. A point is counted by its size,
+// two numbers to a point, so stuffing one with extra numbers doesn't get
+// past. A bracket's points count twice: it's drawn as straight lines, each
+// with its own wobble, which takes twice as long as a curve through them.
 function drawnPoints(annotations: unknown[]): number {
-  let numbers = 0;
-  const addLine = (points: unknown) => {
-    if (!Array.isArray(points)) return;
-    for (const p of points) numbers += Array.isArray(p) ? Math.max(p.length, 2) : 2;
+  const line = (points: unknown): number => {
+    let numbers = 0;
+    if (Array.isArray(points)) {
+      for (const p of points) numbers += Array.isArray(p) ? Math.max(p.length, 2) : 2;
+    }
+    return Math.max(Math.ceil(numbers / 2), SHORT_LINE);
   };
-  const addStrokes = (strokes: unknown) => {
-    if (!Array.isArray(strokes)) return;
-    for (const s of strokes) addLine((s as { points?: unknown } | null)?.points);
+  const strokes = (list: unknown): number => {
+    let sum = 0;
+    if (Array.isArray(list)) for (const s of list) sum += line((s as { points?: unknown } | null)?.points);
+    return sum;
   };
+  let total = 0;
   for (const a of annotations) {
     if (!a || typeof a !== 'object' || (a as { type?: unknown }).type !== 'drawing') continue;
-    const d = a as { strokes?: unknown; shape?: { points?: unknown; strokes?: unknown } | null };
-    addStrokes(d.strokes);
-    addLine(d.shape?.points);
-    addStrokes(d.shape?.strokes);
+    const d = a as { strokes?: unknown; shape?: Record<string, unknown> | null };
+    const shape = d.shape && typeof d.shape === 'object' ? d.shape : {};
+    let cost = strokes(d.strokes) + strokes(shape.strokes);
+    if ('points' in shape) cost += line(shape.points) * (shape.drawn === 'bracket' ? 2 : 1);
+    if (shape.kind === 'circle-empty') cost += ellipsePoints(Math.max(size(shape.radiusXEm), size(shape.radiusYEm)));
+    const text = (shape.anchor as { text?: unknown } | null)?.text;
+    if (shape.kind === 'circle' && typeof text === 'string') cost += ellipseRoundText(text.length);
+    total += Math.max(Math.ceil(cost), 2 * SHORT_LINE);
   }
-  return Math.ceil(numbers / 2);
+  return total;
 }
 
 export type LoadError =
