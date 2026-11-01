@@ -333,8 +333,11 @@ export function matchMethod(s: string): [string, string | undefined, string, str
   };
   for (let a = 0; a < s.length; ) {
     const b = lineEnd(a);
-    const close = s.lastIndexOf(')', b - 1);
-    const open = close > a ? s.lastIndexOf('(', close - 1) : -1;
+    // Searched in the piece alone: from `b` back through `s`, a piece
+    // with no `)` was searched to the start of `s`, once per piece.
+    const piece = s.slice(a, b);
+    const close = a + piece.lastIndexOf(')');
+    const open = close > a ? a + piece.lastIndexOf('(', close - a - 1) : -1;
     if (open > a) {
       const vis = /[#+~-]/.test(s[a]) && open > a + 1 ? s[a] : undefined;
       const id = s.slice(vis ? a + 1 : a, open);

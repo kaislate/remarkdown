@@ -191,7 +191,11 @@ export function parseTimelineSource(source: string): TimelineSourceParseResult {
     if (/^(?:title|section)$/i.test(t)) return { ok: false, reason: `${t} without text` };
     if (/^timeline\b/i.test(t)) return { ok: false, reason: 'second timeline header' };
 
-    const section = /^section\s([^:]+)(.*)$/i.exec(t);
+    // `[\s\S]*`, not `.*`: a line separator after the `:` made `.*$`
+    // fail and retry every shorter name, and then the line was misread
+    // as a period. mermaid reads a section there, so it is turned down
+    // as events after a section, like the same line without the break.
+    const section = /^section\s([^:]+)([\s\S]*)$/i.exec(t);
     if (section) {
       if (section[2].trim()) return { ok: false, reason: `events after a section: ${t}` };
       const raw = section[1];

@@ -486,7 +486,11 @@ function readInlineLink(text: string, pos: number, limit: number) {
   if (!m) return null;
   const family = m[2];
   const textStart = pos + m[0].length;
-  const closer = family === '--' ? /(--+)([->xo])/g : family === '==' ? /(==+)([=>xo])/g : /(\.+)-([>xo]?)/g;
+  // A dotted closer is tried only where a run of dots starts (the text
+  // after `-.` never starts with a dot): from inside the run it can
+  // only fail as the run's start did, but /(\.+)-/ ran to the run's end
+  // from every dot in it, quadratic on a long run.
+  const closer = family === '--' ? /(--+)([->xo])/g : family === '==' ? /(==+)([=>xo])/g : /(?<!\.)(\.+)-([>xo]?)/g;
   closer.lastIndex = textStart;
   let c: RegExpExecArray | null;
   let textEnd = -1;

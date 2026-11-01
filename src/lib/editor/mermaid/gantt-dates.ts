@@ -35,8 +35,39 @@ export const GANTT_DATE_FORMATS: readonly GanttDateFormat[] = [
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const SHORT = MONTHS.map((m) => m.slice(0, 3));
 
-const TOKEN = /\[[^\]]*\]|YYYY|YY|MMMM|MMM|MM|M|DD|D|HH|H|mm|m|ss|s|SSS|[A-Za-z]|[^A-Za-z[]+|\[/g;
-const KNOWN = new Set(['YYYY', 'YY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'HH', 'H', 'mm', 'm', 'ss', 's', 'SSS']);
+const NAMED = ['YYYY', 'YY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'HH', 'H', 'mm', 'm', 'ss', 's', 'SSS'];
+const KNOWN = new Set(NAMED);
+
+// `format` split into tokens: a `[literal]`, a named token (the first in
+// NAMED that fits, as a regex alternation picks), any other letter, a
+// run of other text, or a `[` with no `]` after it. Done by hand: as a
+// regex, `\[[^\]]*\]` ran to the end of the format from every `[` that
+// no `]` follows, so a format of `[`s was quadratic.
+export function ganttFormatTokens(format: string): string[] {
+  const out: string[] = [];
+  // The first `]` at or after the last `[` looked at; -1 once none is
+  // left, so no later `[` looks again.
+  let close = -2;
+  for (let i = 0; i < format.length; ) {
+    const c = format[i];
+    let end: number;
+    if (c === '[') {
+      if (close !== -1 && close < i) close = format.indexOf(']', i);
+      end = close === -1 ? i + 1 : close + 1;
+    } else if (/[A-Za-z]/.test(c)) {
+      end = i + (NAMED.find((t) => format.startsWith(t, i))?.length ?? 1);
+    } else {
+      end = i + 1;
+      while (end < format.length && !/[A-Za-z[]/.test(format[end])) end++;
+    }
+    out.push(format.slice(i, end));
+    i = end;
+  }
+  return out;
+}
+
+// No real format comes near this; a longer one is left alone, unread.
+const MAX_FORMAT_LENGTH = 200;
 
 // A chart has one dateFormat and reads every task's dates in it, so
 // the last format's tokens (and whether it's supported) are kept:
@@ -48,8 +79,9 @@ let lastSupported = false;
 function tokens(format: string): string[] {
   if (format !== lastFormat) {
     lastFormat = format;
-    lastTokens = format.match(TOKEN) ?? [];
-    lastSupported = supported(format, lastTokens);
+    const tooLong = format.length > MAX_FORMAT_LENGTH;
+    lastTokens = tooLong ? [] : ganttFormatTokens(format);
+    lastSupported = !tooLong && supported(format, lastTokens);
   }
   return lastTokens;
 }

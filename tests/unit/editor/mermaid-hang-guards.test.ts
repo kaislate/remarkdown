@@ -5,7 +5,9 @@
 // well over 2 s. A fixed parser reads them in a few milliseconds.
 import { describe, it, expect } from 'vitest';
 import { parseGantt } from '../../../src/lib/editor/mermaid/gantt-parser';
-import { parseGanttDate } from '../../../src/lib/editor/mermaid/gantt-dates';
+import { ganttFormatTokens, parseGanttDate } from '../../../src/lib/editor/mermaid/gantt-dates';
+import { applyGanttEdit } from '../../../src/lib/editor/mermaid/gantt-edit';
+import { parseTimeline } from '../../../src/lib/editor/mermaid/timeline-parser';
 import { parseMermaidSource, type SubgraphStatement } from '../../../src/lib/editor/mermaid-parser';
 import { applyFlowchartEdit } from '../../../src/lib/editor/mermaid-flowchart-edit';
 import { parseSequenceSource } from '../../../src/lib/editor/mermaid-sequence-parser';
@@ -56,7 +58,9 @@ describe('gantt dates', () => {
   // G73: `HHHH…` is a run of one-or-two-digit tokens, and a regex over
   // the whole format tried all 2^n ways to split the digits.
   it('reads a long run of digit tokens without trying every split', () => {
-    const k = 60;
+    // Small enough that the old regex failed in seconds, not hung:
+    // nothing can stop synchronous regex work, a timeout included.
+    const k = 30;
     const source = ['gantt', `dateFormat ${'H'.repeat(k)}`, `T : a1, 2026-01-01, ${'1'.repeat(k)}x`].join('\n');
     const { ms, value } = timed(() => parseGantt(source));
     expect(ms).toBeLessThan(BUDGET_MS);
@@ -77,6 +81,38 @@ describe('gantt dates', () => {
     const { ms, value } = timed(() => parseGantt(source));
     expect(ms).toBeLessThan(BUDGET_MS);
     expect(value.ok).toBe(true);
+  });
+
+  // `\[[^\]]*\]` ran to the end of the format from every `[` with no `]`
+  // after it.
+  it('splits a dateFormat full of `[` in linear time', () => {
+    for (const format of ['['.repeat(40_000), '[a'.repeat(20_000)]) {
+      const source = ['gantt', `dateFormat ${format}`, 'T : a1, 2026-01-01, 1d'].join('\n');
+      const { ms, value } = timed(() => parseGantt(source));
+      expect(ms).toBeLessThan(BUDGET_MS);
+      expect(value.ok).toBe(true);
+    }
+  });
+
+  // After each edit, the `after …` / `until …` and `click …` patterns
+  // that find references to fix (`([\d\w\- ]+)(.*)$`, `(\S+)(.*)$`)
+  // failed at a line separator and retried every shorter id list.
+  it('fixes references after an edit in linear time', () => {
+    const LS = String.fromCharCode(0x2028);
+    const a = 'a'.repeat(80_000);
+    for (const line of [`B : b1, after a1 ${a}${LS}x, 3d`, `click ${a}${LS}x href "https://example.com"`]) {
+      const source = ['gantt', 'dateFormat YYYY-MM-DD', 'section S', 'A : a1, 2026-01-01, 3d', line].join('\n');
+      const { ms, value } = timed(() => applyGanttEdit(source, { kind: 'setTaskEnd', index: 0, end: { kind: 'duration', value: 2, unit: 'd' } }));
+      expect(ms).toBeLessThan(BUDGET_MS);
+      expect(value?.source).toBe(source.replace('2026-01-01, 3d', '2026-01-01, 2d'));
+    }
+  });
+
+  it('splits formats into the tokens the regex did', () => {
+    const TOKEN = /\[[^\]]*\]|YYYY|YY|MMMM|MMM|MM|M|DD|D|HH|H|mm|m|ss|s|SSS|[A-Za-z]|[^A-Za-z[]+|\[/g;
+    for (const format of randomRows(['[', ']', 'Y', 'M', 'D', 'H', 'm', 's', 'S', 'x', '-', ' ', '\n'], 20_000, 12)) {
+      expect(ganttFormatTokens(format), JSON.stringify(format)).toEqual(format.match(TOKEN) ?? []);
+    }
   });
 });
 
@@ -113,6 +149,28 @@ describe('flowchart', () => {
     const source = `flowchart TD\nA${'['.repeat(k)}{${'\n'.repeat(k)}`;
     const { ms } = timed(() => parseMermaidSource(source));
     expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  // A dotted link's closer, /(\.+)-/, ran to the end of a run of dots
+  // from every dot in it, whether or not a `-` came after the run.
+  it('reads a dotted link over a long run of dots in linear time', () => {
+    const dots = '.'.repeat(60_000);
+    for (const [source, ok] of [
+      [`flowchart TD\nA-. ${dots}x`, false],
+      [`flowchart TD\nA-. ${dots} x -.-> B`, true],
+    ] as const) {
+      const { ms, value } = timed(() => parseMermaidSource(source));
+      expect(ms).toBeLessThan(BUDGET_MS);
+      expect(value.ok).toBe(ok);
+    }
+    for (const [link, edge] of [
+      ['A-. a .. b ..-> B', { label: 'a .. b', stroke: 'dotted', length: 2 }],
+      ['A-. a ..b. -. c .-x B', { label: 'a ..b. -. c', stroke: 'dotted', ends: 'cross' }],
+      ['A -. "x...-" ...- B', { label: 'x...-', stroke: 'dotted', ends: 'none', length: 3 }],
+    ] as const) {
+      const r = parseMermaidSource(`flowchart TD\n${link}`);
+      expect(r.ok && r.graph.edges, link).toEqual([{ from: 'A', to: 'B', ...edge }]);
+    }
   });
 
   // G72: closing an id-less subgraph rescanned every statement so far.
@@ -338,6 +396,16 @@ describe('class members', () => {
     expect(value.ok).toBe(false);
   });
 
+  // Looking for a line piece's `)` from its end went on back past its
+  // start, so a member of many pieces with no `)` rescanned it all for
+  // each one.
+  it('reads a method of many line pieces in linear time', () => {
+    const LS = String.fromCharCode(0x2028);
+    const { ms, value } = timed(() => matchMethod(`${`a${LS}`.repeat(80_000)}x)`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value).toBeNull();
+  });
+
   // `name: type`'s `\s*(.*)$` retried every split of a run of spaces
   // when a line separator stopped the `.` (and then the field threw).
   it('reads a `name: type` field with a long run of spaces in linear time', () => {
@@ -435,6 +503,16 @@ describe('data diagrams', () => {
       }
     });
   }
+
+  // `section\s([^:]+)(.*)$` failed at a line separator after the `:`
+  // and retried every shorter name, each time scanning to it again.
+  it('reads a timeline section with a line separator after its colon in linear time', () => {
+    const { ms, value } = timed(() => parseTimeline(`timeline\nsection ${'a'.repeat(60_000)}:${LS}b\n2020 : x`));
+    expect(ms).toBeLessThan(BUDGET_MS);
+    expect(value.ok).toBe(false);
+    const ok = parseTimeline(`timeline\nsection a${LS}b\n2020 : x`);
+    expect(ok.ok && ok.model.sections).toEqual([{ name: `a${LS}b` }]);
+  });
 
   // Random rows over the characters that matter, read by the parser and
   // by the regex it used to use: the same fields every time.
