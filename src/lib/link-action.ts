@@ -94,7 +94,11 @@ function otherDocument(raw: string, docDir: string | null | undefined): LinkActi
 // /net/<host> or /Network/Servers/<host> (autofs on Linux may do the same
 // for /net). A link that climbs there would have the computer reach out to
 // whatever host the document names, so it may only stay on the host the
-// document itself is on.
+// document itself is on. This is best-effort, not a boundary: it reads the
+// path as written, so a symlink shipped beside the document (n -> /net/…)
+// or another spelling of the mount (/System/Volumes/Data/…) gets past it.
+// Opening a file follows symlinks wherever it came from, a dropped one
+// too; a link only adds the click.
 const AUTOMOUNT_RE = /^\/(?:net|network)(?:\/|$)/i;
 const automountHost = (p: string) => /^\/(?:net|network\/servers)\/[^/]+\//i.exec(p)?.[0].toLowerCase();
 
