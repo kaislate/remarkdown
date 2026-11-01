@@ -107,40 +107,71 @@ fn is_local_disk(target: &Path) -> bool {
     }
 }
 
+/// What a step of a path is on disk, looked at without following it.
+enum Entry {
+    Missing,
+    Plain,
+    /// A symlink or a junction, and where it leads (None: unreadable).
+    Link(Option<PathBuf>),
+}
+
+fn on_disk(at: &Path) -> Entry {
+    match std::fs::symlink_metadata(at) {
+        Err(_) => Entry::Missing,
+        Ok(meta) if !meta.file_type().is_symlink() => Entry::Plain,
+        Ok(_) => Entry::Link(std::fs::read_link(at).ok()),
+    }
+}
+
 /// Whether opening `path` would pass through a link (a symlink or a
 /// junction) to a network share, at the picture or any folder above it.
 /// Each step is looked at without following it, and a link only after its
 /// target has been checked, so nothing beyond a bad link is ever touched.
-fn links_to_network(path: &Path, hops: u8) -> bool {
-    if hops > 8 {
-        return true;
-    }
+/// The walk goes on from where a link really leads, the way Windows
+/// follows one, so a `..` in a later link climbs from there.
+fn links_to_network(path: &Path, look: &impl Fn(&Path) -> Entry) -> bool {
+    // What's left to walk, last part first.
+    let mut rest: Vec<PathBuf> = steps(path);
     let mut at = PathBuf::new();
-    for part in path.components() {
-        at.push(part);
-        if !matches!(part, Component::Normal(_)) {
+    let mut links = 0;
+    while let Some(part) = rest.pop() {
+        if part.as_os_str() == ".." {
+            at.pop();
             continue;
         }
-        let Ok(meta) = std::fs::symlink_metadata(&at) else {
-            return false;
+        // A drive or root replaces what came before, as push does.
+        at.push(&part);
+        if !matches!(part.components().next(), Some(Component::Normal(_))) {
+            continue;
+        }
+        let target = match look(&at) {
+            // Missing as we read it, but after a link maybe not as Windows
+            // reads it, so then it's refused. A plain missing picture is
+            // left for the open to report.
+            Entry::Missing => return links > 0,
+            Entry::Plain => continue,
+            Entry::Link(None) => return true,
+            Entry::Link(Some(target)) => target,
         };
-        if !meta.file_type().is_symlink() {
-            continue;
-        }
-        let Ok(target) = std::fs::read_link(&at) else {
+        links += 1;
+        if links > 32 || !is_local_disk(&target) {
             return true;
-        };
+        }
         // A relative target is relative to the link's folder; a rooted one
         // (\x on Windows) keeps that folder's drive.
-        let target = match at.parent() {
-            Some(dir) if target.is_relative() => dir.join(&target),
-            _ => target,
-        };
-        if !is_local_disk(&target) || links_to_network(&target, hops + 1) {
-            return true;
-        }
+        at.pop();
+        rest.extend(steps(&target));
     }
     false
+}
+
+// A path's parts, last first, with `.` dropped.
+fn steps(path: &Path) -> Vec<PathBuf> {
+    path.components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .map(|c| PathBuf::from(c.as_os_str()))
+        .rev()
+        .collect()
 }
 
 /// A picture's type and bytes, or why it isn't served. The checks that
@@ -155,7 +186,7 @@ fn serve(
         return Err(StatusCode::FORBIDDEN);
     }
     let safe = SafePathBuf::new(PathBuf::from(path)).map_err(|_| StatusCode::FORBIDDEN)?;
-    if check_links && links_to_network(safe.as_ref(), 0) {
+    if check_links && links_to_network(safe.as_ref(), &on_disk) {
         return Err(StatusCode::FORBIDDEN);
     }
     if !allowed(safe.as_ref()) {
@@ -319,8 +350,11 @@ mod tests {
     fn missing_climbing_and_out_of_scope() {
         let dir = tempdir().unwrap();
         let gone = dir.path().join("gone.png");
+        // Links are checked only on Windows, as in the app: a Mac's temp
+        // folder is behind one (/var), and a picture missing behind a link
+        // is refused rather than missing.
         assert_eq!(
-            serve(&gone.to_string_lossy(), true, |_| true).unwrap_err(),
+            serve(&gone.to_string_lossy(), cfg!(windows), |_| true).unwrap_err(),
             StatusCode::NOT_FOUND
         );
         let up = format!("{}/../x.png", dir.path().to_string_lossy());
@@ -345,7 +379,7 @@ mod tests {
         if make_file_link(&png, &link).is_err() {
             return; // no right to make links here (Windows without Developer Mode)
         }
-        assert!(!links_to_network(&link, 0));
+        assert!(!links_to_network(&link, &on_disk));
         assert!(serve(&link.to_string_lossy(), true, |_| true).is_ok());
     }
 
@@ -360,7 +394,7 @@ mod tests {
         if make_file_link(Path::new(r"\\attacker.invalid\s\pixel.png"), &link).is_err() {
             return;
         }
-        assert!(links_to_network(&link, 0));
+        assert!(links_to_network(&link, &on_disk));
         assert_eq!(
             serve(&link.to_string_lossy(), true, |_| true).unwrap_err(),
             StatusCode::FORBIDDEN
@@ -394,7 +428,7 @@ mod tests {
             .unwrap();
         assert!(made.status.success());
         let png = junction.join("a.png");
-        assert!(!links_to_network(&png, 0));
+        assert!(!links_to_network(&png, &on_disk));
         assert_eq!(
             serve(&png.to_string_lossy(), true, |_| true).unwrap().0,
             "image/png"
@@ -420,5 +454,70 @@ mod tests {
         ] {
             assert!(!is_local_disk(Path::new(p)), "{p:?}");
         }
+    }
+
+    // A disk made of a list: each path is a plain file or folder (None) or
+    // a link (Some(target)); anything else is missing. Paths are written
+    // with forward slashes, which every OS reads the same way.
+    fn fake_disk<'a>(entries: &'a [(&'a str, Option<&'a str>)]) -> impl Fn(&Path) -> Entry + 'a {
+        move |at| match entries.iter().find(|(p, _)| Path::new(p) == at) {
+            None => Entry::Missing,
+            Some((_, None)) => Entry::Plain,
+            Some((_, Some(target))) => Entry::Link(Some(PathBuf::from(target))),
+        }
+    }
+
+    #[test]
+    fn a_relative_link_behind_a_junction_climbs_from_where_it_really_is() {
+        // /doc/link is a junction to /doc/a/b, and /doc/a/b/sub links to
+        // ../evil: Windows opens /doc/a/evil, not /doc/evil.
+        let disk = fake_disk(&[
+            ("/doc", None),
+            ("/doc/a", None),
+            ("/doc/a/b", None),
+            ("/doc/link", Some("/doc/a/b")),
+            ("/doc/a/b/sub", Some("../evil")),
+            // The same link, as a lookup through the junction shows it.
+            ("/doc/link/sub", Some("../evil")),
+            ("/doc/a/evil", Some("//attacker.invalid/s")),
+        ]);
+        assert!(links_to_network(Path::new("/doc/link/sub/x.png"), &disk));
+    }
+
+    #[test]
+    fn a_chain_of_local_links_is_fine() {
+        let disk = fake_disk(&[
+            ("/doc", None),
+            ("/doc/a", None),
+            ("/doc/a/b", None),
+            ("/doc/a/c", None),
+            ("/doc/a/c/x.png", None),
+            ("/doc/link", Some("/doc/a/b")),
+            ("/doc/a/b/sub", Some("../c")),
+        ]);
+        assert!(!links_to_network(Path::new("/doc/link/sub/x.png"), &disk));
+    }
+
+    #[test]
+    fn a_path_that_goes_missing_after_a_link_is_refused() {
+        // Missing as we read it but maybe not as Windows does: refuse. A
+        // missing picture with no link on the way is just missing.
+        let disk = fake_disk(&[
+            ("/doc", None),
+            ("/doc/real", None),
+            ("/doc/link", Some("/doc/real")),
+        ]);
+        assert!(links_to_network(Path::new("/doc/link/gone.png"), &disk));
+        assert!(!links_to_network(Path::new("/doc/gone.png"), &disk));
+    }
+
+    #[test]
+    fn a_link_loop_is_refused() {
+        let disk = fake_disk(&[
+            ("/doc", None),
+            ("/doc/a", Some("/doc/b")),
+            ("/doc/b", Some("a")),
+        ]);
+        assert!(links_to_network(Path::new("/doc/a/x.png"), &disk));
     }
 }
