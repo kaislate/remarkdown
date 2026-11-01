@@ -14,7 +14,8 @@
 // Tauri's own handler is registered per window and so counts as remote for
 // the app's commands; one the app registers counts as the app's own. So
 // every response also carries `sandbox`: nothing loaded from here can run
-// script, and so nothing loaded from here can call a command.
+// script, and so nothing loaded from here can call a command. And no
+// window may open a page from here (navigation_guard).
 
 use std::fs::File;
 use std::io::{ErrorKind, Read};
@@ -22,8 +23,9 @@ use std::path::{Component, Path, PathBuf, Prefix};
 
 use tauri::http::{header, HeaderMap, Request, Response, StatusCode};
 use tauri::path::SafePathBuf;
+use tauri::plugin::TauriPlugin;
 use tauri::utils::mime_type::MimeType;
-use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
+use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder, Url};
 
 pub fn handle<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
@@ -38,7 +40,7 @@ pub fn handle<R: Runtime>(
         let served = if opened_as_page(request.headers()) {
             Err(StatusCode::FORBIDDEN)
         } else {
-            serve(&path, cfg!(windows), |p| scope.is_allowed(p))
+            serve(&path, |p| scope.is_allowed(p))
         };
         responder.respond(response(served, &app_origin(&app)));
     });
@@ -55,6 +57,30 @@ fn opened_as_page(headers: &HeaderMap) -> bool {
             .iter()
             .any(|page| d.eq_ignore_ascii_case(page))
     })
+}
+
+/// Whether a URL names something served here: asset://… on macOS and
+/// Linux, http(s)://asset.localhost on Windows. The url parser has already
+/// undone any escapes and case in the host.
+pub fn is_asset_page(url: &Url) -> bool {
+    match url.scheme() {
+        "asset" => true,
+        "http" | "https" => url
+            .host_str()
+            .is_some_and(|h| h.trim_end_matches('.') == "asset.localhost"),
+        _ => false,
+    }
+}
+
+/// Keeps every window from opening a page served here. Because the app
+/// registers this protocol itself, Tauri counts such a page as one of the
+/// app's own, which may call its commands. `sandbox` and `opened_as_page`
+/// already keep script from running in one; this keeps a link in a
+/// document (to an .svg, say) from ever opening one at all.
+pub fn navigation_guard<R: Runtime>() -> TauriPlugin<R> {
+    tauri::plugin::Builder::new("asset-pages")
+        .on_navigation(|_, url| !is_asset_page(url))
+        .build()
 }
 
 /// The answer to a request. `sandbox` keeps script from running in
@@ -110,7 +136,11 @@ pub fn is_network_or_device_path(path: &str) -> bool {
 
 /// A folder macOS mounts from another host the first time anything looks
 /// in it: /net/<host> and /Network/…, as Linux's autofs often does for /net
-/// too. Refused everywhere, as the app never sends one on Windows.
+/// too. Refused everywhere, as the app never sends one on Windows. That
+/// includes the pictures of a document opened from /net itself: nothing
+/// here knows which host the document came from, and macOS has had /net
+/// off by default since 10.15. Other automount roots (/afs, a custom autofs
+/// map) aren't known.
 pub fn is_automount_path(path: &str) -> bool {
     let mut parts = Path::new(path).components();
     parts.next() == Some(Component::RootDir)
@@ -151,11 +181,12 @@ fn on_disk(at: &Path) -> Entry {
 }
 
 /// Whether opening `path` would pass through a link (a symlink or a
-/// junction) to a network share, at the picture or any folder above it.
-/// Each step is looked at without following it, and a link only after its
-/// target has been checked, so nothing beyond a bad link is ever touched.
-/// The walk goes on from where a link really leads, the way Windows
-/// follows one, so a `..` in a later link climbs from there.
+/// junction) to a network share or into an automounted folder, at the
+/// picture or any folder above it. Each step is looked at without following
+/// it, and a link only after its target has been checked, so nothing beyond
+/// a bad link is ever touched. The walk goes on from where a link really
+/// leads, the way the OS follows one, so a `..` in a later link climbs from
+/// there.
 fn links_to_network(path: &Path, look: &impl Fn(&Path) -> Entry) -> bool {
     // What's left to walk, last part first.
     let mut rest: Vec<PathBuf> = steps(path);
@@ -170,6 +201,11 @@ fn links_to_network(path: &Path, look: &impl Fn(&Path) -> Entry) -> bool {
         at.push(&part);
         if !matches!(part.components().next(), Some(Component::Normal(_))) {
             continue;
+        }
+        // Looking in /net/<host> is what mounts it. (On Windows a link's
+        // target is on a drive, so this never matches there.)
+        if is_automount_path(&at.to_string_lossy()) {
+            return true;
         }
         let target = match look(&at) {
             // Missing as we read it, but after a link maybe not as Windows
@@ -202,18 +238,16 @@ fn steps(path: &Path) -> Vec<PathBuf> {
 }
 
 /// A picture's type and bytes, or why it isn't served. The checks that
-/// need no filesystem come first; `check_links` is for Windows, where a
-/// link can lead to a share.
-fn serve(
-    path: &str,
-    check_links: bool,
-    allowed: impl Fn(&Path) -> bool,
-) -> Result<(String, Vec<u8>), StatusCode> {
+/// need no filesystem come first, then the links on the way: on Windows one
+/// can lead to a share, and on macOS and Linux into /net (a cloned repo
+/// keeps its symlinks there). Only then does the scope, which follows them,
+/// see the path.
+fn serve(path: &str, allowed: impl Fn(&Path) -> bool) -> Result<(String, Vec<u8>), StatusCode> {
     if is_network_or_device_path(path) || is_automount_path(path) {
         return Err(StatusCode::FORBIDDEN);
     }
     let safe = SafePathBuf::new(PathBuf::from(path)).map_err(|_| StatusCode::FORBIDDEN)?;
-    if check_links && links_to_network(safe.as_ref(), &on_disk) {
+    if links_to_network(safe.as_ref(), &on_disk) {
         return Err(StatusCode::FORBIDDEN);
     }
     if !allowed(safe.as_ref()) {
@@ -299,7 +333,7 @@ mod tests {
     #[test]
     fn refuses_a_network_path_before_the_scope_or_the_disk_sees_it() {
         for p in NETWORK_AND_DEVICE {
-            let got = serve(p, true, |_| panic!("the scope was asked about {p:?}"));
+            let got = serve(p, |_| panic!("the scope was asked about {p:?}"));
             assert_eq!(got.unwrap_err(), StatusCode::FORBIDDEN, "{p:?}");
         }
     }
@@ -314,7 +348,7 @@ mod tests {
             "/net",
         ] {
             assert!(is_automount_path(p), "{p:?}");
-            let got = serve(p, false, |_| panic!("the scope was asked about {p:?}"));
+            let got = serve(p, |_| panic!("the scope was asked about {p:?}"));
             assert_eq!(got.unwrap_err(), StatusCode::FORBIDDEN, "{p:?}");
         }
         for p in [
@@ -324,6 +358,33 @@ mod tests {
             "C:/net/x.png",
         ] {
             assert!(!is_automount_path(p), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn knows_a_page_served_by_this_protocol() {
+        for u in [
+            "asset://localhost/%2Fhome%2Fme%2Fx.svg",
+            "http://asset.localhost/C%3A%2Fx.svg",
+            "https://asset.localhost/C%3A%2Fx.svg",
+            "HTTP://ASSET.LOCALHOST/x.svg",
+            "http://asset.localhost./x.svg",
+            "http://user@asset.localhost/x.svg",
+            "http://asset%2Elocalhost/x.svg",
+            "http://asset.localhost:8080/x.svg",
+        ] {
+            assert!(is_asset_page(&Url::parse(u).unwrap()), "{u}");
+        }
+        for u in [
+            "http://tauri.localhost/",
+            "https://tauri.localhost/index.html",
+            "tauri://localhost/",
+            "http://localhost:1420/",
+            "https://example.com/asset.localhost/x.svg",
+            "http://asset.localhost.example.com/x.svg",
+            "http://ipc.localhost/x",
+        ] {
+            assert!(!is_asset_page(&Url::parse(u).unwrap()), "{u}");
         }
     }
 
@@ -377,10 +438,10 @@ mod tests {
         let svg = dir.path().join("logo.svg");
         fs::write(&svg, b"<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
         let png_path = png.to_string_lossy().into_owned();
-        let (mime, bytes) = serve(&png_path, true, |_| true).unwrap();
+        let (mime, bytes) = serve(&png_path, |_| true).unwrap();
         assert_eq!(mime, "image/png");
         assert_eq!(bytes, fs::read(&png).unwrap());
-        let (mime, _) = serve(&svg.to_string_lossy(), true, |_| true).unwrap();
+        let (mime, _) = serve(&svg.to_string_lossy(), |_| true).unwrap();
         assert_eq!(mime, "image/svg+xml");
     }
 
@@ -391,7 +452,7 @@ mod tests {
         let mut data = b"\xFF\xD8\xFF\xE0".to_vec();
         data.resize(100_000, 7);
         fs::write(&jpg, &data).unwrap();
-        let (mime, bytes) = serve(&jpg.to_string_lossy(), true, |_| true).unwrap();
+        let (mime, bytes) = serve(&jpg.to_string_lossy(), |_| true).unwrap();
         assert_eq!(mime, "image/jpeg");
         assert_eq!(bytes, data);
     }
@@ -408,7 +469,7 @@ mod tests {
             let p = dir.path().join(name);
             fs::write(&p, body).unwrap();
             assert_eq!(
-                serve(&p.to_string_lossy(), true, |_| true).unwrap_err(),
+                serve(&p.to_string_lossy(), |_| true).unwrap_err(),
                 StatusCode::FORBIDDEN,
                 "{name}"
             );
@@ -418,23 +479,25 @@ mod tests {
     #[test]
     fn missing_climbing_and_out_of_scope() {
         let dir = tempdir().unwrap();
-        let gone = dir.path().join("gone.png");
-        // Links are checked only on Windows, as in the app: a Mac's temp
-        // folder is behind one (/var), and a picture missing behind a link
-        // is refused rather than missing.
+        // A picture missing behind a link is refused rather than missing,
+        // and a Mac's temp folder is behind one (/var), so this looks from
+        // where it really is. (Windows spells that \\?\C:\…, a device path.)
+        let real = if cfg!(windows) {
+            dir.path().to_path_buf()
+        } else {
+            dir.path().canonicalize().unwrap()
+        };
+        let gone = real.join("gone.png");
         assert_eq!(
-            serve(&gone.to_string_lossy(), cfg!(windows), |_| true).unwrap_err(),
+            serve(&gone.to_string_lossy(), |_| true).unwrap_err(),
             StatusCode::NOT_FOUND
         );
         let up = format!("{}/../x.png", dir.path().to_string_lossy());
-        assert_eq!(
-            serve(&up, true, |_| true).unwrap_err(),
-            StatusCode::FORBIDDEN
-        );
+        assert_eq!(serve(&up, |_| true).unwrap_err(), StatusCode::FORBIDDEN);
         let png = dir.path().join("a.png");
         fs::write(&png, b"\x89PNG\r\n\x1a\n").unwrap();
         assert_eq!(
-            serve(&png.to_string_lossy(), true, |_| false).unwrap_err(),
+            serve(&png.to_string_lossy(), |_| false).unwrap_err(),
             StatusCode::FORBIDDEN
         );
     }
@@ -449,11 +512,11 @@ mod tests {
             return; // no right to make links here (Windows without Developer Mode)
         }
         assert!(!links_to_network(&link, &on_disk));
-        assert!(serve(&link.to_string_lossy(), true, |_| true).is_ok());
+        assert!(serve(&link.to_string_lossy(), |_| true).is_ok());
     }
 
     // Only Windows reads \\host as a share; elsewhere those backslashes
-    // are a file name, and links aren't checked there at all.
+    // are a file name.
     #[cfg(windows)]
     #[test]
     fn a_link_to_a_share_is_refused_without_following_it() {
@@ -465,7 +528,7 @@ mod tests {
         }
         assert!(links_to_network(&link, &on_disk));
         assert_eq!(
-            serve(&link.to_string_lossy(), true, |_| true).unwrap_err(),
+            serve(&link.to_string_lossy(), |_| true).unwrap_err(),
             StatusCode::FORBIDDEN
         );
     }
@@ -499,7 +562,7 @@ mod tests {
         let png = junction.join("a.png");
         assert!(!links_to_network(&png, &on_disk));
         assert_eq!(
-            serve(&png.to_string_lossy(), true, |_| true).unwrap().0,
+            serve(&png.to_string_lossy(), |_| true).unwrap().0,
             "image/png"
         );
     }
@@ -578,6 +641,56 @@ mod tests {
         ]);
         assert!(links_to_network(Path::new("/doc/link/gone.png"), &disk));
         assert!(!links_to_network(Path::new("/doc/gone.png"), &disk));
+    }
+
+    #[test]
+    fn a_link_into_an_automounted_folder_is_refused_without_looking_there() {
+        // A cloned repo keeps its symlinks on macOS and Linux. Looking in
+        // /net/<host> is what mounts it, so the walk stops before that.
+        let disk = fake_disk(&[
+            ("/home", None),
+            ("/home/me", None),
+            ("/home/me/repo", None),
+            (
+                "/home/me/repo/img.png",
+                Some("/net/attacker.invalid/export/x.png"),
+            ),
+            (
+                "/home/me/repo/up.png",
+                Some("../../../net/attacker.invalid/x.png"),
+            ),
+            (
+                "/home/me/repo/mac",
+                Some("/Network/Servers/attacker.invalid"),
+            ),
+            ("/net", None),
+            ("/net/attacker.invalid", None),
+            ("/net/attacker.invalid/x.png", None),
+            ("/net/attacker.invalid/export", None),
+            ("/net/attacker.invalid/export/x.png", None),
+            ("/Network", None),
+            ("/Network/Servers", None),
+            ("/Network/Servers/attacker.invalid", None),
+            ("/Network/Servers/attacker.invalid/x.png", None),
+        ]);
+        let looked = std::cell::RefCell::new(Vec::new());
+        let look = |at: &Path| {
+            looked.borrow_mut().push(at.to_path_buf());
+            disk(at)
+        };
+        for p in [
+            "/home/me/repo/img.png",
+            "/home/me/repo/up.png",
+            "/home/me/repo/mac/x.png",
+        ] {
+            assert!(links_to_network(Path::new(p), &look), "{p}");
+        }
+        for at in looked.borrow().iter() {
+            assert!(
+                !is_automount_path(&at.to_string_lossy()),
+                "looked at {at:?}"
+            );
+        }
     }
 
     #[test]

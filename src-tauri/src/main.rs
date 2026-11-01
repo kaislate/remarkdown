@@ -77,6 +77,9 @@ fn main() {
         // handler, which looks a network path up before any check can
         // refuse it (see asset_protocol.rs).
         .register_asynchronous_uri_scheme_protocol("asset", asset_protocol::handle)
+        // That makes a page served from it count as one of the app's own,
+        // so no window may open one.
+        .plugin(asset_protocol::navigation_guard())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
             // Before any window reads them: 0.8.0 resets settings once.
