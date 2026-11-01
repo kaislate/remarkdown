@@ -28,6 +28,10 @@
   import { installSmoothScroll, GLIDE_SCALES } from '../lib/smooth-scroll';
   import { platform } from '../lib/platform';
   import { activeModal } from '../stores/modals';
+  import { linkAction } from '../lib/link-action';
+  import { openPaths } from '../lib/open-files';
+  import { openExternal } from '../lib/tauri-api';
+  import { jumpToSection } from '../lib/section-jump';
 
   // No cross-fade under reduced motion, nor on the E-ink reader theme
   // (no animation at all there).
@@ -202,6 +206,42 @@
     };
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
+  });
+
+  // Delegated handler for every link in the article (lib/link-action.ts
+  // decides what each one does). The window never follows one itself: a
+  // page link would replace the app, and a ctrl/shift/middle click would
+  // ask for a new window. A middle click arrives as auxclick; other
+  // buttons there (the right one) are the context menu's.
+  $effect(() => {
+    const root = articleEl;
+    if (!root) return;
+    const onLink = (e: MouseEvent) => {
+      if (e.type === 'auxclick' && e.button !== 1) return;
+      const a = (e.target as Element | null)?.closest?.('a');
+      if (!a || !root.contains(a)) return;
+      e.preventDefault();
+      // A diagram's own links (mermaid `click X href`) go nowhere.
+      if (a.closest('.mermaid-block')) return;
+      const href = a.getAttribute('href');
+      const action = linkAction(href, get(doc)?.dir);
+      if (action.kind === 'scroll') {
+        const target = document.getElementById(action.id);
+        if (target && root.contains(target)) jumpToSection(target);
+      } else if (action.kind === 'open') {
+        void openPaths([action.path]);
+      } else if (action.kind === 'external') {
+        openExternal(action.url).catch((err) => {
+          addToast({ kind: 'error', message: `Could not open the link: ${String(err)}` });
+        });
+      }
+    };
+    root.addEventListener('click', onLink);
+    root.addEventListener('auxclick', onLink);
+    return () => {
+      root.removeEventListener('click', onLink);
+      root.removeEventListener('auxclick', onLink);
+    };
   });
 
   let pendingSave: Debounced<[string]> | null = null;
