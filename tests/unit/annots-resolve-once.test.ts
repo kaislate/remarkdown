@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
+import { get } from 'svelte/store';
 import * as anchoring from '../../src/lib/anchoring';
 import { replaceAll, resolvedAnnots, orphanedAnnots, currentViewerRoot } from '../../src/stores/annots';
-import type { Highlight } from '../../src/lib/schema';
+import type { Drawing, Highlight } from '../../src/lib/schema';
 
 // Counts resolveAnchor calls, and checks the store wraps them in one pass.
 vi.mock('../../src/lib/anchoring', async (original) => {
@@ -42,5 +43,31 @@ describe('resolving annotations', () => {
 
     stop.forEach((f) => f());
     currentViewerRoot.set(null);
+  });
+
+  // A sidecar may hold 20,000 of them; looking each block up in the page
+  // searched the whole article once per drawing.
+  it('finds the block of a drawing anchored to one from the pass, not by searching the page', () => {
+    const root = document.createElement('article');
+    root.innerHTML = '<p data-block-id="p:1">the sample text</p>';
+    document.body.appendChild(root);
+    currentViewerRoot.set(root);
+    const bar = (id: string, blockId: string): Drawing => ({
+      id, type: 'drawing',
+      shape: { kind: 'margin-bar', anchor: { blockId }, color: '#ff0', width: 2 },
+      createdAt: 'now', updatedAt: 'now',
+    });
+    const lookups = vi.spyOn(root, 'querySelector');
+    const stop = [resolvedAnnots.subscribe(() => {}), orphanedAnnots.subscribe(() => {})];
+
+    replaceAll([bar('01A', 'p:1'), bar('01B', 'p:1'), bar('01C', 'gone')]);
+    expect(get(resolvedAnnots).map((r) => r.annotation.id)).toEqual(['01A', '01B']);
+    expect(get(orphanedAnnots).map((a) => a.id)).toEqual(['01C']);
+    expect(lookups).not.toHaveBeenCalled();
+
+    stop.forEach((f) => f());
+    lookups.mockRestore();
+    currentViewerRoot.set(null);
+    root.remove();
   });
 });

@@ -12,6 +12,16 @@ const MIN_GAP = 0.08; // winning candidate must beat runner-up by this margin
 // tell them apart by scoring anyway; only its whole saved context, found
 // word for word in exactly one place, still places it (see uniqueInContext).
 const MAX_CANDIDATES = 1000;
+// And each anchor still searches the article up to three times, so 20,000
+// anchors (the most a sidecar may hold) over a long article took minutes. One
+// pass may look at this many characters in all, a scored place counting as
+// the context it compares: about a second on the slowest text to search
+// (every character the start of a near-match), a tenth of that on prose.
+// The heaviest real case, hundreds of annotations in a 300 KB article whose
+// paragraphs all moved, takes about 150 million. Past it, the pass's
+// remaining anchors are left unplaced: their annotations aren't changed
+// (they're saved back as they are), and the next pass tries them again.
+const PASS_BUDGET = 250_000_000;
 
 function findContainingBlock(node: Node): HTMLElement | null {
   let n: Node | null = node;
@@ -49,7 +59,7 @@ interface Blocks { list: HTMLElement[]; byId: Map<string, HTMLElement>; joined?:
 // What the current resolvingPass has built already: per scope, its text and
 // its text nodes; per article, its blocks.
 interface ScopeCache { text: Map<HTMLElement, string>; nodes: Map<HTMLElement, TextNodes> }
-let pass: { plain: ScopeCache; noDiagrams: ScopeCache; blocks: Map<HTMLElement, Blocks> } | null = null;
+let pass: { plain: ScopeCache; noDiagrams: ScopeCache; blocks: Map<HTMLElement, Blocks>; budget: number } | null = null;
 
 const scopeCache = (skipDiagrams: boolean): ScopeCache | null =>
   pass && (skipDiagrams ? pass.noDiagrams : pass.plain);
@@ -60,12 +70,25 @@ const scopeCache = (skipDiagrams: boolean): ScopeCache | null =>
 export function resolvingPass<T>(fn: () => T): T {
   if (pass) return fn();
   const fresh = (): ScopeCache => ({ text: new Map(), nodes: new Map() });
-  pass = { plain: fresh(), noDiagrams: fresh(), blocks: new Map() };
+  pass = { plain: fresh(), noDiagrams: fresh(), blocks: new Map(), budget: PASS_BUDGET };
   try {
     return fn();
   } finally {
     pass = null;
   }
+}
+
+// Counts work against the pass's budget (see PASS_BUDGET); outside a pass,
+// one anchor at a time, nothing is counted.
+function spend(chars: number): void {
+  if (pass) pass.budget -= chars;
+}
+
+// `hay.indexOf(needle, from)`, counting the characters it went through.
+function find(hay: string, needle: string, from = 0): number {
+  const i = hay.indexOf(needle, from);
+  spend(Math.max(0, (i < 0 ? hay.length : i + needle.length) - from));
+  return i;
 }
 
 function blocksOf(viewerRoot: HTMLElement): Blocks {
@@ -81,7 +104,9 @@ function blocksOf(viewerRoot: HTMLElement): Blocks {
   return blocks;
 }
 
-function blockById(viewerRoot: HTMLElement, id: string): HTMLElement | null {
+// The block with this id. Inside a pass, from the list of blocks it built
+// once, rather than a search of the page for each lookup.
+export function blockById(viewerRoot: HTMLElement, id: string): HTMLElement | null {
   if (pass) return blocksOf(viewerRoot).byId.get(id) ?? null;
   return viewerRoot.querySelector(`[data-block-id="${CSS.escape(id)}"]`);
 }
@@ -214,7 +239,7 @@ function allIndexOf(hay: string, needle: string, limit = Infinity): number[] {
   const out: number[] = [];
   let from = 0;
   while (out.length < limit && from <= hay.length - needle.length) {
-    const i = hay.indexOf(needle, from);
+    const i = find(hay, needle, from);
     if (i < 0) break;
     out.push(i);
     from = i + 1;
@@ -249,6 +274,7 @@ function headMatch(a: string, full: string, at: number, bLen: number): number {
 }
 
 function scoreCandidate(anchor: Anchor, full: string, index: number): number {
+  spend(2 * CONTEXT_LEN);
   const end = index + anchor.text.length;
   const prefixLen = Math.min(CONTEXT_LEN, index);
   const suffixLen = Math.max(0, Math.min(CONTEXT_LEN, full.length - end));
@@ -271,8 +297,8 @@ function bestOf(anchor: Anchor, full: string, indices: number[]): { i: number; s
 // so it costs the same however common the text is.
 function uniqueInContext(anchor: Anchor, full: string): number {
   const needle = anchor.prefix + anchor.text + anchor.suffix;
-  const at = full.indexOf(needle);
-  if (at < 0 || full.indexOf(needle, at + 1) >= 0) return -1;
+  const at = find(full, needle);
+  if (at < 0 || find(full, needle, at + 1) >= 0) return -1;
   return at + anchor.prefix.length;
 }
 
@@ -335,7 +361,7 @@ function blockHits(viewerRoot: HTMLElement, needle: string, limit: number): { bl
   }
   const { text, starts } = blocks.joined;
   const out: { block: HTMLElement; i: number }[] = [];
-  for (let h = text.indexOf(needle); h >= 0 && out.length < limit; h = text.indexOf(needle, h + 1)) {
+  for (let h = find(text, needle); h >= 0 && out.length < limit; h = find(text, needle, h + 1)) {
     // The last block starting at or before the match.
     let lo = 0;
     let hi = starts.length - 1;
@@ -361,6 +387,7 @@ function uniqueInContextOfBlocks(anchor: Anchor, viewerRoot: HTMLElement): Range
 }
 
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
+  if (pass && pass.budget <= 0) return null;
   if (anchor.endBlockHint) return resolveInRoot(anchor, viewerRoot, false);
 
   const hinted = blockById(viewerRoot, anchor.blockHint);

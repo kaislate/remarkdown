@@ -404,3 +404,51 @@ describe('anchors whose text is everywhere', () => {
     expect(resolveAnchor({ text: 'e', prefix: 'th', suffix: ' reader', blockHint: 'p:1' }, root)).toBeNull();
   });
 });
+
+// Each anchor searches the article up to three times, so a sidecar of
+// 20,000 anchors (the most one may hold) over a long article took minutes,
+// however few places each was scored at. What one pass may search is capped.
+describe('a pass over many anchors', () => {
+  it('stays quick when every anchor searches the whole article and is found nowhere', () => {
+    // The text's first letters match everywhere, the slowest case for a search.
+    const root = buildRoot(`<p data-block-id="p:1">${'x'.repeat(330_000)}</p><p data-block-id="p:2">the end</p>`);
+    const nowhere: Anchor = { text: 'xxQ', prefix: '', suffix: '', blockHint: 'gone' };
+    const hinted: Anchor = { ...nowhere, blockHint: 'p:1' };
+    const findable: Anchor = { text: 'the end', prefix: '', suffix: '', blockHint: 'p:2' };
+    const start = performance.now();
+    const found = resolvingPass(() => {
+      const out: Array<Range | null> = [];
+      for (let i = 0; i < 10_000; i++) out.push(resolveAnchor(nowhere, root), resolveAnchor(hinted, root));
+      // Past the cap the rest of the pass's anchors are left unplaced; the
+      // annotations aren't changed, and the next pass tries them again.
+      out.push(resolveAnchor(findable, root));
+      return out;
+    });
+    // About a second and a half here; uncapped, about a hundred.
+    expect(performance.now() - start).toBeLessThan(5_000);
+    expect(found.every((r) => r === null)).toBe(true);
+    expect(resolvingPass(() => resolveAnchor(findable, root))?.toString()).toBe('the end');
+  });
+
+  it('still places hundreds of annotations in a long article whose paragraphs all moved', () => {
+    // A paragraph added at the top renumbers every block after it, so no
+    // anchor is in the block it remembers and each searches the whole article.
+    const filler = 'the reader sees every line here before we edit it. '.repeat(23);
+    const para = (i: number) => `<p data-block-id="p:${i}">Paragraph ${i} opens. ${filler}Paragraph ${i} closes.</p>`;
+    const count = 250;
+    const before = buildRoot(Array.from({ length: count }, (_, i) => para(i)).join(''));
+    expect(before.textContent!.length).toBeGreaterThan(300_000);
+    const anchors = Array.from({ length: count }, (_, i) => [
+      createAnchor(rangeOf(before, `p:${i}`, `Paragraph ${i} opens`), before)!,
+      createAnchor(rangeOf(before, `p:${i}`, `Paragraph ${i} closes`), before)!,
+    ]).flat();
+    before.remove();
+
+    const moved = buildRoot(
+      '<p data-block-id="p:0">A new first paragraph.</p>' +
+        Array.from({ length: count }, (_, i) => para(i)).join('').replace(/data-block-id="p:(\d+)"/g, (_, n) => `data-block-id="p:${Number(n) + 1}"`),
+    );
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+});

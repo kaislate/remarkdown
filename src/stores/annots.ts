@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { resolveAnchor, resolvingPass } from '../lib/anchoring';
+import { blockById, resolveAnchor, resolvingPass } from '../lib/anchoring';
 import type { Annotation, Drawing } from '../lib/schema';
 import { activeProxy, activeSession, type DocSession } from './sessions';
 
@@ -158,11 +158,11 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
         case 'margin-bar':
         case 'freehand':
           // BlockAnchor / BlockEmAnchor shapes — the referenced block must exist.
-          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchor.blockId)}"]`);
+          resolves = !!blockById($root, d.shape.anchor.blockId);
           break;
         case 'freehand-legacy':
           // Pre-refactor shape: top-level anchorBlock field.
-          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchorBlock)}"]`);
+          resolves = !!blockById($root, d.shape.anchorBlock);
           break;
       }
       if (resolves) resolved.push({ annotation: d, range: range as Range });
