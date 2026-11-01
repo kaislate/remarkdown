@@ -123,6 +123,10 @@ export function fileSrcFromAssetUrl(src: string): string | null {
 
 export function resolveImageSrc(src: string, baseDir: string | undefined, toAssetUrl: ((path: string) => string) | undefined): string {
   if (!src) return src;
+  // Pasting from the reader used to save the reader's asset url in the
+  // markdown. One naming a plain file is read as that file, so it shows
+  // again and gets every check a path gets; any other is unsafe below.
+  src = fileSrcFromAssetUrl(src) ?? src;
   // An empty src is a picture that asks for nothing.
   if (isUnsafeImageSrc(src)) return '';
   if (isWebUrl(src) || !toAssetUrl) return src;

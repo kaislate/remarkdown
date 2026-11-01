@@ -29,11 +29,15 @@ describe('footnote popover preview', () => {
   it.each([
     ['an asset url to a share', 'http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png'],
     ['a protocol-relative host', '//attacker/x.png'],
-    ['an asset url to a local file', 'http://asset.localhost/C%3A%2FUsers%2Fme%2FPictures%2Fp.png'],
-    ['an asset: url', 'asset://localhost/%2Fetc%2Fpasswd'],
+    ['an asset: url', 'asset://localhost/%2F%2Fattacker%2Fs%2Fx.png'],
   ])('never loads %s', (_name, src) => {
     const img = previewOf(`see ![](${src})`).querySelector('img');
     expect(img?.getAttribute('src') ?? '').toBe('');
+  });
+
+  it('reads an asset url to a local file as that file, never the url', () => {
+    const img = previewOf('see ![](http://asset.localhost/C%3A%2FUsers%2Fme%2FPictures%2Fp.png)').querySelector('img');
+    expect(img?.getAttribute('src')).toBe('C:/Users/me/Pictures/p.png');
   });
 
   it('still shows a web picture as written', () => {

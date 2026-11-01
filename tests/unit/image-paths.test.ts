@@ -68,7 +68,7 @@ const unsafe = [
   // the asset protocol, in every spelling the window accepts
   'http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cpixel.png',
   'HTTP://ASSET.LOCALHOST/x.png',
-  'https://asset.localhost/C%3A%2FUsers%2Fme%2Fx.png',
+  'https://asset.localhost/%2F%2Fhost%2Fs%2Fx.png',
   'http:asset.localhost/x.png',
   'http:\\\\asset.localhost\\x.png',
   'http://asset.localhost./x.png',
@@ -76,7 +76,7 @@ const unsafe = [
   'http://asset%2Elocalhost/x.png',
   'http://ipc.localhost/x',
   'ht\ttp://asset.localhost/x.png',
-  'asset://localhost/%2Fetc%2Fpasswd',
+  'asset://localhost/%5C%5Chost%5Cs%5Cx.png',
   'ASSET://localhost/x.png',
   'asset:x.png',
   // protocol-relative: the window reads it as http://asset.localhost/…
@@ -248,5 +248,40 @@ describe('a picture copied from the reader', () => {
     ]) {
       expect(fileSrcFromAssetUrl(src), src).toBeNull();
     }
+  });
+});
+
+describe('a picture pasted into a document before the check', () => {
+  // Pasting a picture from the reader used to save the reader's asset url
+  // in the markdown. One naming a plain file is that file, as if the
+  // markdown named it, so it shows again.
+  it.each([
+    ['windows', 'http://asset.localhost/C%3A%2FUsers%2Fme%2Fa%20b.png', 'C:/Users/me/a b.png'],
+    ['windows', 'https://ASSET.localhost/D%3A%5CPictures%5Cx.png', 'D:/Pictures/x.png'],
+    ['linux', 'asset://localhost/%2Fhome%2Fme%2Fa.png', '/home/me/a.png'],
+    ['macos', 'asset://localhost/%2FUsers%2Fme%2F100%25%20done.png', '/Users/me/100% done.png'],
+  ] as const)('on %s shows its file again', (os, src, file) => {
+    setPlatformForTests(os);
+    const toAsset = vi.fn((p: string) => `asset:${p}`);
+    expect(resolveImageSrc(src, os === 'windows' ? 'C:/docs' : '/home/me/docs', toAsset)).toBe(`asset:${file}`);
+    expect(resolveImageSrc(src, undefined, toAsset)).toBe(`asset:${file}`);
+    // Never the url as written.
+    expect(resolveImageSrc(src, undefined, undefined)).not.toBe(src);
+  });
+
+  it.each(['windows', 'linux', 'macos'] as const)('on %s one naming a share or a mounted host still asks for nothing', (os) => {
+    setPlatformForTests(os);
+    const toAsset = vi.fn((p: string) => `asset:${p}`);
+    for (const src of [
+      'http://asset.localhost/%5C%5Chost%5Cs%5Cx.png',
+      'asset://localhost/%2F%2Fhost%2Fs%2Fx.png',
+      'http://asset.localhost/%255C%255Chost%255Cs%255Cx.png',
+      'http://asset.localhost/%5C%5C%3F%5CUNC%5Chost%5Cs%5Cx.png',
+      'http://asset.localhost/img%2Fa.png',
+      ...(os === 'windows' ? [] : ['asset://localhost/%2Fnet%2Fhost%2Fx.png']),
+    ]) {
+      expect(resolveImageSrc(src, os === 'windows' ? 'C:/docs' : '/home/me/docs', toAsset), src).toBe('');
+    }
+    expect(toAsset).not.toHaveBeenCalled();
   });
 });
