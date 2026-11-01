@@ -51,6 +51,34 @@ describe('save', () => {
     dispose();
   });
 
+  // Sidecars get committed and shared; the full path would give away the
+  // user's account name and folders. Nothing reads document.path back.
+  for (const [path, name] of [
+    ['/home/someone/clients/acme/README.md', 'README.md'],
+    ['C:\\Users\\someone\\Documents\\notes.md', 'notes.md'],
+  ]) {
+    it(`records only the file name of ${path}`, async () => {
+      doc.set({
+        path, dir: '', sha256: 'abc', bytes: 1, markdown: '',
+        html: '', plaintext: '', blocks: [], sidecarRaw: null,
+      });
+      const dispose = installSaveWatcher();
+      annots.set([{
+        id: '01A', type: 'highlight', color: '#ffd25a',
+        anchor: { text: 'x', prefix: '', suffix: '', blockHint: 'p:1' },
+        createdAt: 'now', updatedAt: 'now',
+      }]);
+      await flushSave();
+      const [mdPath, json] = vi.mocked(writeSidecar).mock.calls[0];
+      expect(mdPath).toBe(path);
+      expect(json).not.toContain('someone');
+      const written = JSON.parse(json);
+      expect(written.document).toEqual({ path: name, sha256: 'abc', lastSeenBytes: 1 });
+      expect(written._comment).toBe(`remarkdown annotations for: ${name}`);
+      dispose();
+    });
+  }
+
   it('collapses rapid changes into a single debounced write', async () => {
     doc.set({
       path: '/tmp/a.md', dir: '/tmp', sha256: 'abc', bytes: 1, markdown: '',

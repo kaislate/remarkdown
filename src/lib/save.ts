@@ -34,10 +34,14 @@ let lastSerialized = new WeakMap<DocSession, string>();
 function sidecarFor(session: DocSession): { path: string; json: string } | null {
   const d = get(session.doc);
   if (!d) return null;
+  // Only the file name: sidecars get committed and shared, and the full
+  // path would give away the user's account name and folders. Nothing reads
+  // it back (older sidecars with a full path load the same).
+  const name = d.path.split(/[\\/]/).pop() ?? d.path;
   const sidecar: Sidecar = {
-    _comment: `remarkdown annotations for: ${d.path.split(/[\\/]/).pop() ?? d.path}`,
+    _comment: `remarkdown annotations for: ${name}`,
     $schema: 'remarkdown/v1',
-    document: { path: d.path, sha256: d.sha256, lastSeenBytes: d.bytes },
+    document: { path: name, sha256: d.sha256, lastSeenBytes: d.bytes },
     annotations: get(session.annots),
   };
   return { path: d.path, json: serializeSidecar(sidecar) };

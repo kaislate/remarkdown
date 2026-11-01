@@ -42,6 +42,14 @@ describe('sidecar', () => {
     }
   });
 
+  it('still loads an older sidecar that recorded the full path', () => {
+    const old = JSON.parse(fixture('sidecar-valid.json'));
+    old.document.path = 'C:\\Users\\someone\\Documents\\notes.md';
+    const result = loadSidecar(JSON.stringify(old));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.annotations).toHaveLength(3);
+  });
+
   const withHighlights = (n: number) => {
     const s = emptySidecar({ path: 'a.md', sha256: 'abc', lastSeenBytes: 42 });
     for (let i = 0; i < n; i++) {
