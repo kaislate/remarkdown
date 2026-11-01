@@ -136,6 +136,7 @@ fn main() {
             default_app::default_app_status,
             default_app::make_default_app,
             shell::reveal_in_folder,
+            shell::open_external,
             desktop_env::desktop_env,
         ])
         .build(tauri::generate_context!())

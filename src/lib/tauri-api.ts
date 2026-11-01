@@ -207,6 +207,12 @@ export async function revealInFolder(path: string): Promise<void> {
   await invoke('reveal_in_folder', { path });
 }
 
+// Opens a document's web or mail link in the user's browser or mail app.
+// Rust takes only http(s) and mailto (shell.rs, external_url).
+export async function openExternal(url: string): Promise<void> {
+  await invoke('open_external', { url });
+}
+
 // Which OS and kind of desktop we're on; see platform.ts for the cached view.
 export async function desktopEnv(): Promise<{ os: OS; tiling: boolean }> {
   return await invoke<{ os: OS; tiling: boolean }>('desktop_env');

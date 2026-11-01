@@ -81,6 +81,85 @@ pub fn reveal_target(path: &Path) -> Option<Reveal> {
     path.parent().filter(|d| d.is_dir()).map(|d| Reveal::Folder(d.to_path_buf()))
 }
 
+/// A link from a document that may go to the user's browser or mail app:
+/// http(s) to a real host, or mailto. Comes back re-serialized by the URL
+/// parser (spaces and quotes percent-encoded), so the OS sees exactly one
+/// well-formed URL. Anything else (file:, a UNC path, a custom scheme that
+/// would start some other program, the webview's own *.localhost hosts) is
+/// refused.
+pub fn external_url(raw: &str) -> Option<String> {
+    let url = tauri::Url::parse(raw.trim()).ok()?;
+    match url.scheme() {
+        "http" | "https" => {
+            // Hosts that only mean something inside the app's webview.
+            let host = url.host_str()?;
+            if matches!(host, "tauri.localhost" | "asset.localhost" | "ipc.localhost") {
+                return None;
+            }
+        }
+        "mailto" if !url.path().is_empty() => {}
+        _ => return None,
+    }
+    Some(url.to_string())
+}
+
+/// Hands a document's web or mail link to the user's browser or mail app.
+///
+/// Our own command rather than tauri-plugin-opener: the plugin also brings
+/// commands to open any path and reveal files, a JS API and a URL scope to
+/// keep right. This takes one string, lets through only what external_url
+/// does, and is the only thing the page can ask the OS to open.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), CommandError> {
+    let url = external_url(&url).ok_or_else(|| CommandError::Io("not a web or mail link".into()))?;
+    // A browser can take a moment to start, and a sync command runs on the
+    // main thread: the hand-off happens on a thread of its own.
+    #[cfg(windows)]
+    std::thread::spawn(move || {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::System::Com::{
+            CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+        };
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide = |s: &str| -> Vec<u16> {
+            std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        };
+        let (verb, target) = (wide("open"), wide(&url));
+        unsafe {
+            // ShellExecute may hand the URL to a shell extension: COM first (STA).
+            let com = CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32);
+            let result = ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            );
+            // ShellExecute returns a value > 32 on success.
+            if result as isize <= 32 {
+                eprintln!("[remarkdown] could not open the link: {}", result as isize);
+            }
+            if com >= 0 {
+                CoUninitialize();
+            }
+        }
+    });
+    // The URL starts with its scheme, so neither tool can read it as an option.
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&url).spawn().map_err(|e| CommandError::Io(e.to_string()))?;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    std::thread::spawn(move || match std::process::Command::new("xdg-open").arg(&url).spawn() {
+        // Waited on so it's reaped rather than left a zombie.
+        Ok(mut child) => {
+            let _ = child.wait();
+        }
+        Err(e) => eprintln!("[remarkdown] could not open the link: {e}"),
+    });
+    Ok(())
+}
+
 /// Opens the file's folder in Explorer with the file selected ("Show in
 /// folder"). If the file no longer exists, opens its folder instead.
 #[tauri::command]
@@ -211,6 +290,44 @@ mod tests {
         assert_eq!(args[args.len() - 1], "\"\"");
         assert_eq!(args[0], "call");
         assert!(args.contains(&"org.freedesktop.FileManager1.ShowItems".to_string()));
+    }
+
+    #[test]
+    fn web_and_mail_links_go_out_normalized() {
+        assert_eq!(external_url("https://example.com/a b").as_deref(), Some("https://example.com/a%20b"));
+        assert_eq!(external_url("http://Example.com").as_deref(), Some("http://example.com/"));
+        assert_eq!(
+            external_url("https://example.com/?q=\"x\"#\"y\"").as_deref(),
+            Some("https://example.com/?q=%22x%22#%22y%22")
+        );
+        assert_eq!(external_url("mailto:me@example.com").as_deref(), Some("mailto:me@example.com"));
+        assert_eq!(external_url("http://localhost:3000/docs").as_deref(), Some("http://localhost:3000/docs"));
+    }
+
+    #[test]
+    fn everything_else_is_refused() {
+        for raw in [
+            "",
+            "not a url",
+            "file:///C:/Windows/System32/calc.exe",
+            r"\\evil.example\s\r.html",
+            "//evil.example/x",
+            "C:/Users/me/r.html",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "ms-settings:defaultapps",
+            "search-ms:query=x",
+            "vscode://file/C:/x",
+            "asset://localhost/C:/x.html",
+            "mailto:",
+            "https:",
+            "http://asset.localhost/%5C%5Cevil%5Cs%5Cr.html",
+            "https://ipc.localhost/write_document",
+            "http://tauri.localhost/index.html",
+            "HTTP://ASSET.LOCALHOST/x",
+        ] {
+            assert_eq!(external_url(raw), None, "{raw}");
+        }
     }
 
     #[test]

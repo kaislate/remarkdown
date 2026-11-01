@@ -123,6 +123,12 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       (window as any).__E2E_REVEALED__ = revealed;
       return;
     }
+    case 'open_external': {
+      const opened = (window as any).__E2E_EXTERNAL__ ?? [];
+      opened.push(args?.url);
+      (window as any).__E2E_EXTERNAL__ = opened;
+      return;
+    }
     case 'plugin:app|version':
       // Off by default (no pre-release tag in specs); screenshot specs set
       // __E2E_APP_VERSION__ to show the window exactly as a build does.

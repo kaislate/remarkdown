@@ -16,6 +16,7 @@ import {
   toAssetUrl,
   checkPathsExist,
   FILE_WAIT_MS,
+  openExternal,
 } from '../../src/lib/tauri-api';
 
 describe('tauri-api wrapper', () => {
@@ -30,6 +31,12 @@ describe('tauri-api wrapper', () => {
     const result = await openFileDialog();
     expect(invoke).toHaveBeenCalledWith('open_file_dialog');
     expect(result).toBe('/tmp/x.md');
+  });
+
+  it('openExternal hands the url to "open_external"', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await openExternal('https://example.com/');
+    expect(invoke).toHaveBeenCalledWith('open_external', { url: 'https://example.com/' });
   });
 
   it('readDocument passes the path arg and returns typed result (snake_case from Rust)', async () => {
