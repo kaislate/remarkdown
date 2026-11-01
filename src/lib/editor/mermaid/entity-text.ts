@@ -90,8 +90,7 @@ export function prepareSource(lines: string[]): PreparedSource {
 // One line through cleanupText's tag-quote swap and encodeEntities;
 // map[i] = column of the source character output[i] came from.
 function transformLine(line: string): { out: string; map: number[] } {
-  // <tag a="x"> → <tag a='x'> (length-preserving).
-  let s = line.replace(/<(\w+)([^>]*)>/g, (_m, tag: string, attrs: string) => `<${tag}${attrs.replace(/="([^"]*)"/g, "='$1'")}>`);
+  let s = swapTagQuotes(line);
   let cols = Array.from({ length: s.length }, (_, i) => i);
   // style…:…#…; / classDef…:…#…; lose their last `;`.
   for (const keyword of ['style', 'classDef'] as const) {
@@ -135,6 +134,17 @@ function transformLine(line: string): { out: string; map: number[] } {
     map.push(cols[i]);
   }
   return { out, map };
+}
+
+// mermaid's cleanupText: <tag a="x"> → <tag a='x'> (length-preserving).
+// Only up to the last `>`: a `<word` after it can't be a tag, and the
+// regex split such a word between `\w+` and `[^>]*` every way before
+// giving up (quadratic in the word). Before it, a `<word` always finds
+// its `>` at the first try.
+export function swapTagQuotes(s: string): string {
+  const end = s.lastIndexOf('>') + 1;
+  const tags = s.slice(0, end).replace(/<(\w+)([^>]*)>/g, (_m, tag: string, attrs: string) => `<${tag}${attrs.replace(/="([^"]*)"/g, "='$1'")}>`);
+  return tags + s.slice(end);
 }
 
 // The `;` mermaid's encodeEntities drops with /style.*:\S*#.*;/g (or

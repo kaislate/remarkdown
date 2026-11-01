@@ -12,7 +12,9 @@ import { parseSequenceSource } from '../../../src/lib/editor/mermaid-sequence-pa
 import { parseClassSource } from '../../../src/lib/editor/mermaid/class-parser';
 import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
 import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
-import { styleSemicolons } from '../../../src/lib/editor/mermaid/entity-text';
+import { styleSemicolons, swapTagQuotes } from '../../../src/lib/editor/mermaid/entity-text';
+import { commentRanges } from '../../../src/lib/editor/mermaid/state-parser';
+import { tildeWordAhead } from '../../../src/lib/editor/mermaid/er-lexer';
 import { aheadOnLine } from '../../../src/lib/editor/mermaid/line-ahead';
 import { parseJourney } from '../../../src/lib/editor/mermaid/journey-data';
 import { parseQuadrant } from '../../../src/lib/editor/mermaid/quadrant-data';
@@ -242,6 +244,46 @@ describe('class, ER and state lexers', () => {
     const { ms, value } = timed(() => sources.map((parse) => parse()));
     expect(ms).toBeLessThan(BUDGET_MS);
     expect(value.map((r) => r.ok)).toEqual(sources.map(() => false));
+  });
+
+  // Found by the sweep:
+  // - the `<tag a="x">` quote swap (/<(\w+)([^>]*)>/g, as mermaid's
+  //   cleanupText) split a `<word` with no `>` after it every way;
+  // - the `%%` comment pass (/^\s*%%…/gm) scanned the rest of a run of
+  //   blank lines from each line in it;
+  // - the ER attribute-word rule (`[^\s]*~.*~…`) scanned the rest of a
+  //   run of punctuation for each character in it.
+  for (const [name, parse] of [
+    ['class <word', () => parseClassSource(`classDiagram\n<<${'a'.repeat(40_000)}`)],
+    ['ER <word', () => parseErSource(`erDiagram\nA\n<${'a'.repeat(40_000)}`)],
+    ['state <word', () => parseStateSource(`stateDiagram-v2\nA\n<${'a'.repeat(40_000)}`)],
+    ['state blank lines', () => parseStateSource(`stateDiagram-v2\nA${'\n'.repeat(40_000)}`)],
+    ['ER entity block', () => parseErSource(`erDiagram\nA {\n${'#59;'.repeat(10_000)}`)],
+    ['ER braces', () => parseErSource(`erDiagram\n${'{{'.repeat(20_000)}`)],
+  ] as const) {
+    it(`reads a crafted ${name} in linear time`, () => {
+      const { ms } = timed(parse);
+      expect(ms).toBeLessThan(BUDGET_MS);
+    });
+  }
+
+  it('swaps tag quotes, finds comment lines and attribute words as the regexes did', () => {
+    const LS = String.fromCharCode(0x2028);
+    let hits = 0;
+    for (const s of randomRows(['<', '>', 'a', 'b', '"', '=', ' ', '\n', LS, '%%', '{', '~', '-', '\t'], 20_000, 12)) {
+      const tags = s.replace(/<(\w+)([^>]*)>/g, (_m, tag: string, attrs: string) => `<${tag}${attrs.replace(/="([^"]*)"/g, "='$1'")}>`);
+      expect(swapTagQuotes(s), JSON.stringify(s)).toBe(tags);
+      const comments = [...s.matchAll(/^\s*%%(?!{)[^\n]+\n?/gm)].map((m) => [m.index!, m.index! + m[0].length]);
+      expect(commentRanges(s), JSON.stringify(s)).toEqual(comments);
+      const ahead = tildeWordAhead(s);
+      for (let pos = 0; pos <= s.length; pos++) {
+        const word = /^(?:([^\s]*)[~].*[~]([^\s]*))/i.test(s.slice(pos));
+        expect(ahead(pos), `${JSON.stringify(s)} at ${pos}`).toBe(word);
+        if (word) hits++;
+      }
+      if (comments.length || tags !== s) hits++;
+    }
+    expect(hits).toBeGreaterThan(500);
   });
 
   it('still reads a direction anywhere on its line', () => {

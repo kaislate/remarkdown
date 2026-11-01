@@ -28,7 +28,7 @@
 // drives the source-preserving edits in state-edit.ts.
 import { decodeMermaidEntities } from '../mermaid-parser';
 import { findPreamble, type Span } from './source-text';
-import { styleSemicolons } from './entity-text';
+import { styleSemicolons, swapTagQuotes } from './entity-text';
 import { aheadOnLine } from './line-ahead';
 
 export type StateDirection = 'TB' | 'BT' | 'LR' | 'RL';
@@ -247,13 +247,43 @@ function matchRanges(text: string, re: RegExp): Array<[number, number]> {
   return out;
 }
 
+// What mermaid's cleanupComments removes, /^\s*%%(?!{)[^\n]+\n?/gm,
+// found by hand: from a line start, the blank lines and spaces after it
+// and then a `%%` line. The regex tried again from every line start in
+// a run of blank lines that doesn't end in a comment, each time
+// scanning to the end of the run (quadratic); they all fail alike, so
+// this goes on after the run.
+export function commentRanges(text: string): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const space = /\s*/y;
+  const lineBreak = /[\n\r\u2028\u2029]/g;
+  // Always a line start: 0, or just after a line break.
+  let p = 0;
+  while (p < text.length) {
+    space.lastIndex = p;
+    const q = p + space.exec(text)![0].length;
+    if (text.startsWith('%%', q) && q + 2 < text.length && text[q + 2] !== '{' && text[q + 2] !== '\n') {
+      const nl = text.indexOf('\n', q + 2);
+      const end = nl < 0 ? text.length : nl + 1;
+      out.push([p, end]);
+      p = end;
+      continue;
+    }
+    lineBreak.lastIndex = q;
+    const next = lineBreak.exec(text);
+    if (!next) break;
+    p = next.index + 1;
+  }
+  return out;
+}
+
 // mermaid's preprocessDiagram + Diagram.fromText, in the same order.
 function preprocess(source: string): Mapped {
   let m: Mapped = { text: source, map: Array.from({ length: source.length + 1 }, (_, i) => i) };
   // cleanupText: CRLF / CR → LF; `<tag a="x">` attribute quotes → '.
   m = dropRanges(m, matchRanges(m.text, /\r(?=\n)/g));
   let t = m.text.replace(/\r/g, '\n');
-  t = t.replace(/<(\w+)([^>]*)>/g, (_s, tag: string, attrs: string) => '<' + tag + attrs.replace(/="([^"]*)"/g, "='$1'") + '>');
+  t = swapTagQuotes(t);
   m = { text: t, map: m.map };
   // Frontmatter.
   const fm = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s.exec(m.text);
@@ -261,7 +291,7 @@ function preprocess(source: string): Mapped {
   // %%{…}%% directives (anywhere).
   m = dropRanges(m, matchRanges(m.text, /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi));
   // %% comment lines, then leading whitespace.
-  m = dropRanges(m, matchRanges(m.text, /^\s*%%(?!{)[^\n]+\n?/gm));
+  m = dropRanges(m, commentRanges(m.text));
   const lead = /^\s*/.exec(m.text)![0].length;
   if (lead) m = dropRanges(m, [[0, lead]]);
   // encodeEntities: a style / classDef line holding `#…;` loses its

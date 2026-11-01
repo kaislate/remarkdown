@@ -10,13 +10,21 @@
 // be one that can't overlap itself (a keyword and its value), so a
 // single left-to-right scan finds every place it starts.
 export function aheadOnLine(text: string, pattern: string, flags = ''): (pos: number) => boolean {
-  const starts = [...text.matchAll(new RegExp(pattern, `g${flags}`))].map((m) => m.index!);
-  const breaks = [...text.matchAll(/[\n\r\u2028\u2029]/g)].map((m) => m.index!);
+  const starts = offsets(text, new RegExp(pattern, `g${flags}`));
+  const breaks = offsets(text, LINE_BREAK);
   return (pos) => firstFrom(starts, pos) < firstFrom(breaks, pos);
 }
 
+// What a `.` doesn't match.
+export const LINE_BREAK = /[\n\r\u2028\u2029]/g;
+
+// Where `re` (global) matches in `text`, in order.
+export function offsets(text: string, re: RegExp): number[] {
+  return [...text.matchAll(re)].map((m) => m.index!);
+}
+
 // The first offset in the sorted `list` that is at or after `pos`.
-function firstFrom(list: number[], pos: number): number {
+export function firstFrom(list: number[], pos: number): number {
   let lo = 0;
   let hi = list.length;
   while (lo < hi) {

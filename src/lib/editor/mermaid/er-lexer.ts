@@ -2,7 +2,7 @@
 // (src/diagrams/er/parser/erDiagram.jison): same states, same rules,
 // same order, case-insensitive like the original. See class-lexer.ts.
 import type { Tok } from './class-lexer';
-import { aheadOnLine } from './line-ahead';
+import { aheadOnLine, firstFrom, LINE_BREAK, offsets } from './line-ahead';
 
 type Action = (lx: Lexer, text: string) => string | null;
 
@@ -123,11 +123,27 @@ const STATES: Record<string, number[]> = {
 // for them to match (see line-ahead.ts).
 const DIRECTION_RULES: Record<number, string> = { 7: 'direction\\s+TB', 8: 'direction\\s+BT', 9: 'direction\\s+RL', 10: 'direction\\s+LR' };
 
+// Rule 25, `([^\s]*)[~].*[~]([^\s]*)` (a `type~T~` attribute word), can
+// only match where the run of non-spaces ahead holds a `~` and another
+// `~` follows it on the line. Tried as a regex at every token in an
+// entity block it scanned the rest of that run each time, and a run of
+// punctuation is read one character at a time (quadratic).
+export function tildeWordAhead(text: string): (pos: number) => boolean {
+  const tildes = offsets(text, /~/g);
+  const spaces = offsets(text, /\s/g);
+  const breaks = offsets(text, LINE_BREAK);
+  return (pos) => {
+    const t = firstFrom(tildes, pos);
+    return t < firstFrom(spaces, pos) && firstFrom(tildes, t + 1) < firstFrom(breaks, t);
+  };
+}
+
 export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } | { ok: false; at: number } {
   const lx = new Lexer();
   const tokens: Tok[] = [];
   const ahead: Record<number, (pos: number) => boolean> = {};
   for (const [idx, pattern] of Object.entries(DIRECTION_RULES)) ahead[+idx] = aheadOnLine(text, pattern, 'i');
+  ahead[25] = tildeWordAhead(text);
   let pos = start;
   let guard = 0;
   for (;;) {
