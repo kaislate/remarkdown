@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::doc_paths::document_path;
+use crate::doc_paths::{check_readable, document_path, is_document_path, is_sidecar_name, why_unreadable};
 
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
@@ -169,6 +169,7 @@ pub async fn read_document(path: String) -> Result<ReadDocumentResult, CommandEr
 
 fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandError> {
     let md_path = document_path(&path)?;
+    check_readable(&md_path, is_document_path)?;
     let bytes = match read_capped(&md_path, DOCUMENT_LIMIT) {
         Ok(bytes) => bytes,
         Err(ReadRefused::NotAFile) => {
@@ -192,8 +193,15 @@ fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandErr
         // program has open, a cloud file not downloaded yet), and backing
         // the sidecar up would hide its annotations from the user, so the
         // document fails to open with the error, as it always has. Only a
-        // sidecar that has gone since exists() looked counts as none.
-        match read_capped(&sc_path, SIDECAR_LIMIT) {
+        // sidecar that has gone since exists() looked counts as none. One
+        // that links to a file that isn't a sidecar (check_readable) is
+        // never read, and will never load either.
+        let read = match why_unreadable(&sc_path, is_sidecar_name) {
+            Ok(None) => read_capped(&sc_path, SIDECAR_LIMIT),
+            Ok(Some(_)) => Err(ReadRefused::NotAFile),
+            Err(e) => Err(ReadRefused::Io(e)),
+        };
+        match read {
             Ok(raw) => match String::from_utf8(raw) {
                 Ok(text) => Some(text),
                 Err(_) => {
@@ -466,7 +474,8 @@ mod tests {
         fs::create_dir(&folder).unwrap();
 
         let result = read_document_blocking(folder.to_string_lossy().into_owned());
-        assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("ordinary file")));
+        // check_readable refuses it before read_capped would.
+        assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("not a file")));
     }
 
     #[test]
@@ -789,5 +798,43 @@ mod tests {
         let p = path.to_string_lossy().into_owned();
         write_document_blocking(p, "mine".into(), Some(sha_of(b"old"))).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "mine");
+    }
+
+    // git and tar check out symlinks on macOS and Linux, so a repo can ship
+    // a document or a sidecar that points at a secret.
+    #[cfg(unix)]
+    #[test]
+    fn read_document_does_not_read_through_a_link_to_another_kind_of_file() {
+        use std::os::unix::fs::symlink;
+        let dir = tempdir().unwrap();
+        let secret = dir.path().join("credentials");
+        fs::write(&secret, b"private").unwrap();
+        let md = dir.path().join("notes.md");
+        symlink(&secret, &md).unwrap();
+        assert!(matches!(read_document_blocking(md.to_string_lossy().into_owned()), Err(CommandError::Io(_))));
+
+        let real = dir.path().join("README.md");
+        fs::write(&real, b"# hi").unwrap();
+        symlink(&secret, dir.path().join("README.md.remarkdown.json")).unwrap();
+        // The document still opens; its sidecar is offered for backing up.
+        let result = read_document_blocking(real.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.sidecar_raw, None);
+        assert!(result.sidecar_unreadable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_document_follows_a_link_to_another_document() {
+        use std::os::unix::fs::symlink;
+        let dir = tempdir().unwrap();
+        let shared = dir.path().join("shared.md");
+        fs::write(&shared, b"# shared").unwrap();
+        fs::write(dir.path().join("shared.md.remarkdown.json"), b"{}").unwrap();
+        let md = dir.path().join("notes.md");
+        symlink(&shared, &md).unwrap();
+        symlink(dir.path().join("shared.md.remarkdown.json"), dir.path().join("notes.md.remarkdown.json")).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.markdown, "# shared");
+        assert_eq!(result.sidecar_raw.as_deref(), Some("{}"));
     }
 }
