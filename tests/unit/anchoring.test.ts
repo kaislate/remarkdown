@@ -538,7 +538,9 @@ describe('anchors in repetitive text', () => {
     expect(resolveAnchor(anchor, root)).toBeNull();
     expect(resolveAnchor({ ...anchor, blockHint: 'p:9' }, root)).toBeNull();
     expect(resolveAnchor({ ...anchor, endBlockHint: 'p:1' }, root)).toBeNull();
-    expect(performance.now() - t0).toBeLessThan(500);
+    // About 0.2 s here, and up to 2.5 s on a CI runner; the code before
+    // took 2 s here for each of the three.
+    expect(performance.now() - t0).toBeLessThan(5_000);
   });
 
   it('still finds a short word among thousands of its copies', () => {
