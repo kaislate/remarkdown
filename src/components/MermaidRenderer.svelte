@@ -61,16 +61,26 @@
       else misses.push(el);
     }
     const total = misses.length;
-    while (misses.length > 0) {
-      // Each diagram is drawn in its own task, so the page can paint and
-      // take input in between; the next one is whichever is now nearest to
-      // what's on screen (the reading position is restored meanwhile, and
-      // the user may scroll).
-      if (misses.length < total) {
+    // Diagrams nearest to what's on screen are drawn first: the reading
+    // position is restored meanwhile, and the user may scroll. One on
+    // screen or near it is followed by a break, so the page paints it and
+    // takes input before going on. Ones further away are drawn back to
+    // back, with a break every BREAK_EVERY_MS. Each break lays out and
+    // paints the whole article, and so does measuring where the blocks
+    // are once a diagram has changed it, so the order is worked out again
+    // only after a break (nothing can scroll in between).
+    let lastBreak = performance.now();
+    let breakNext = false;
+    let queue = byDistanceFromScreen(misses);
+    while (queue.length > 0) {
+      if (breakNext || performance.now() - lastBreak >= BREAK_EVERY_MS) {
         await new Promise((r) => setTimeout(r, 0));
         if (pass !== passSeq) return;
+        lastBreak = performance.now();
+        queue = byDistanceFromScreen(queue.map((q) => q.el));
       }
-      const el = misses.splice(nearestToScreen(misses), 1)[0];
+      const { el, distance } = queue.shift()!;
+      breakNext = distance <= window.innerHeight;
       const outcome = await renderMermaid(el.dataset.mermaid ?? '', ctx);
       // A newer pass (theme switched again, new document) owns the
       // blocks now; a detached block belongs to a document that's gone.
@@ -83,21 +93,18 @@
     if (total > 0) startupMark('mermaid-pass-done', `${total} diagrams`);
   }
 
-  // Index of the block closest to the visible part of the window (0 for
-  // one on screen); the first such block in document order on a tie.
-  function nearestToScreen(blocks: HTMLElement[]): number {
+  const BREAK_EVERY_MS = 100;
+
+  // The blocks by how far each is from the visible part of the window (0
+  // on screen), nearest first; document order among equals.
+  function byDistanceFromScreen(blocks: HTMLElement[]): { el: HTMLElement; distance: number }[] {
     const height = window.innerHeight;
-    let best = 0;
-    let bestDistance = Infinity;
-    blocks.forEach((el, i) => {
-      const r = el.getBoundingClientRect();
-      const distance = r.bottom < 0 ? -r.bottom : r.top > height ? r.top - height : 0;
-      if (distance < bestDistance) {
-        best = i;
-        bestDistance = distance;
-      }
-    });
-    return best;
+    return blocks
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { el, distance: r.bottom < 0 ? -r.bottom : r.top > height ? r.top - height : 0 };
+      })
+      .sort((a, b) => a.distance - b.distance);
   }
 
   $effect(() => {
