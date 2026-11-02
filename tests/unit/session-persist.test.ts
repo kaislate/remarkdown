@@ -290,9 +290,11 @@ describe('restoreSavedTabs', () => {
     await restoreSavedTabs();
     await finishSessionRestore();
     expect(findSessionByPath('/c.md')).toBe(get(sessions)[2]);
+    const dispose = installSessionAutosave();
     vi.mocked(saveSessionJson).mockClear();
     await flushSessionNow();
     expect(JSON.parse(vi.mocked(saveSessionJson).mock.lastCall![0])).toMatchObject({ tabs: ['/a.md', '/b.md', '/c.md'], active: 1 });
+    dispose();
   });
 });
 
@@ -452,6 +454,25 @@ describe('installSessionAutosave', () => {
     await flushSessionNow();
     expect(saveSessionJson).toHaveBeenCalledTimes(1);
     dispose();
+  });
+
+  // The window closing (or, on a Mac, losing focus) while startup is still
+  // reading the saved tabs would otherwise write the empty start tab over
+  // them: the next launch would open with none.
+  it('writes nothing before startup has put the saved tabs back', async () => {
+    resetSessionsForTests();
+    await flushSessionNow();
+    expect(saveSessionJson).not.toHaveBeenCalled();
+
+    const dispose = installSessionAutosave();
+    await openPaths(['/a.md']);
+    await flushSessionNow();
+    expect(saveSessionJson).toHaveBeenCalledTimes(1);
+    dispose();
+
+    vi.mocked(saveSessionJson).mockClear();
+    await flushSessionNow();
+    expect(saveSessionJson).not.toHaveBeenCalled();
   });
 
   it('does not write outside tabs mode', async () => {

@@ -201,8 +201,14 @@ function currentSnapshot(): string {
   return serializeSession(tabs, active);
 }
 
+// Set while installSessionAutosave's is in place, which App does once the
+// startup opens are done. Before that the tab bar doesn't hold the saved tabs
+// yet, so a close (or a Mac's blur) flush would write the empty start tab
+// over them.
+let autosaveInstalled = false;
+
 function shouldPersist(): boolean {
-  return get(settings).openMode === 'tabs' && windowLabel() === 'main';
+  return autosaveInstalled && get(settings).openMode === 'tabs' && windowLabel() === 'main';
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -232,6 +238,7 @@ export async function flushSessionNow(): Promise<void> {
 // Save (debounced) whenever tabs open, close, switch, or a tab's document
 // changes path. Returns a dispose function.
 export function installSessionAutosave(): () => void {
+  autosaveInstalled = true;
   const schedule = () => {
     if (!shouldPersist()) return;
     if (saveTimer) clearTimeout(saveTimer);
@@ -245,6 +252,7 @@ export function installSessionAutosave(): () => void {
   });
   const unsubActive = activeSession.subscribe(schedule);
   return () => {
+    autosaveInstalled = false;
     unsubSessions();
     unsubActive();
     docUnsubs.forEach((u) => u());
