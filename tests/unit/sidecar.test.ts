@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadSidecar, serializeSidecar, emptySidecar, MAX_ANNOTATIONS, MAX_DRAWN_POINTS } from '../../src/lib/sidecar';
+import { loadSidecar, serializeSidecar, emptySidecar, withinLoadLimits, MAX_ANNOTATIONS, MAX_DRAWN_POINTS } from '../../src/lib/sidecar';
 import type { Drawing } from '../../src/lib/schema';
 
 const fixture = (name: string) =>
@@ -219,6 +219,31 @@ describe('sidecar', () => {
       style.mockRestore();
       root.remove();
     }
+  });
+
+  // The limits are checked as a drawing is added, so a file the app wrote
+  // always loads again: a pen user hits the limit at about 3,000 short
+  // strokes, and a refused file would hide every highlight and note too.
+  it('fills a document to the drawing limit, and the file it writes loads again', () => {
+    const s = emptySidecar({ path: 'a.md', sha256: 'abc', lastSeenBytes: 42 });
+    const tick = (i: number) => ({
+      id: `d${i}`, type: 'drawing', createdAt: 'now', updatedAt: 'now',
+      shape: { kind: 'freehand', anchor: { blockId: 'p:1' }, points: [[0, 0], [1, 1]], color: '#000', width: 2 },
+    }) as Drawing;
+    const list = s.annotations as unknown[];
+    while (withinLoadLimits([...list, tick(list.length)])) list.push(tick(list.length));
+    // Each counts as the shortest drawing, two short lines.
+    expect(list).toHaveLength(MAX_DRAWN_POINTS / 16);
+    expect(loadSidecar(serializeSidecar(s)).ok).toBe(true);
+    list.push(tick(list.length));
+    expect(withinLoadLimits(list)).toBe(false);
+    expect(loadSidecar(serializeSidecar(s)).ok).toBe(false);
+  });
+
+  it('counts annotations the way loading does', () => {
+    const highlights = (n: number) => JSON.parse(withHighlights(n)).annotations as unknown[];
+    expect(withinLoadLimits(highlights(MAX_ANNOTATIONS))).toBe(true);
+    expect(withinLoadLimits(highlights(MAX_ANNOTATIONS + 1))).toBe(false);
   });
 
   it('emptySidecar produces a valid, minimal sidecar', () => {

@@ -1,14 +1,18 @@
 <script lang="ts">
   import { ulid } from 'ulid';
   import rough from 'roughjs';
+  import { get } from 'svelte/store';
   import { tool } from '../stores/tool';
   import { settings } from '../stores/settings';
+  import { addToast } from '../stores/toasts';
   import {
+    annots,
     addAnnotation,
     removeAnnotation,
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { withinLoadLimits } from '../lib/sidecar';
   import { recognize, recognizeAsFreehand, arrowFromStrokes } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
   import { resolveAnchor } from '../lib/anchoring';
@@ -74,6 +78,7 @@
       });
     }
 
+    let full = false;
     for (const { stroke, result } of jobs) {
 
       let shape: Drawing['shape'];
@@ -117,9 +122,18 @@
         createdAt: now,
         updatedAt: now,
       };
+      // A sidecar with more drawing than this wouldn't load again, and a
+      // refused one hides every highlight and note with it.
+      if (!withinLoadLimits([...get(annots), drawingAnnot])) {
+        full = true;
+        continue;
+      }
       addAnnotation(drawingAnnot);
     }
     pendingStrokes = [];
+    if (full) {
+      addToast({ kind: 'warning', message: 'This document has as much drawing as it can hold. Erase some to draw more.' });
+    }
   }
 
   function eraseStrokeAt(clientX: number, clientY: number): boolean {

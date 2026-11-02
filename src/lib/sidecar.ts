@@ -16,8 +16,11 @@ export const MAX_ANNOTATIONS = 20_000;
 // out as well as drawn: so empty lines and shapes with no points (an
 // ellipse, a box) don't get in free. An ellipse counts by its size.
 // The limit is about half a second of drawing on a fast machine. It is 7 to
-// 14 minutes of pen on the page in one document; save.ts warns the file is
-// getting large well before, at about 24,000 points. Refused whole, as above.
+// 14 minutes of pen on the page in one document, or about 3,000 short
+// strokes; save.ts warns the file is getting large well before, at about
+// 24,000 points. Refused whole, as above. A pen reaches it, so the app
+// keeps to it as it adds a drawing (withinLoadLimits): it never writes a
+// file it would then refuse.
 export const MAX_DRAWN_POINTS = 50_000;
 const SHORT_LINE = 8;
 
@@ -34,7 +37,7 @@ const size = (n: unknown) => (typeof n === 'number' ? Math.abs(n) : 0);
 // two numbers to a point, so stuffing one with extra numbers doesn't get
 // past. A bracket's points count twice: it's drawn as straight lines, each
 // with its own wobble, which takes twice as long as a curve through them.
-function drawnPoints(annotations: unknown[]): number {
+function drawnPoints(annotations: readonly unknown[]): number {
   const line = (points: unknown): number => {
     let numbers = 0;
     if (Array.isArray(points)) {
@@ -60,6 +63,12 @@ function drawnPoints(annotations: unknown[]): number {
     total += Math.max(Math.ceil(cost), 2 * SHORT_LINE);
   }
   return total;
+}
+
+// Whether a sidecar holding these annotations would load: the same two
+// limits loadSidecar checks, counted the same way.
+export function withinLoadLimits(annotations: readonly unknown[]): boolean {
+  return annotations.length <= MAX_ANNOTATIONS && drawnPoints(annotations) <= MAX_DRAWN_POINTS;
 }
 
 export type LoadError =
