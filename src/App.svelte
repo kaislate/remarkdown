@@ -345,6 +345,10 @@
     // the user picks the highlight or draw tool they start in their preferred
     // colour rather than the historical preset[0].
     const s = get(settings);
+    // Documents open ready to edit: the editor's code is needed for the
+    // first one, so fetch it now, alongside the rest of startup (the
+    // document waits for it rather than showing an empty page).
+    if (s.openInEditMode) void loadEditor().catch(() => { /* edit mode tries again */ });
     document.documentElement.style.setProperty('--article-width', `${s.articleWidth}px`);
     zoomLevel.set(s.defaultZoom);
     tool.update((t) => ({

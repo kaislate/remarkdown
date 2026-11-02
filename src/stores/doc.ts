@@ -13,6 +13,7 @@ import { viewerScroll } from './viewport';
 import { settings } from './settings';
 import { activeProxy, activeSession, type DocSession } from './sessions';
 import { isLaunchedPath, startupMark, startupMarkWhenShown, startupTimed } from '../lib/startup-trace';
+import { editorComponent, loadEditor } from '../lib/editor-loader';
 
 export type { DocState } from './doc-types';
 
@@ -93,6 +94,13 @@ export async function loadIntoSession(
     toAssetUrl,
   }));
   if (launched) startupMark('launched-doc-rendered');
+  // "Open documents ready to edit": the editor's code is fetched on its own
+  // (lib/editor-loader.ts). Wait for it here, so the document appears with
+  // the editor instead of as an empty page while it arrives. If it can't be
+  // fetched, the document opens anyway and edit mode tries again.
+  if (isNewDocOpen && get(settings).openInEditMode && !get(session.editMode) && get(editorComponent) === null) {
+    await loadEditor().catch(() => {});
+  }
 
   let parsedAnnotations: Annotation[] = [];
   session.sidecarRefused = false;
