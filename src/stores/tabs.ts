@@ -66,10 +66,11 @@ export function findSessionByPath(path: string): DocSession | null {
 
 // A tab reopened from the last session is only read and rendered when it's
 // first needed: switched to, or its turn in the background load after
-// startup. Both can ask at once; they share one load. A tab whose file can't
-// be read (already reported with a toast) leaves the tab bar, as it never
-// appeared before reopened tabs loaded lazily. Resolves to whether the tab
-// now holds its document.
+// startup. Both can ask at once; they share one load. Saved tabs whose file
+// can't be read are left out before the tab bar shows (session-persist); one
+// that can't be read even so (it changed since, or its annotations file
+// can't be read) is reported with a toast and leaves the tab bar. Resolves
+// to whether the tab now holds its document.
 const lazyLoads = new WeakMap<DocSession, Promise<boolean>>();
 
 export function ensureSessionLoaded(session: DocSession): Promise<boolean> {

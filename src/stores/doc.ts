@@ -44,6 +44,17 @@ export async function loadDocument(path: string): Promise<boolean> {
   return loadIntoSession(get(activeSession), path);
 }
 
+// Says why a document couldn't be opened (read_document's error).
+export function reportOpenError(err: unknown): void {
+  if (err && typeof err === 'object' && 'NotUtf8' in err) {
+    addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
+  } else if (err && typeof err === 'object' && 'Io' in err) {
+    addToast({ kind: 'error', message: `Could not open file: ${(err as Record<string, unknown>).Io}` });
+  } else {
+    addToast({ kind: 'error', message: `Could not open file: ${String(err)}` });
+  }
+}
+
 // Loads `path` into `session`, which may be a background tab (tabs mode
 // loads a new tab before switching to it). Returns true when the document
 // is loaded (or was already loaded and unchanged), false on a read error —
@@ -63,13 +74,7 @@ export async function loadIntoSession(
   try {
     r = await startupTimed('read', () => readDocument(path));
   } catch (err) {
-    if (err && typeof err === 'object' && 'NotUtf8' in err) {
-      addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
-    } else if (err && typeof err === 'object' && 'Io' in err) {
-      addToast({ kind: 'error', message: `Could not open file: ${(err as Record<string, unknown>).Io}` });
-    } else {
-      addToast({ kind: 'error', message: `Could not open file: ${String(err)}` });
-    }
+    reportOpenError(err);
     return false;
   }
 

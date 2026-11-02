@@ -5,6 +5,8 @@ vi.mock('../../src/lib/tauri-api', () => ({
   loadSessionJson: vi.fn(async () => null),
   saveSessionJson: vi.fn(async () => {}),
   checkPathsExist: vi.fn(async (paths: string[]) => paths.map((p) => !p.includes('gone'))),
+  checkSavedTabs: vi.fn(async (paths: string[]) => paths.map((p) =>
+    p.includes('gone') ? 'Missing' : p.includes('latin1') ? { Unreadable: 'NotUtf8' } : 'Readable')),
   windowLabel: vi.fn(() => 'main'),
 }));
 
@@ -37,7 +39,8 @@ import {
   flushSessionNow,
 } from '../../src/stores/session-persist';
 import { loadIntoSession } from '../../src/stores/doc';
-import { loadSessionJson, saveSessionJson, windowLabel } from '../../src/lib/tauri-api';
+import { checkSavedTabs, loadSessionJson, saveSessionJson, windowLabel } from '../../src/lib/tauri-api';
+import { toasts, clearToasts } from '../../src/stores/toasts';
 import { recordRecent } from '../../src/stores/recent';
 import { sessions, activeSession, resetSessionsForTests } from '../../src/stores/sessions';
 import { updateSettings, resetSettings } from '../../src/stores/settings';
@@ -112,6 +115,31 @@ describe('restoreSavedTabs', () => {
     await finishSessionRestore();
     expect(activePath()).toBe('/a.md');
     expect(tabPaths()).toEqual(['/a.md', '/c.md']);
+  });
+
+  // A saved tab whose file is there but can't be read is left out before
+  // the tab bar first shows, and said so at startup, as it always was.
+  it('a saved tab that cannot be read never shows; startup says why', async () => {
+    clearToasts();
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/latin1.md', '/b.md'], 2));
+    await restoreSavedTabs();
+    expect(tabPaths()).toEqual(['/a.md', '/b.md']);
+    expect(get(toasts).map((t) => t.message)).toEqual(['Could not open file: NotUtf8']);
+    await finishSessionRestore();
+    await loadRestoredTabsInBackground();
+    expect(activePath()).toBe('/b.md');
+    expect(tabPaths()).toEqual(['/a.md', '/b.md']);
+    expect(loadedPaths()).not.toContain('/latin1.md');
+    clearToasts();
+  });
+
+  it('if the saved tabs cannot be checked, they are all put back as before', async () => {
+    vi.mocked(checkSavedTabs).mockRejectedValueOnce({ Io: 'it took over a minute to answer' });
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md'], 1));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(tabPaths()).toEqual(['/a.md', '/b.md']);
+    expect(activePath()).toBe('/b.md');
   });
 
   it('does nothing without a saved session', async () => {

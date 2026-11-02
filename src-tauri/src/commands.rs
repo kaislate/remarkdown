@@ -167,19 +167,22 @@ pub async fn read_document(path: String) -> Result<ReadDocumentResult, CommandEr
     on_blocking_thread(move || read_document_blocking(path)).await?
 }
 
+// A document's bytes, refused the way read_document refuses them.
+fn read_document_bytes(md_path: &Path) -> Result<Vec<u8>, CommandError> {
+    match read_capped(md_path, DOCUMENT_LIMIT) {
+        Ok(bytes) => Ok(bytes),
+        Err(ReadRefused::NotAFile) => Err(CommandError::Io("it isn't an ordinary file".into())),
+        Err(ReadRefused::TooLarge) => {
+            Err(CommandError::Io("the file is too large (over 50 MB)".into()))
+        }
+        Err(ReadRefused::Io(e)) => Err(e.into()),
+    }
+}
+
 fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandError> {
     let md_path = document_path(&path)?;
     check_readable(&md_path, is_document_path)?;
-    let bytes = match read_capped(&md_path, DOCUMENT_LIMIT) {
-        Ok(bytes) => bytes,
-        Err(ReadRefused::NotAFile) => {
-            return Err(CommandError::Io("it isn't an ordinary file".into()))
-        }
-        Err(ReadRefused::TooLarge) => {
-            return Err(CommandError::Io("the file is too large (over 50 MB)".into()))
-        }
-        Err(ReadRefused::Io(e)) => return Err(e.into()),
-    };
+    let bytes = read_document_bytes(&md_path)?;
     let sha256 = sha256_hex(&bytes);
     let byte_len = bytes.len() as u64;
     let markdown = String::from_utf8(bytes).map_err(|_| CommandError::NotUtf8)?;
@@ -294,6 +297,46 @@ fn check_paths_exist_blocking(paths: Vec<String>) -> Vec<bool> {
         .iter()
         .map(|p| document_path(p).is_ok_and(|p| check_readable(&p, is_document_path).is_ok()))
         .collect()
+}
+
+/// What reopening a saved tab would find. The frontend puts saved tabs in
+/// the tab bar before any is read; this tells it which to leave out first:
+/// files that are gone (quietly, like check_paths_exist) and files that are
+/// there but that read_document would refuse (with its error, to say so).
+#[derive(Debug, Serialize)]
+pub enum SavedTabCheck {
+    Missing,
+    Readable,
+    Unreadable(CommandError),
+}
+
+#[tauri::command]
+pub async fn check_saved_tabs(paths: Vec<String>) -> Result<Vec<SavedTabCheck>, CommandError> {
+    // Each file on its own worker: they're all read at once rather than
+    // one after another.
+    let checks: Vec<_> = paths
+        .into_iter()
+        .map(|p| tauri::async_runtime::spawn_blocking(move || check_saved_tab_blocking(&p)))
+        .collect();
+    let mut out = Vec::with_capacity(checks.len());
+    for check in checks {
+        out.push(check.await.map_err(|e| CommandError::Io(e.to_string()))?);
+    }
+    Ok(out)
+}
+
+fn check_saved_tab_blocking(path: &str) -> SavedTabCheck {
+    let Ok(md_path) = document_path(path) else { return SavedTabCheck::Missing };
+    if check_readable(&md_path, is_document_path).is_err() {
+        return SavedTabCheck::Missing;
+    }
+    // The document itself, as read_document reads it (its annotations file
+    // is looked at when the tab is opened).
+    match read_document_bytes(&md_path) {
+        Ok(bytes) if std::str::from_utf8(&bytes).is_ok() => SavedTabCheck::Readable,
+        Ok(_) => SavedTabCheck::Unreadable(CommandError::NotUtf8),
+        Err(e) => SavedTabCheck::Unreadable(e),
+    }
 }
 
 #[tauri::command]
@@ -712,6 +755,41 @@ mod tests {
             fake.to_string_lossy().into_owned(),
         ]);
         assert_eq!(result, vec![true, false]);
+    }
+
+    // Restoring the last session: a saved tab whose file is gone is skipped
+    // quietly; one that is there but can't be read reports read_document's
+    // error, so it can be said and the tab left out.
+    #[test]
+    fn check_saved_tab_tells_missing_readable_and_unreadable_apart() {
+        let dir = tempdir().unwrap();
+        let ok = dir.path().join("ok.md");
+        fs::write(&ok, b"# fine
+").unwrap();
+        let latin1 = dir.path().join("latin1.md");
+        fs::write(&latin1, &[b'c', b'a', b'f', 0xe9]).unwrap();
+        let huge = dir.path().join("huge.md");
+        fs::File::create(&huge).unwrap().set_len(DOCUMENT_LIMIT + 1).unwrap();
+        let gone = dir.path().join("gone.md");
+        let other = dir.path().join("picture.png");
+        fs::write(&other, b"x").unwrap();
+        let at = |p: &std::path::Path| check_saved_tab_blocking(&p.to_string_lossy());
+
+        assert!(matches!(at(&ok), SavedTabCheck::Readable));
+        assert!(matches!(at(&latin1), SavedTabCheck::Unreadable(CommandError::NotUtf8)));
+        assert!(matches!(at(&huge), SavedTabCheck::Unreadable(CommandError::Io(ref m)) if m.contains("too large")));
+        assert!(matches!(at(&gone), SavedTabCheck::Missing));
+        assert!(matches!(at(&other), SavedTabCheck::Missing));
+    }
+
+    #[test]
+    fn check_saved_tab_answers_as_the_frontend_expects() {
+        assert_eq!(serde_json::to_string(&SavedTabCheck::Missing).unwrap(), "\"Missing\"");
+        assert_eq!(serde_json::to_string(&SavedTabCheck::Readable).unwrap(), "\"Readable\"");
+        assert_eq!(
+            serde_json::to_string(&SavedTabCheck::Unreadable(CommandError::NotUtf8)).unwrap(),
+            "{\"Unreadable\":\"NotUtf8\"}"
+        );
     }
 
     #[test]

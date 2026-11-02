@@ -96,6 +96,10 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       const paths = args?.paths as string[];
       return paths.map((p) => getDoc(p) !== null);
     }
+    case 'check_saved_tabs': {
+      const paths = args?.paths as string[];
+      return paths.map((p) => (getDoc(p) !== null ? 'Readable' : 'Missing'));
+    }
     // Reading-progress persistence (stores/reading-progress.ts). Without
     // these the app's debounced save throws an unhandled rejection on
     // every scroll, which shows up as a page error in every spec.

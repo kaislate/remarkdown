@@ -136,6 +136,7 @@ fn main() {
             commands::clear_recent,
             commands::remove_recent,
             commands::check_paths_exist,
+            commands::check_saved_tabs,
             commands::backup_corrupt_sidecar,
             commands::load_settings,
             commands::save_settings,

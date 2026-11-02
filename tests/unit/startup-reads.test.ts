@@ -12,6 +12,7 @@ vi.mock('../../src/lib/tauri-api', () => ({
   loadSettingsJson: vi.fn(later('settings')),
   listRecent: vi.fn(later('recent')),
   checkPathsExist: vi.fn(async (paths: string[]) => paths.map(() => true)),
+  checkSavedTabs: vi.fn(async (paths: string[]) => paths.map(() => 'Readable')),
   loadReadingProgressJson: vi.fn(later('progress')),
   saveSettingsJson: vi.fn(async () => {}),
   saveReadingProgressJson: vi.fn(async () => {}),

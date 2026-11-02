@@ -11,7 +11,8 @@ import { get } from 'svelte/store';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
 import { activateSession, ensureSessionLoaded, restoringTab, shownTab, switchesSettled } from './tabs';
 import { settings } from './settings';
-import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
+import { checkSavedTabs, loadSessionJson, saveSessionJson, windowLabel, type SavedTabCheck } from '../lib/tauri-api';
+import { reportOpenError } from './doc';
 import { runOpenExclusive } from '../lib/open-files';
 
 const SCHEMA_VERSION = 1;
@@ -44,10 +45,10 @@ export function parseSession(raw: string | null): SavedSession | null {
   return { tabs, active };
 }
 
-// Reopen the saved tabs. Files that no longer exist are skipped silently;
-// restored tabs are not pushed into recents (the user didn't just open
-// them). Runs in the open queue so a double-click arriving meanwhile waits
-// its turn.
+// Reopen the saved tabs. Files that no longer exist are skipped silently,
+// ones that can't be read with an error toast; restored tabs are not pushed
+// into recents (the user didn't just open them). Runs in the open queue so a
+// double-click arriving meanwhile waits its turn.
 //
 // Startup shows one document as soon as it can, so this only puts the saved
 // tabs in the tab bar; none is read yet. The empty start tab stays active,
@@ -72,18 +73,27 @@ async function restoreSavedTabsNow(): Promise<void> {
   }
   if (!saved || saved.tabs.length === 0) return;
 
-  let exists: boolean[];
+  // Files that are gone are left out quietly; ones that are there but can't
+  // be read are left out too, saying why, so no tab shows up only to drop
+  // out once it's read. (If the check itself fails, every tab goes back and
+  // a file that can't be read says so when its tab is read.)
+  let checks: SavedTabCheck[];
   try {
-    exists = await checkPathsExist(saved.tabs);
+    checks = await checkSavedTabs(saved.tabs);
   } catch {
-    exists = saved.tabs.map(() => true);
+    checks = saved.tabs.map(() => 'Readable');
   }
 
   const start = get(activeSession);
   const restored: DocSession[] = [];
   let activeAt = -1;
   for (let i = 0; i < saved.tabs.length; i++) {
-    if (!exists[i]) continue;
+    const check = checks[i];
+    if (check === 'Missing') continue;
+    if (typeof check === 'object' && check !== null && 'Unreadable' in check) {
+      reportOpenError(check.Unreadable);
+      continue;
+    }
     const session = createSession();
     session.lazyPath = saved.tabs[i];
     if (i === saved.active) activeAt = restored.length;

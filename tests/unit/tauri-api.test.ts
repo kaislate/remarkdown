@@ -15,6 +15,7 @@ import {
   listRecent,
   toAssetUrl,
   checkPathsExist,
+  checkSavedTabs,
   FILE_WAIT_MS,
   openExternal,
 } from '../../src/lib/tauri-api';
@@ -120,6 +121,13 @@ describe('tauri-api wrapper', () => {
     it('checkPathsExist gives up on it too', async () => {
       vi.mocked(invoke).mockReturnValue(new Promise(() => {}));
       const outcome = checkPathsExist(['/net/gone/x.md']).then(() => 'answered', (err: unknown) => err);
+      await vi.advanceTimersByTimeAsync(FILE_WAIT_MS);
+      expect(await Promise.race([outcome, 'still waiting'])).toEqual({ Io: 'it took over a minute to answer' });
+    });
+
+    it('checkSavedTabs gives up on it too', async () => {
+      vi.mocked(invoke).mockReturnValue(new Promise(() => {}));
+      const outcome = checkSavedTabs(['/net/gone/x.md']).then(() => 'answered', (err: unknown) => err);
       await vi.advanceTimersByTimeAsync(FILE_WAIT_MS);
       expect(await Promise.race([outcome, 'still waiting'])).toEqual({ Io: 'it took over a minute to answer' });
     });
