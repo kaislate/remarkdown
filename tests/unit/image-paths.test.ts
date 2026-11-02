@@ -214,6 +214,9 @@ describe('automounted network folders on macos and linux', () => {
       ['%2Fnet%2Fattacker.example%2Fx.png', '/Users/me/docs'],
       ['../../../net/attacker.example/x.png', '/Users/me/docs'],
       ['attacker.example/x.png', '/net'],
+      // the same mounts, through the path macOS gives its data volume
+      ['/System/Volumes/Data/net/attacker.example/x.png', '/Users/me/docs'],
+      ['/system/volumes/data/Network/Servers/attacker.example/x.png', '/Users/me/docs'],
     ]) {
       expect(resolveImageSrc(src, dir, toAsset), src).toBe('');
     }
@@ -226,6 +229,7 @@ describe('automounted network folders on macos and linux', () => {
     expect(resolveImageSrc('/Users/me/net/x.png', '/Users/me', toAsset)).toBe('asset:/Users/me/net/x.png');
     expect(resolveImageSrc('net/x.png', '/Users/me', toAsset)).toBe('asset:/Users/me/net/x.png');
     expect(resolveImageSrc('/network.png', '/Users/me', toAsset)).toBe('asset:/network.png');
+    expect(resolveImageSrc('/System/Volumes/Data/Users/me/net/x.png', '/Users/me', toAsset)).toBe('asset:/System/Volumes/Data/Users/me/net/x.png');
   });
 
   it('on windows a /net path is left as written, as any rooted path is', () => {

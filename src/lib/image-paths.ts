@@ -99,7 +99,9 @@ export function imageSrcFor(docDir: string, picked: string): string {
 // That costs a document opened from /net itself its pictures too: the
 // asset protocol refuses /net as well, and can't tell the document's own
 // host from another. macOS has had /net off by default since 10.15.
-const isAutomounted = (path: string) => /^\/(net|network)(\/|$)/i.test(joinPath('', path));
+// macOS also reaches them through /System/Volumes/Data, its data volume's
+// own path.
+const isAutomounted = (path: string) => /^\/(system\/volumes\/data\/)?(net|network)(\/|$)/i.test(joinPath('', path));
 
 // A file the window loads through the asset protocol.
 function fileUrl(path: string, toAssetUrl: (path: string) => string): string {

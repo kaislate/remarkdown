@@ -165,12 +165,16 @@ pub fn is_network_or_device_path(path: &str) -> bool {
 /// includes the pictures of a document opened from /net itself: nothing
 /// here knows which host the document came from, and macOS has had /net
 /// off by default since 10.15. Other automount roots (/afs, a custom autofs
-/// map) aren't known.
+/// map) aren't known. macOS also reaches the same folders through
+/// /System/Volumes/Data, its data volume's own path.
 pub fn is_automount_path(path: &str) -> bool {
-    let mut parts = Path::new(path).components();
-    parts.next() == Some(Component::RootDir)
-        && matches!(parts.next(), Some(Component::Normal(name))
-            if name.eq_ignore_ascii_case("net") || name.eq_ignore_ascii_case("network"))
+    let parts: Vec<Component> = Path::new(path).components().take(5).collect();
+    let named = |i: usize, names: &[&str]| {
+        matches!(parts.get(i), Some(Component::Normal(name))
+            if names.iter().any(|n| name.eq_ignore_ascii_case(n)))
+    };
+    let first = if named(1, &["System"]) && named(2, &["Volumes"]) && named(3, &["Data"]) { 4 } else { 1 };
+    parts.first() == Some(&Component::RootDir) && named(first, &["net", "network"])
 }
 
 /// Whether a link's target stays on this machine's disks: a drive, a
@@ -398,6 +402,9 @@ mod tests {
             "/./net/attacker.example/x.png",
             "/Network/Servers/attacker.example/x.png",
             "/net",
+            // The same mounts, through the path macOS gives its data volume.
+            "/System/Volumes/Data/net/attacker.example/x.png",
+            "/system/volumes/data/Network/Servers/attacker.example/x.png",
         ] {
             assert!(is_automount_path(p), "{p:?}");
             let got = serve(p, |_| panic!("the scope was asked about {p:?}"));
@@ -406,6 +413,8 @@ mod tests {
         for p in [
             "/Users/me/net/x.png",
             "/network.png",
+            "/System/net/x.png",
+            "/System/Volumes/Data/Users/me/net/x.png",
             "net/x.png",
             "C:/net/x.png",
         ] {
