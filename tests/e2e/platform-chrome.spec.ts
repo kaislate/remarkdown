@@ -69,6 +69,26 @@ test('on Windows the app keeps its own buttons and the menu button stays at 14px
   expect((await rect(page, '.hamburger')).top).toBe(14);
 });
 
+test('the aura behind the window buttons swoops while the window has focus and holds still behind another', async ({ page }) => {
+  await boot(page, 'windows');
+  const aura = page.locator('.controls-aura');
+  const states = () => aura.evaluate((el) => el.getAnimations().map((a) => a.playState));
+  await expect.poll(states).toEqual(['running']);
+  // Another window takes focus.
+  await page.evaluate(() => {
+    document.hasFocus = () => false;
+    window.dispatchEvent(new Event('blur'));
+  });
+  await expect.poll(states).toEqual(['paused']);
+  // Back again: the same swoop, picked up where it stopped.
+  await page.evaluate(() => {
+    document.hasFocus = () => true;
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect.poll(states).toEqual(['running']);
+  expect(await aura.evaluate((el) => getComputedStyle(el).animationName)).toContain('swoop');
+});
+
 test('the left column steps down on a Mac; the top tabs stay on their line', async ({ browser }) => {
   const win = await bootFresh(browser, 'windows');
   const mac = await bootFresh(browser, 'macos');
