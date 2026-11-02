@@ -37,7 +37,13 @@ import { recordRecent } from '../../src/stores/recent';
 import { sessions, activeSession, resetSessionsForTests } from '../../src/stores/sessions';
 import { updateSettings, resetSettings } from '../../src/stores/settings';
 import { openPaths } from '../../src/lib/open-files';
-import { activateSession, closeSession, findSessionByPath } from '../../src/stores/tabs';
+import {
+  activateSession,
+  closeOtherSessions,
+  closeSession,
+  closeSessionsAfter,
+  findSessionByPath,
+} from '../../src/stores/tabs';
 
 const openTabs = () => get(sessions).map((s) => get(s.doc)?.path ?? null);
 const activePath = () => get(get(activeSession).doc)?.path ?? null;
@@ -178,6 +184,39 @@ describe('restoreSavedTabs', () => {
     await loadRestoredTabsInBackground();
     expect(loadedPaths()).toEqual(['/a.md', '/c.md']);
     expect(tabPaths()).toEqual(['/a.md', '/c.md']);
+  });
+
+  // "Close others" / "Close tabs to the right" first show the tab the user
+  // right-clicked. If that tab turns out to be unreadable it drops out, and
+  // nothing else may be closed: not the tab being read, not the saved set.
+  it('"Close others" on a tab that cannot be read closes nothing else', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/broken.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    const broken = get(sessions).find((s) => s.lazyPath === '/broken.md')!;
+    await closeOtherSessions(broken.id);
+    expect(activePath()).toBe('/a.md');
+    expect(tabPaths()).toEqual(['/a.md', '/c.md']);
+  });
+
+  it('"Close tabs to the right" of a tab that cannot be read closes nothing else', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/broken.md', '/d.md'], 3));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(activePath()).toBe('/d.md');
+    const broken = get(sessions).find((s) => s.lazyPath === '/broken.md')!;
+    await closeSessionsAfter(broken.id);
+    expect(activePath()).toBe('/d.md');
+    expect(tabPaths()).toEqual(['/a.md', '/b.md', '/d.md']);
+  });
+
+  it('"Close others" on a tab not loaded yet loads it and closes the rest', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    await closeOtherSessions(get(sessions)[2].id);
+    expect(activePath()).toBe('/c.md');
+    expect(tabPaths()).toEqual(['/c.md']);
   });
 
   it('tabs not loaded yet are still found by path and still saved', async () => {

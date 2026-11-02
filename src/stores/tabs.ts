@@ -243,8 +243,15 @@ export async function cycleSession(delta: 1 | -1): Promise<void> {
 // Bulk closes from the tab context menu. The tab the user right-clicked
 // becomes (or stays) the visible one first, so closing the rest never
 // flashes a neighbour that is about to go too.
+//
+// If that tab doesn't become the visible one (a reopened tab whose file
+// turned out unreadable drops out instead), nothing else is closed: the
+// tab being read, and the saved tab set, stay as they are.
 async function closeAllBut(keep: DocSession, closing: DocSession[]): Promise<void> {
-  if (closing.includes(get(activeSession))) await activateSession(keep.id);
+  if (closing.includes(get(activeSession))) {
+    await activateSession(keep.id);
+    if (keep.closed || get(activeSession) !== keep) return;
+  }
   for (const s of closing) await closeSession(s.id);
 }
 
