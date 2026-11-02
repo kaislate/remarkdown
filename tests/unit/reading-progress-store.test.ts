@@ -62,8 +62,7 @@ describe('reading-progress store', () => {
 });
 
 // Months of use leave an entry for every file ever scrolled. Each scroll
-// event must not copy that whole history, and the file must not grow
-// without end.
+// event must not copy that whole history.
 describe('reading-progress store at scale', () => {
   function seed(n: number): void {
     const documents: Record<string, { scrollRatio: number; lastReadAt: string }> = {};
@@ -93,22 +92,18 @@ describe('reading-progress store at scale', () => {
     expect(seen.slice(-2)).toEqual([0.25, 0.5]);
   });
 
-  it('saves only the 500 most recently read documents', async () => {
+  // Every document's place is kept, however many: the user may come back
+  // to any of them, and dropping older ones would lose where they were.
+  it('keeps the place in every document ever read', async () => {
     seed(1200);
     recordProgress('/now.md', 0.7);
     await vi.advanceTimersByTimeAsync(900);
     expect(saveReadingProgressJson).toHaveBeenCalledTimes(1);
     const saved = JSON.parse((saveReadingProgressJson as ReturnType<typeof vi.fn>).mock.calls[0][0]);
-    const paths = Object.keys(saved.documents);
-    expect(paths).toHaveLength(500);
+    expect(Object.keys(saved.documents)).toHaveLength(1201);
     expect(saved.documents['/now.md'].scrollRatio).toBe(0.7);
-    // The newest of the old ones stay, the oldest go.
-    expect(saved.documents['/old/1199.md']).toBeDefined();
-    expect(saved.documents['/old/701.md']).toBeDefined();
-    expect(saved.documents['/old/700.md']).toBeUndefined();
-    expect(saved.documents['/old/0.md']).toBeUndefined();
-    // Memory matches what was written.
-    expect(Object.keys(get(readingProgress).documents)).toHaveLength(500);
+    expect(saved.documents['/old/0.md']).toEqual({ scrollRatio: 0.5, lastReadAt: new Date(0).toISOString() });
+    expect(Object.keys(get(readingProgress).documents)).toHaveLength(1201);
   });
 
   it('keeps a small history whole', async () => {
