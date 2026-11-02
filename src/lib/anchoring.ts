@@ -15,23 +15,24 @@ const MAX_CANDIDATES = 1000;
 // And each anchor still searches the article up to three times, so 20,000
 // anchors (the most a sidecar may hold) over a long article took minutes. One
 // pass may look at this many characters in all, a scored place counting as
-// the context it compares: about a second on the slowest text to search
-// (every character the start of a near-match), a tenth of that on prose.
-// The heaviest real case, hundreds of annotations in a 300 KB article whose
-// paragraphs all moved, takes about 150 million. Past it, the pass's
-// remaining anchors are left unplaced: their annotations aren't changed
-// (they're saved back as they are), and the next pass tries them again.
-// The searches check it too, as one anchor can run far past it alone: text
-// that's half of a long paragraph is found at a thousand places, and each
-// find reads it all.
-const PASS_BUDGET = 250_000_000;
+// the context it compares: about half a second on prose, four on the slowest
+// text to search (every character the start of a near-match), which the time
+// limit below stops first. An anchor whose block moved looks near it before
+// searching the whole article (see NEARBY), so a heavy reader's thousand
+// highlights in a 600 KB article with a paragraph added at the top take a
+// few million; each searched for in the whole article (had the words around
+// each been edited too), 600 million. Past it, the pass's remaining anchors are
+// left unplaced: their annotations aren't changed (they're saved back as
+// they are), and the next pass tries them again. The searches check it too,
+// as one anchor can run far past it alone: text that's half of a long
+// paragraph is found at a thousand places, and each find reads it all.
+const PASS_BUDGET = 1_000_000_000;
 // The characters a search passes over are only a guess at what it costs: a
 // browser's search can compare a long text at each place it passes, and
 // how often it does differs between browsers. So a pass also stops at this
-// many milliseconds, whatever it has counted: ten times what the heaviest
-// real case above takes, as a pass cut short shows the rest of its
-// annotations as unplaced, and the next pass, cut at the same place, would
-// too.
+// many milliseconds, whatever it has counted: twice what the budget takes on
+// prose, as a pass cut short shows the rest of its annotations as unplaced,
+// and the next pass, cut at the same place, would too.
 const PASS_TIME = 1_000;
 // A text longer than this is searched for by its first this-many
 // characters, and each place they're found is checked for the rest. Given
@@ -72,8 +73,16 @@ function textWalker(scope: HTMLElement, skipDiagrams: boolean): TreeWalker {
 interface TextNodes { nodes: Text[]; starts: number[] }
 
 // An article's blocks, in order and by id; and, once an anchor has needed
-// to search all of them, their texts joined (see blockHits).
-interface Blocks { list: HTMLElement[]; byId: Map<string, HTMLElement>; joined?: { text: string; starts: number[] } }
+// to search all of them, their texts joined (see blockHits). And, once an
+// anchor has missed its block, where each block is in the list, and how far
+// the blocks of the anchors found since had moved (see nearbyBlocks).
+interface Blocks {
+  list: HTMLElement[];
+  byId: Map<string, HTMLElement>;
+  joined?: { text: string; starts: number[] };
+  order?: { ofBlock: Map<HTMLElement, number>; ofNumber: Map<number, number> };
+  moves: { at: Map<number, number>; last: number };
+}
 
 // What the current resolvingPass has built already: per scope, its text and
 // its text nodes; per article, its blocks.
@@ -135,7 +144,7 @@ function blocksOf(viewerRoot: HTMLElement): Blocks {
     const byId = new Map<string, HTMLElement>();
     // The first of any two with one id, as querySelector finds it.
     for (const b of list) if (!byId.has(b.dataset.blockId!)) byId.set(b.dataset.blockId!, b);
-    blocks = { list, byId };
+    blocks = { list, byId, moves: { at: new Map(), last: 0 } };
     pass?.blocks.set(viewerRoot, blocks);
   }
   return blocks;
@@ -383,9 +392,8 @@ function resolveInRoot(anchor: Anchor, viewerRoot: HTMLElement, lenient: boolean
 // long article, which a crafted sidecar repeats for each of its anchors. A
 // match that runs past the end of its block's text isn't in the block, and
 // is skipped.
-function blockHits(viewerRoot: HTMLElement, needle: string, limit: number): { block: HTMLElement; i: number }[] {
+function blockHits(blocks: Blocks, needle: string, limit: number): { block: HTMLElement; i: number }[] {
   if (!needle) return [];
-  const blocks = blocksOf(viewerRoot);
   if (!blocks.joined) {
     const texts = blocks.list.map((b) => blockText(b));
     const starts: number[] = [];
@@ -416,8 +424,8 @@ function blockHits(viewerRoot: HTMLElement, needle: string, limit: number): { bl
 
 // uniqueInContext over every block: the one block, and place in it, where
 // the anchor's whole context occurs, if there is exactly one.
-function uniqueInContextOfBlocks(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
-  const found = blockHits(viewerRoot, anchor.prefix + anchor.text + anchor.suffix, 2);
+function uniqueInContextOfBlocks(anchor: Anchor, blocks: Blocks): Range | null {
+  const found = blockHits(blocks, anchor.prefix + anchor.text + anchor.suffix, 2);
   if (found.length !== 1) return null;
   const i = found[0].i + anchor.prefix.length;
   return rangeFromBlockOffsets(found[0].block, i, i + anchor.text.length);
@@ -429,6 +437,88 @@ export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | 
   // A search the cap cut short may have missed places the text is, so what
   // was made of the places it found can't be trusted.
   return spent() ? null : range;
+}
+
+// A block's id is its kind and its place in the article (`p:12`, the
+// twelfth block), so a block added or removed above an anchor's block
+// renumbers it: the anchor's hint then names another block, and each of a
+// heavy reader's thousand highlights would search the whole article (see
+// PASS_BUDGET). Blocks don't go far, though, and
+// the ones above an edit all move by the same amount. So before the whole
+// article, an anchor looks for itself in the blocks this many places either
+// side of where its block was, of where it would be had it moved as far as
+// the blocks of the anchors found nearest to it in the pass, and of where it
+// would be had it moved as far as the last one found.
+const NEARBY = 3;
+// How many places either side of an anchor's block the pass looks for an
+// anchor found already, to learn how far blocks there have moved.
+const MOVES_SEEN = 64;
+
+function blockNumber(id: string): number | null {
+  const m = /:(\d+)$/.exec(id);
+  return m ? Number(m[1]) : null;
+}
+
+function orderOf(blocks: Blocks): NonNullable<Blocks['order']> {
+  if (!blocks.order) {
+    const ofBlock = new Map<HTMLElement, number>();
+    const ofNumber = new Map<number, number>();
+    blocks.list.forEach((b, i) => {
+      ofBlock.set(b, i);
+      const n = blockNumber(b.dataset.blockId!);
+      if (n !== null && !ofNumber.has(n)) ofNumber.set(n, i);
+    });
+    blocks.order = { ofBlock, ofNumber };
+  }
+  return blocks.order;
+}
+
+// Where in the article's blocks the anchor's block was, or null if its id
+// doesn't say. Past the article's end when the article now ends sooner.
+function hintPosition(blocks: Blocks, hint: string): number | null {
+  const n = blockNumber(hint);
+  if (n === null) return null;
+  return orderOf(blocks).ofNumber.get(n) ?? n - 1;
+}
+
+function learnMove(blocks: Blocks, hintAt: number, block: HTMLElement | null): void {
+  const at = block ? orderOf(blocks).ofBlock.get(block) : undefined;
+  if (at === undefined) return;
+  blocks.moves.at.set(hintAt, at - hintAt);
+  blocks.moves.last = at - hintAt;
+}
+
+// The anchor in a block near where its block was (see NEARBY). Only where
+// its whole saved context is found, word for word, in one place in the
+// block, and nothing more of the block before or after it than when it was
+// saved: what the whole article's search would score highest, so this only
+// finds sooner what that would, or picks the nearest of places that read the
+// same, which that would refuse.
+function nearbyBlocks(anchor: Anchor, blocks: Blocks, hintAt: number, searched: HTMLElement | null): Range | null {
+  const { list, moves } = blocks;
+  let learned: number | undefined;
+  for (let d = 0; d <= MOVES_SEEN && learned === undefined; d++) {
+    learned = moves.at.get(hintAt - d) ?? moves.at.get(hintAt + d);
+  }
+  const tried = new Set<number>();
+  for (const shift of [learned ?? moves.last, moves.last, 0]) {
+    for (let d = 0; d <= NEARBY; d++) {
+      for (const at of d ? [hintAt + shift - d, hintAt + shift + d] : [hintAt + shift]) {
+        if (at < 0 || at >= list.length || tried.has(at)) continue;
+        tried.add(at);
+        const block = list[at];
+        if (block === searched) continue;
+        const full = blockText(block);
+        const i = uniqueInContext(anchor, full);
+        if (spent()) return null;
+        if (i >= 0 && scoreCandidate(anchor, full, i) === 1) {
+          learnMove(blocks, hintAt, block);
+          return rangeFromBlockOffsets(block, i, i + anchor.text.length);
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function place(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
@@ -452,9 +542,20 @@ function place(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
     }
   }
 
-  // Slow path: scan every block.
-  const hits = blockHits(viewerRoot, anchor.text, MAX_CANDIDATES + 1);
-  if (hits.length > MAX_CANDIDATES) return uniqueInContextOfBlocks(anchor, viewerRoot);
+  const blocks = blocksOf(viewerRoot);
+  const hintAt = hintPosition(blocks, anchor.blockHint);
+  if (hintAt === null) return scanBlocks(anchor, viewerRoot, blocks);
+  const near = nearbyBlocks(anchor, blocks, hintAt, hinted);
+  if (near || spent()) return near;
+  const range = scanBlocks(anchor, viewerRoot, blocks);
+  if (range) learnMove(blocks, hintAt, findContainingBlock(range.startContainer));
+  return range;
+}
+
+// Slow path: scan every block.
+function scanBlocks(anchor: Anchor, viewerRoot: HTMLElement, blocks: Blocks): Range | null {
+  const hits = blockHits(blocks, anchor.text, MAX_CANDIDATES + 1);
+  if (hits.length > MAX_CANDIDATES) return uniqueInContextOfBlocks(anchor, blocks);
   let best: { block: HTMLElement; i: number; score: number } | null = null;
   let secondBest = 0;
   for (const { block, i } of hits) {

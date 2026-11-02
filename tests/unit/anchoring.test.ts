@@ -437,7 +437,7 @@ describe('a pass over many anchors', () => {
     const half: Anchor = { text: 'a'.repeat(4_000_000), prefix: '', suffix: '', blockHint: 'p:1' };
     const start = performance.now();
     const found = resolvingPass(() => resolveAnchor(half, root));
-    // About a quarter of a second here.
+    // About half a second here.
     expect(performance.now() - start).toBeLessThan(1_500);
     expect(found).toBeNull();
   });
@@ -546,5 +546,93 @@ describe('anchors in repetitive text', () => {
     const range = resolveAnchor({ text: 'the', prefix: 'x the unique ', suffix: ' end', blockHint: 'p:1' }, root);
     expect(range?.toString()).toBe('the');
     expect(range?.startOffset).toBe(20_000 * 6 + 7);
+  });
+});
+
+// Block ids are positions, so a paragraph added at the top renumbers every
+// block after it, and no highlight is in the block it remembers. Searching
+// the whole article for each of a heavy reader's thousand highlights is more
+// than a pass may search: most of them were shown as orphaned.
+describe('highlights in an article whose paragraphs moved', () => {
+  // A heavy reader's article: `count` paragraphs of about `size` characters,
+  // with `perPara` highlights in each, saved in the order they were made
+  // (not the article's), then a paragraph added at the top.
+  function heavyReader(count: number, size: number, perPara: 1 | 2) {
+    const sentence = 'the reader sees every line here before we edit it. ';
+    const filler = sentence.repeat(Math.max(1, Math.round((size - 40) / sentence.length)));
+    const body = (i: number) => `Paragraph ${i} opens. ${filler}Paragraph ${i} closes.`;
+    // What createAnchor saves for a selection in a paragraph of plain text
+    // (made here directly, as two thousand of them take seconds in jsdom).
+    const anchors: Anchor[] = Array.from({ length: count }, (_, i) =>
+      [`Paragraph ${i} opens`, `Paragraph ${i} closes`].slice(0, perPara).map((text) => {
+        const full = body(i);
+        const at = full.indexOf(text);
+        return { text, prefix: full.slice(Math.max(0, at - 32), at), suffix: full.slice(at + text.length, at + text.length + 32), blockHint: `p:${i + 1}` };
+      }),
+    ).flat();
+    // Made in no particular order: a fixed shuffle.
+    let seed = 7;
+    for (let i = anchors.length - 1; i > 0; i--) {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      const j = seed % (i + 1);
+      [anchors[i], anchors[j]] = [anchors[j], anchors[i]];
+    }
+    const paras = ['A new first paragraph.', ...Array.from({ length: count }, (_, i) => body(i))];
+    const moved = buildRoot(paras.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    return { anchors, moved };
+  }
+
+  it('places a thousand highlights in a 600 KB article after a paragraph is added at the top, quickly', () => {
+    const { anchors, moved } = heavyReader(1_000, 600, 1);
+    expect(moved.textContent!.length).toBeGreaterThan(580_000);
+    const start = performance.now();
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    // Within the time a pass may take, or the rest would be left unplaced.
+    expect(performance.now() - start).toBeLessThan(1_000);
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places two thousand highlights in a 650 KB article after a paragraph is added at the top', () => {
+    const { anchors, moved } = heavyReader(1_000, 650, 2);
+    expect(moved.textContent!.length).toBeGreaterThan(630_000);
+    const start = performance.now();
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    // Within the time a pass may take, or the rest would be left unplaced.
+    expect(performance.now() - start).toBeLessThan(1_000);
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places them all in a 1.2 MB article too', () => {
+    const { anchors, moved } = heavyReader(1_000, 1_150, 1);
+    expect(moved.textContent!.length).toBeGreaterThan(1_100_000);
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places them all when paragraphs were added in several places', () => {
+    // Every hundredth paragraph has a new one before it, so how far each
+    // highlight's paragraph moved differs through the article.
+    const { anchors, moved: once } = heavyReader(1_000, 600, 1);
+    once.remove();
+    const paras = Array.from(once.children).flatMap((p, i) => (i > 0 && i % 100 === 0 ? [`An added paragraph ${i}.`, p.textContent!] : [p.textContent!]));
+    const moved = buildRoot(paras.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('puts a highlight in the paragraph it came from when another moved paragraph reads the same', () => {
+    // Two paragraphs with the same words: the hint is what tells them apart.
+    const root0 = buildRoot('<p data-block-id="p:1">Same words here.</p><p data-block-id="p:2">Other.</p><p data-block-id="p:3">Same words here.</p>');
+    const second = createAnchor(rangeOf(root0, 'p:3', 'words'), root0)!;
+    const other = createAnchor(rangeOf(root0, 'p:2', 'Other'), root0)!;
+    root0.remove();
+    const moved = buildRoot(
+      '<p data-block-id="p:1">New.</p><p data-block-id="p:2">Same words here.</p><p data-block-id="p:3">Other.</p><p data-block-id="p:4">Same words here.</p>',
+    );
+    const range = resolvingPass(() => {
+      resolveAnchor(other, moved);
+      return resolveAnchor(second, moved);
+    });
+    expect((range!.startContainer.parentElement as HTMLElement).dataset.blockId).toBe('p:4');
   });
 });
