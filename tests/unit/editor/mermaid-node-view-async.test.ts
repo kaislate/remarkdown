@@ -151,6 +151,45 @@ describe('MermaidNodeView async ordering', () => {
     parent.remove();
   });
 
+  it('edits made while a render is in flight draw only the latest text', async () => {
+    const { view, parent } = makeView('```mermaid\nflowchart TD\nA[one]\n```\n');
+    await flush();
+    setBlockText(view, 'flowchart TD\nA[two]\n');
+    setBlockText(view, 'flowchart TD\nA[three]\n');
+    setBlockText(view, 'flowchart TD\nA[four]\n');
+    await flush();
+    mocked.renders[0].resolve('<svg data-which="one"></svg>');
+    await flush();
+    // "two" and "three" were replaced before their turn came: skipped.
+    expect(mocked.renders.map((r) => r.source.trim())).toEqual(['flowchart TD\nA[one]', 'flowchart TD\nA[four]']);
+    mocked.renders[1].resolve('<svg data-which="four"></svg>');
+    await flush();
+    expect(parent.querySelector('.mermaid-rendered svg')?.getAttribute('data-which')).toBe('four');
+    view.destroy();
+    parent.remove();
+  });
+
+  it('leaving the editor drops its queued renders, so other diagrams are not kept waiting', async () => {
+    const diagrams = Array.from({ length: 10 }, (_, i) => '```mermaid\nflowchart TD\nN' + i + '\n```\n').join('\n');
+    const { view, parent } = makeView(diagrams);
+    await flush();
+    expect(mocked.renders).toHaveLength(1); // the first is drawing, nine wait
+    view.destroy();
+    parent.remove();
+    // What comes next (another tab's reader, say) asks for a diagram.
+    const { view: next, parent: nextParent } = makeView('```mermaid\nflowchart TD\nNEXT\n```\n');
+    mocked.renders[0].resolve('<svg></svg>');
+    await flush(8);
+    // eslint-disable-next-line no-console
+    console.log(`[perf] node views: mermaid renders run after leaving a 10-diagram editor: ${mocked.renders.length - 1}`);
+    expect(mocked.renders.map((r) => r.source)).toEqual(['flowchart TD\nN0', 'flowchart TD\nNEXT']);
+    mocked.renders[1].resolve('<svg data-which="next"></svg>');
+    await flush();
+    expect(nextParent.querySelector('.mermaid-rendered svg')?.getAttribute('data-which')).toBe('next');
+    next.destroy();
+    nextParent.remove();
+  });
+
   it('a superseded render that FAILS does not paint its error box', async () => {
     const { view, parent } = makeView('```mermaid\nflowchart TD\nA[one]\n```\n');
     await flush();

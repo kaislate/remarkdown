@@ -70,6 +70,35 @@ test('on Windows the app keeps its own buttons and the menu button stays at 14px
   expect((await rect(page, '.hamburger')).top).toBe(14);
 });
 
+test('the aura keeps swooping beside a focused window and holds still only while the window is hidden', async ({ page }) => {
+  await boot(page, 'windows');
+  const aura = page.locator('.controls-aura');
+  const states = () => aura.evaluate((el) => el.getAnimations().map((a) => a.playState));
+  await expect.poll(states).toEqual(['running']);
+  // Another window takes focus, but this one is still on screen: unchanged.
+  await page.evaluate(() => {
+    document.hasFocus = () => false;
+    window.dispatchEvent(new Event('blur'));
+  });
+  await page.waitForTimeout(100);
+  expect(await states()).toEqual(['running']);
+  // Minimized: nobody can see it, so it holds still.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(states).toEqual(['paused']);
+  // Back again: the same swoop, picked up where it stopped.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.hasFocus = () => true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect.poll(states).toEqual(['running']);
+  expect(await aura.evaluate((el) => getComputedStyle(el).animationName)).toContain('swoop');
+});
+
 test('the left column steps down on a Mac; the top tabs stay on their line', async ({ browser }) => {
   const win = await bootFresh(browser, 'windows');
   const mac = await bootFresh(browser, 'macos');

@@ -317,6 +317,8 @@ export class MermaidNodeView implements NodeView {
   // Cleanup when PM tears down the NodeView (block removed, editor
   // destroyed, etc.). Without this the Svelte components would leak.
   destroy(): void {
+    // Whatever render is still in flight or queued belongs to nobody now.
+    this.renderSeq++;
     this.closeText();
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;
@@ -413,7 +415,11 @@ export class MermaidNodeView implements NodeView {
     }
 
     // Cache hit → no await → the svg lands in this same call.
-    const outcome = peekMermaidRender(source, ctx) ?? (await renderMermaid(source, ctx));
+    // A render still queued when a newer one starts, or when this node
+    // view is torn down (tab switch, leaving edit mode), is skipped
+    // instead of holding up every diagram queued behind it.
+    const outcome = peekMermaidRender(source, ctx)
+      ?? (await renderMermaid(source, ctx, { isCurrent: () => seq === this.renderSeq }));
     // A newer render started while this one was in flight — drop the
     // stale result instead of clobbering the fresh SVG (or painting a
     // superseded error box).

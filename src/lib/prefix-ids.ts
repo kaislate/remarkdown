@@ -19,21 +19,36 @@
 const IDREF_ATTRS = ['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns', 'for'];
 const XLINK = 'http://www.w3.org/1999/xlink';
 
-export function prefixIds(root: Element, prefix: string): void {
+// `idElsewhere`, when given, names ids that live outside root but get the
+// same prefix in the same copy: the minimap redraws one block at a time,
+// and a footnote reference in one block points at a note in another. A
+// reference to such an id is rewritten as though both were in root.
+export function prefixIds(root: Element, prefix: string, idElsewhere?: (id: string) => boolean): void {
   const withId = Array.from(root.querySelectorAll('[id]'));
-  if (withId.length === 0) return;
+  if (withId.length === 0 && !idElsewhere) return;
   const ids = new Set(withId.map((el) => el.id).filter(Boolean));
   for (const el of withId) {
     if (el.id) el.id = prefix + el.id;
   }
 
-  const mapRef = (id: string): string => (ids.has(id) ? prefix + id : id);
+  const elsewhere = new Map<string, boolean>();
+  const known = (id: string): boolean => {
+    if (ids.has(id)) return true;
+    if (!idElsewhere) return false;
+    let found = elsewhere.get(id);
+    if (found === undefined) {
+      found = idElsewhere(id);
+      elsewhere.set(id, found);
+    }
+    return found;
+  };
+  const mapRef = (id: string): string => (known(id) ? prefix + id : id);
   // url(#id) / url("#id") / url('#id'). The id runs to the closing
   // quote or paren, so a longer id is never matched by its prefix.
   const urlRe = /url\(\s*(["']?)#([^"')\s]+)\1\s*\)/g;
   const rewriteUrls = (value: string): string =>
     value.replace(urlRe, (m, q: string, id: string) =>
-      ids.has(id) ? `url(${q}#${prefix}${id}${q})` : m,
+      known(id) ? `url(${q}#${prefix}${id}${q})` : m,
     );
 
   for (const el of root.querySelectorAll('*')) {
@@ -67,7 +82,7 @@ export function prefixIds(root: Element, prefix: string): void {
   for (const style of root.querySelectorAll('style')) {
     const css = style.textContent ?? '';
     const next = rewriteUrls(css).replace(selRe, (m, id: string) =>
-      ids.has(id) ? `#${prefix}${id}` : m,
+      known(id) ? `#${prefix}${id}` : m,
     );
     if (next !== css) style.textContent = next;
   }
