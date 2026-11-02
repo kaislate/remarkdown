@@ -1,3 +1,5 @@
+// First, so its evaluation marks when the entry chunk starts to run.
+import { startupMark } from './lib/startup-trace';
 import '@fontsource/patrick-hand/400.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
@@ -7,12 +9,18 @@ import { initPlatform } from './lib/platform';
 import { installLinkGuard } from './lib/link-guard';
 import { openExternal } from './lib/tauri-api';
 import { addToast } from './stores/toasts';
+import { startStartupReads } from './lib/startup-reads';
 
 // Settle which OS we're on before the first paint, so shortcuts and chrome
-// are right from the start.
-await initPlatform();
+// are right from the start. Settings, recents and reading progress are read
+// while that check is out; App picks them up when it mounts.
+const platformReady = initPlatform();
+startStartupReads(platformReady);
+await platformReady;
+startupMark('platform-ready');
 
 const app = mount(App, { target: document.getElementById('app')! });
+startupMark('app-mounted');
 
 // No link anywhere in the app takes the window with it (lib/link-guard.ts).
 installLinkGuard(window, (url) => {

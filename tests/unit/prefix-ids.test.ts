@@ -77,3 +77,24 @@ describe('prefixIds', () => {
     );
   });
 });
+
+// The minimap redraws one block at a time: a footnote reference in one
+// block points at the note in another, and must be rewritten just as it
+// is when the whole page is copied at once.
+describe('prefixIds with ids elsewhere in the same copy', () => {
+  it('rewrites references to ids the caller says live elsewhere, and nothing else', () => {
+    const block = document.createElement('div');
+    block.innerHTML =
+      '<p><a href="#fn1">1</a> <a href="#nowhere">x</a></p>' +
+      '<svg><path fill="url(#grad-elsewhere)"></path><style>#grad-elsewhere{} .a{fill:#ECECFF}</style></svg>';
+    const elsewhere = new Set(['fn1', 'grad-elsewhere']);
+    const asked: string[] = [];
+    prefixIds(block, 'm-', (id) => { asked.push(id); return elsewhere.has(id); });
+    expect(block.querySelector('a')!.getAttribute('href')).toBe('#m-fn1');
+    expect(block.querySelectorAll('a')[1].getAttribute('href')).toBe('#nowhere');
+    expect(block.querySelector('path')!.getAttribute('fill')).toBe('url(#m-grad-elsewhere)');
+    expect(block.querySelector('style')!.textContent).toBe('#m-grad-elsewhere{} .a{fill:#ECECFF}');
+    // Each id is looked up once.
+    expect(asked.filter((id, i) => asked.indexOf(id) !== i)).toEqual([]);
+  });
+});

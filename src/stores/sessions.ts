@@ -16,6 +16,7 @@ import { writable, get, type Writable } from 'svelte/store';
 import type { EditorState } from 'prosemirror-state';
 import type { Annotation } from '../lib/schema';
 import type { DocState } from './doc-types';
+import type { ModalState } from './modals';
 
 export interface EditConflict {
   path: string;
@@ -38,6 +39,10 @@ export interface DocSession {
   // store is frozen during edit mode, so this is what a re-mounted editor
   // must start from if the post-edit reload from disk hasn't landed yet.
   editedMarkdown: string | null;
+  // Records an edit without serializing it: `editedMarkdown` calls `read`
+  // the first time it is read. Setting `editedMarkdown` drops a reader not
+  // yet called, exactly as it would have replaced the text.
+  deferEditedMarkdown(read: () => string): void;
   // The file changed on disk while this tab was in the background; reload
   // when it's activated.
   pendingDiskReload: boolean;
@@ -64,12 +69,23 @@ export interface DocSession {
   // the tab shows no annotations. It is never saved over as it stands: the
   // first real annotation backs it up first (lib/save.ts).
   sidecarRefused: boolean;
+  // A tab reopened from the last session that hasn't been read yet: the file
+  // it will show. Its tab is in the tab bar, but `doc` is still null until it
+  // loads (in the background after startup, or when switched to first —
+  // see tabs.ts ensureSessionLoaded). Null for every other tab.
+  lazyPath: string | null;
+  // A reopened tab read in the background couldn't load its annotations
+  // file (malformed, too large, unreadable): the notice, shown when the tab first is (see tabs.ts
+  // setActive) rather than over whatever the user has open.
+  pendingSidecarNotice: Extract<ModalState, { kind: 'corrupt-sidecar' }> | null;
 }
 
 let counter = 0;
 
 export function createSession(): DocSession {
   counter += 1;
+  let edited: string | null = null;
+  let readEdited: (() => string) | null = null;
   return {
     id: `s${counter}`,
     doc: writable<DocState | null>(null),
@@ -78,7 +94,20 @@ export function createSession(): DocSession {
     readerMode: writable(false),
     scrollTop: null,
     editorState: null,
-    editedMarkdown: null,
+    get editedMarkdown() {
+      if (readEdited) {
+        edited = readEdited();
+        readEdited = null;
+      }
+      return edited;
+    },
+    set editedMarkdown(value: string | null) {
+      readEdited = null;
+      edited = value;
+    },
+    deferEditedMarkdown(read: () => string) {
+      readEdited = read;
+    },
     pendingDiskReload: false,
     watcherPaused: false,
     disposeWatcher: null,
@@ -89,7 +118,15 @@ export function createSession(): DocSession {
     skipExitReload: false,
     discardPendingEdits: false,
     sidecarRefused: false,
+    lazyPath: null,
+    pendingSidecarNotice: null,
   };
+}
+
+// The file a tab shows (or will show, once a reopened tab has loaded); null
+// for the empty "Open a markdown file" tab.
+export function sessionPath(s: DocSession): string | null {
+  return get(s.doc)?.path ?? s.lazyPath;
 }
 
 // A window always has at least one session; an empty one (doc === null) is

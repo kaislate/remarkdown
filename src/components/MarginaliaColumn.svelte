@@ -130,6 +130,15 @@
     const pinCenterDy = articleFontSize * 0.2;
     const pinSize = articleFontSize * 0.7;
 
+    // The rendered pins by re.mark, looked up once rather than searched
+    // for in the article once per card (the first of any two with one id,
+    // as querySelector finds it).
+    const pins = new Map<string, HTMLElement>();
+    for (const el of root.querySelectorAll<HTMLElement>('.note-pin[data-id]')) {
+      const id = el.getAttribute('data-id')!;
+      if (!pins.has(id)) pins.set(id, el);
+    }
+
     // Pass 1: extract raw cards with anchor positions + context.
     const raw = $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
@@ -148,9 +157,7 @@
         // two frames later, so we'll get the precise value on retry).
         let originX: number;
         let originY: number;
-        const pinEl = root.querySelector<HTMLElement>(
-          `.note-pin[data-id="${CSS.escape(note.id)}"]`,
-        );
+        const pinEl = pins.get(note.id);
         if (pinEl) {
           const pinRect = pinEl.getBoundingClientRect();
           originX = pinRect.left + pinRect.width / 2;

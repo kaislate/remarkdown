@@ -6,16 +6,16 @@
 // own that state; the incoming tab's stores are already complete, so the
 // proxies re-emit and the UI redraws from memory.
 
-import { get } from 'svelte/store';
+import { get, readable, writable, type Readable } from 'svelte/store';
 import { tick } from 'svelte';
-import { activeSession, createSession, sessions, type DocSession } from './sessions';
-import { docEpoch } from './annots';
-import { reloadSession } from './doc';
+import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
+import { currentViewerRoot } from './annots';
+import { loadIntoSession, reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
 import { askAboutConflict, savesSettled } from '../lib/edit-save';
-import { activeModal, closeModal } from './modals';
+import { activeModal, closeModal, openModal } from './modals';
 import { platform } from '../lib/platform';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
@@ -59,9 +59,38 @@ export function samePath(a: string, b: string): boolean {
 
 export function findSessionByPath(path: string): DocSession | null {
   return get(sessions).find((s) => {
-    const d = get(s.doc);
-    return !!d && samePath(d.path, path);
+    const p = sessionPath(s);
+    return p !== null && samePath(p, path);
   }) ?? null;
+}
+
+// A tab reopened from the last session is only read and rendered when it's
+// first needed: switched to, or its turn in the background load after
+// startup. Both can ask at once; they share one load. Saved tabs whose file
+// can't be read are left out before the tab bar shows (session-persist); one
+// that can't be read even so (it changed since, or its annotations file
+// can't be read) is reported with a toast and leaves the tab bar. Resolves
+// to whether the tab now holds its document.
+const lazyLoads = new WeakMap<DocSession, Promise<boolean>>();
+
+export function ensureSessionLoaded(session: DocSession): Promise<boolean> {
+  const path = session.lazyPath;
+  if (path === null) return Promise.resolve(!session.closed);
+  let load = lazyLoads.get(session);
+  if (!load) {
+    load = (async () => {
+      if (session.closed) return false;
+      const ok = await loadIntoSession(session, path, { noticeWhenShown: true });
+      session.lazyPath = null;
+      if (!ok) {
+        session.closed = true;
+        sessions.update((l) => l.filter((s) => s !== session));
+      }
+      return ok && !session.closed;
+    })();
+    lazyLoads.set(session, load);
+  }
+  return load;
 }
 
 // New tabs open right after the active one, like a browser. Pass `after`
@@ -84,24 +113,111 @@ function dismissDocumentDialogs(): void {
 
 function setActive(session: DocSession): void {
   dismissDocumentDialogs();
+  // The outgoing page is on its way out: without a page, the incoming tab's
+  // annotations aren't looked for in it (each would miss and scan the whole
+  // article). The Viewer sets the incoming tab's page once it has rendered
+  // it, and that resolves them, once.
+  currentViewerRoot.set(null);
   activeSession.set(session);
-  docEpoch.update((e) => e + 1);
   restoreScroll(session);
+  // A reopened tab read in the background with a malformed annotations
+  // file: say so now that it's on screen (unless another dialog is up —
+  // then the next time it's shown).
+  if (session.pendingSidecarNotice !== null && get(activeModal) === null) {
+    openModal(session.pendingSidecarNotice);
+    session.pendingSidecarNotice = null;
+  }
 }
+
+// At startup every reopened tab is in the tab bar before the saved active
+// one has been read; the window is still on its empty start tab until then.
+// session-persist names the saved tab here meanwhile, so it's the one shown
+// selected (and the one Ctrl+Tab and Ctrl+W act on), rather than none.
+export const restoringTab = writable<DocSession | null>(null);
+
+// The tab the tab bar shows as the current one: the active tab, or, while
+// the window is still on the empty start tab, the saved tab being read.
+export const shownTab: Readable<DocSession> = readable<DocSession>(get(activeSession), (set) => {
+  let active = get(activeSession);
+  let restoring: DocSession | null = null;
+  const update = () => {
+    const waiting = restoring !== null && !restoring.closed && sessionPath(active) === null;
+    set(waiting ? restoring! : active);
+  };
+  let unsubDoc = () => {};
+  const unsubActive = activeSession.subscribe((s) => {
+    unsubDoc();
+    active = s;
+    unsubDoc = s.doc.subscribe(update);
+  });
+  const unsubRestoring = restoringTab.subscribe((s) => {
+    restoring = s;
+    update();
+  });
+  // A closed tab stops being shown as selected.
+  const unsubList = sessions.subscribe(update);
+  return () => {
+    unsubDoc();
+    unsubActive();
+    unsubRestoring();
+    unsubList();
+  };
+});
 
 // Each switch/close takes a ticket; a switch whose before-switch work
 // finishes after a newer request was made doesn't apply (rapid clicks must
 // land on the last tab clicked).
 let switchTicket = 0;
+// Where the latest switch is headed while it's still on its way (a
+// reopened tab being read first): Ctrl+Tab steps on from there, so quick
+// presses each move one more tab instead of all aiming at the same one.
+let switchTarget: DocSession | null = null;
 
-export async function activateSession(id: string): Promise<void> {
+// The latest switch asked for, until it has landed (or come to nothing).
+let latestSwitch: Promise<void> = Promise.resolve();
+
+export function activateSession(id: string): Promise<void> {
+  const run = activateSessionNow(id);
+  latestSwitch = run.catch(() => {});
+  return run;
+}
+
+// Resolves once no switch is on its way any more: the last one asked for has
+// landed, or come to nothing.
+export async function switchesSettled(): Promise<void> {
+  let seen: Promise<void>;
+  do {
+    seen = latestSwitch;
+    await seen;
+  } while (seen !== latestSwitch);
+}
+
+async function activateSessionNow(id: string): Promise<void> {
   const target = get(sessions).find((s) => s.id === id);
-  if (!target || target === get(activeSession)) return;
+  if (!target) return;
+  if (target === get(activeSession)) {
+    // Back to the tab already shown: a switch still on its way elsewhere
+    // no longer applies.
+    if (switchTarget) {
+      ++switchTicket;
+      switchTarget = null;
+    }
+    return;
+  }
   const ticket = ++switchTicket;
-  cancelReattach();
-  await runBeforeSwitch();
-  if (ticket !== switchTicket || target.closed) return;
-  setActive(target);
+  switchTarget = target;
+  try {
+    cancelReattach();
+    // A reopened tab not loaded yet: load it before leaving the current
+    // one, so the switch never shows an empty page.
+    if (target.lazyPath !== null && !(await ensureSessionLoaded(target))) return;
+    if (ticket !== switchTicket) return;
+    await runBeforeSwitch();
+    if (ticket !== switchTicket || target.closed) return;
+    setActive(target);
+  } finally {
+    if (ticket === switchTicket) switchTarget = null;
+  }
   if (target.pendingDiskReload) {
     target.pendingDiskReload = false;
     // Let the incoming tab's page render first: the reload's "N
@@ -157,16 +273,30 @@ export async function closeSession(id: string): Promise<void> {
 
   if (closing === get(activeSession)) {
     const ticket = ++switchTicket;
+    switchTarget = null;
     cancelReattach();
+    const neighbourOf = (): DocSession | null => {
+      const current = get(sessions).filter((s) => s === closing || !s.closed);
+      const i = current.indexOf(closing);
+      return current[i + 1] ?? current[i - 1] ?? null;
+    };
+    // A reopened neighbour not read yet starts loading now, alongside the
+    // closing tab's last save rather than after it.
+    const next = neighbourOf();
+    if (next && next.lazyPath !== null) void ensureSessionLoaded(next);
     await runBeforeSwitch();
     if (keepForConflict()) return;
     closing.closed = true;
+    // A reopened tab not loaded yet is loaded before it takes over (one that
+    // can't be read drops out, and the next neighbour is asked).
+    let neighbour = neighbourOf();
+    while (neighbour && neighbour.lazyPath !== null) {
+      await ensureSessionLoaded(neighbour);
+      neighbour = neighbourOf();
+    }
     // A newer switch may have happened meanwhile — then leave it be, unless
     // the closing tab is somehow still the visible one.
     if (ticket === switchTicket || get(activeSession) === closing) {
-      const current = get(sessions).filter((s) => s === closing || !s.closed);
-      const i = current.indexOf(closing);
-      const neighbour = current[i + 1] ?? current[i - 1] ?? null;
       if (neighbour) {
         setActive(neighbour);
       } else {
@@ -192,18 +322,29 @@ export async function closeSession(id: string): Promise<void> {
   sessions.update((l) => l.filter((s) => s !== closing));
 }
 
+// Ctrl+Tab / Ctrl+Shift+Tab: one tab on from the one being switched to, if
+// a switch is still on its way, else from the one shown. Only tabs in the
+// tab bar count (not the empty tab the window starts on).
 export async function cycleSession(delta: 1 | -1): Promise<void> {
-  const list = get(sessions);
+  const from = switchTarget && !switchTarget.closed ? switchTarget : get(shownTab);
+  const list = get(sessions).filter((s) => s === from || sessionPath(s) !== null);
   if (list.length < 2) return;
-  const i = list.indexOf(get(activeSession));
+  const i = list.indexOf(from);
   await activateSession(list[(i + delta + list.length) % list.length].id);
 }
 
 // Bulk closes from the tab context menu. The tab the user right-clicked
 // becomes (or stays) the visible one first, so closing the rest never
 // flashes a neighbour that is about to go too.
+//
+// If that tab doesn't become the visible one (a reopened tab whose file
+// turned out unreadable drops out instead), nothing else is closed: the
+// tab being read, and the saved tab set, stay as they are.
 async function closeAllBut(keep: DocSession, closing: DocSession[]): Promise<void> {
-  if (closing.includes(get(activeSession))) await activateSession(keep.id);
+  if (closing.includes(get(activeSession))) {
+    await activateSession(keep.id);
+    if (keep.closed || get(activeSession) !== keep) return;
+  }
   for (const s of closing) await closeSession(s.id);
 }
 

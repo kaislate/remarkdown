@@ -77,7 +77,13 @@ export function openTextPanel(o: TextPanelOptions): TextPanel {
   let seq = 0;
   async function redraw() {
     const mine = ++seq;
-    const outcome = await renderMermaid(box.value, o.context());
+    // A preview still waiting its turn when the next pause in typing (or
+    // closing the panel) replaces it is skipped, not drawn and dropped;
+    // and previews stay out of the cache the open document paints from.
+    const outcome = await renderMermaid(box.value, o.context(), {
+      preview: true,
+      isCurrent: () => mine === seq,
+    });
     if (mine !== seq) return;
     if (outcome.ok) {
       preview.innerHTML = outcome.svg;

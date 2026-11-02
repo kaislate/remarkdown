@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
@@ -201,5 +201,65 @@ describe('TitleBar', () => {
     maximized = false;
     resizedCb?.();
     expect(await screen.findByRole('button', { name: /^maximize$/i })).toBeInTheDocument();
+  });
+});
+
+// The aura's swoop is a blurred layer redrawn every frame. Nobody sees it
+// move while the window is minimized or hidden, so it holds still then and
+// picks up where it left off on return. Beside another, focused window it
+// can still be seen, so it keeps swooping there.
+describe('TitleBar aura', () => {
+  const aura = () => document.querySelector('.controls-aura') as HTMLElement;
+  let focused = true;
+  let hidden = false;
+  let restore: (() => void) | null = null;
+
+  beforeEach(() => {
+    focused = true;
+    hidden = false;
+    const spy = vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    restore = () => {
+      spy.mockRestore();
+      delete (document as unknown as Record<string, unknown>).hidden;
+    };
+  });
+  afterEach(() => restore?.());
+
+  it('swoops while the window has focus', () => {
+    render(TitleBar);
+    expect(aura()).not.toHaveClass('paused');
+  });
+
+  it('keeps swooping while another window has focus', async () => {
+    render(TitleBar);
+    focused = false;
+    window.dispatchEvent(new Event('blur'));
+    await Promise.resolve();
+    expect(aura()).not.toHaveClass('paused');
+  });
+
+  it('holds still while the window is minimized, and resumes on return', async () => {
+    render(TitleBar);
+    hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await Promise.resolve();
+    expect(aura()).toHaveClass('paused');
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await Promise.resolve();
+    expect(aura()).not.toHaveClass('paused');
+  });
+
+  it('swoops from the start when the window opens behind another', () => {
+    focused = false;
+    render(TitleBar);
+    expect(aura()).not.toHaveClass('paused');
+  });
+
+  it('starts still when the window opens hidden', () => {
+    hidden = true;
+    render(TitleBar);
+    expect(aura()).toHaveClass('paused');
   });
 });

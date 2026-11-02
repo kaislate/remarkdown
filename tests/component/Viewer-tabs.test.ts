@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
@@ -20,6 +20,11 @@ vi.mock('../../src/stores/doc', async () => {
 });
 
 import Viewer from '../../src/components/Viewer.svelte';
+import { loadEditor } from '../../src/lib/editor-loader';
+
+// The app fetches the editor's code in the background once the page is
+// idle (lib/editor-loader.ts); here it's in before any test starts.
+beforeAll(async () => { await loadEditor(); });
 import { loadIntoSession } from '../../src/stores/doc';
 import { createSession, sessions, activeSession, type DocSession } from '../../src/stores/sessions';
 import { activateSession } from '../../src/stores/tabs';

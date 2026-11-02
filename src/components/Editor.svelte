@@ -30,7 +30,8 @@
 
   interface Props {
     initialMarkdown: string;
-    onChange: (markdown: string) => void;
+    // A reader for the new markdown, on every change (see createEditorView).
+    onChange: (readMarkdown: () => string) => void;
     // The tab this editor belongs to. When the user switches away we stash
     // the editor state on it, and a later mount resumes from that state
     // (document, selection, undo history) instead of re-parsing markdown.
@@ -310,8 +311,8 @@
 
   onMount(() => {
     if (!parentEl) return;
-    view = createEditorView(parentEl, initialMarkdown, (md) => {
-      onChange(md);
+    view = createEditorView(parentEl, initialMarkdown, (read) => {
+      onChange(read);
       updateBubble();
       updateTableMenu();
       updateBlockStyle();

@@ -8,11 +8,11 @@
 // been viewed yet this run.
 
 import { get } from 'svelte/store';
-import { activeSession, createSession, sessions, type DocSession } from './sessions';
-import { loadIntoSession } from './doc';
-import { activateSession, addSession } from './tabs';
+import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
+import { activateSession, ensureSessionLoaded, restoringTab, shownTab, switchesSettled } from './tabs';
 import { settings } from './settings';
-import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
+import { checkSavedTabs, loadSessionJson, saveSessionJson, windowLabel, type SavedTabCheck } from '../lib/tauri-api';
+import { reportOpenError } from './doc';
 import { runOpenExclusive } from '../lib/open-files';
 
 const SCHEMA_VERSION = 1;
@@ -45,10 +45,21 @@ export function parseSession(raw: string | null): SavedSession | null {
   return { tabs, active };
 }
 
-// Reopen the saved tabs. Files that no longer exist are skipped silently;
-// restored tabs are not pushed into recents (the user didn't just open
-// them). The first restored tab reuses the empty start tab. Runs in the
-// open queue so a double-click arriving meanwhile waits its turn.
+// Reopen the saved tabs. Files that no longer exist are skipped silently,
+// ones that can't be read with an error toast; restored tabs are not pushed
+// into recents (the user didn't just open them). Runs in the open queue so a
+// double-click arriving meanwhile waits its turn.
+//
+// Startup shows one document as soon as it can, so this only puts the saved
+// tabs in the tab bar; none is read yet. The empty start tab stays active,
+// placed right after the saved active tab: a file the user double-clicked
+// (or the welcome document) loads into it there, which is where it has
+// always opened. finishSessionRestore() then shows the saved active tab if
+// nothing else was opened, and loadRestoredTabsInBackground() reads the rest
+// once that document is on screen.
+let startTab: DocSession | null = null;
+let savedActiveTab: DocSession | null = null;
+
 export function restoreSavedTabs(): Promise<void> {
   return runOpenExclusive(restoreSavedTabsNow);
 }
@@ -62,38 +73,142 @@ async function restoreSavedTabsNow(): Promise<void> {
   }
   if (!saved || saved.tabs.length === 0) return;
 
-  let exists: boolean[];
+  // Files that are gone are left out quietly; ones that are there but can't
+  // be read are left out too, saying why, so no tab shows up only to drop
+  // out once it's read. (If the check itself fails, every tab goes back and
+  // a file that can't be read says so when its tab is read.)
+  let checks: SavedTabCheck[];
   try {
-    exists = await checkPathsExist(saved.tabs);
+    checks = await checkSavedTabs(saved.tabs);
   } catch {
-    exists = saved.tabs.map(() => true);
+    checks = saved.tabs.map(() => 'Readable');
   }
 
-  let lastAdded: DocSession | null = null;
-  let toActivate: DocSession | null = null;
+  const start = get(activeSession);
+  const restored: DocSession[] = [];
+  let activeAt = -1;
   for (let i = 0; i < saved.tabs.length; i++) {
-    if (!exists[i]) continue;
-    const path = saved.tabs[i];
-    const active = get(activeSession);
-    const session: DocSession = get(active.doc) === null && !lastAdded ? active : createSession();
-    if (!(await loadIntoSession(session, path))) continue;
-    if (session !== active) addSession(session, lastAdded ?? active);
-    lastAdded = session;
-    if (i === saved.active || !toActivate) toActivate = session;
+    const check = checks[i];
+    if (check === 'Missing') continue;
+    if (typeof check === 'object' && check !== null && 'Unreadable' in check) {
+      reportOpenError(check.Unreadable);
+      continue;
+    }
+    const session = createSession();
+    session.lazyPath = saved.tabs[i];
+    if (i === saved.active) activeAt = restored.length;
+    restored.push(session);
   }
-  if (toActivate) await activateSession(toActivate.id);
+  if (restored.length === 0) return;
+  // The saved active tab, or the first one when that file is gone.
+  if (activeAt < 0) activeAt = 0;
+  if (sessionPath(start) !== null || get(sessions).length !== 1) {
+    // Something is open already (not at startup): the saved tabs go after
+    // it and the saved active one is shown, as they always were.
+    sessions.update((l) => {
+      const next = [...l];
+      next.splice(l.indexOf(start) + 1, 0, ...restored);
+      return next;
+    });
+    await activateSession(restored[activeAt].id);
+    return;
+  }
+  sessions.set([...restored.slice(0, activeAt + 1), start, ...restored.slice(activeAt + 1)]);
+  startTab = start;
+  savedActiveTab = restored[activeAt];
+  restoringTab.set(savedActiveTab);
+}
+
+// After the launch's own opens: if nothing loaded into the start tab, show
+// the saved active tab (or the next one that can be read), then drop the
+// empty start tab so it never shows up as a tab. Every reopened tab is in the
+// tab bar while the saved one is read: if the user picks one meanwhile (a
+// click, Ctrl+Tab), that switch lands and the saved tab isn't forced over it.
+export function finishSessionRestore(): Promise<void> {
+  return runOpenExclusive(finishSessionRestoreNow);
+}
+
+async function finishSessionRestoreNow(): Promise<void> {
+  try {
+    await showSavedActiveTab();
+  } finally {
+    restoringTab.set(null);
+  }
+}
+
+async function showSavedActiveTab(): Promise<void> {
+  const start = startTab;
+  const preferred = savedActiveTab;
+  startTab = null;
+  savedActiveTab = null;
+  if (!start || get(start.doc) !== null || start.closed) return;
+  if (get(activeSession) === start) {
+    const order = get(sessions).filter((s) => s !== start && !s.closed);
+    const candidates = preferred && order.includes(preferred)
+      ? [preferred, ...order.filter((s) => s !== preferred)]
+      : order;
+    for (const s of candidates) {
+      if (s.closed) continue;
+      const ok = s.lazyPath === null || (await ensureSessionLoaded(s));
+      await switchesSettled();
+      if (get(activeSession) !== start) break;
+      if (ok) {
+        await activateSession(s.id);
+        break;
+      }
+    }
+  }
+  if (get(activeSession) !== start) {
+    start.closed = true;
+    sessions.update((l) => l.filter((s) => s !== start));
+  }
+}
+
+// Read the reopened tabs that haven't been yet, one at a time, letting the
+// page breathe in between so scrolling and clicks on the document already
+// shown stay smooth. Tabs switched to meanwhile load then (sharing the load
+// if this was already reading them).
+export async function loadRestoredTabsInBackground(
+  breathe: () => Promise<void> = () => Promise.resolve(),
+): Promise<void> {
+  for (;;) {
+    const next = nearestUnloadedTab();
+    if (!next) return;
+    await breathe();
+    await ensureSessionLoaded(next);
+  }
+}
+
+// The tab not read yet that's nearest the shown one, the one to its right
+// before the one to its left: the tabs Ctrl+Tab and closing the shown tab
+// go to are ready first.
+function nearestUnloadedTab(): DocSession | null {
+  const list = get(sessions);
+  const waiting = (s: DocSession | undefined) => !!s && s.lazyPath !== null && !s.closed;
+  const at = Math.max(0, list.indexOf(get(shownTab)));
+  for (let d = 0; d < list.length; d++) {
+    if (waiting(list[at + d])) return list[at + d];
+    if (d > 0 && waiting(list[at - d])) return list[at - d];
+  }
+  return null;
 }
 
 function currentSnapshot(): string {
   const list = get(sessions);
-  const withDocs = list.filter((s) => get(s.doc) !== null);
-  const tabs = withDocs.map((s) => get(s.doc)!.path);
+  const withDocs = list.filter((s) => sessionPath(s) !== null);
+  const tabs = withDocs.map((s) => sessionPath(s)!);
   const active = Math.max(0, withDocs.indexOf(get(activeSession)));
   return serializeSession(tabs, active);
 }
 
+// Set while installSessionAutosave's is in place, which App does once the
+// startup opens are done. Before that the tab bar doesn't hold the saved tabs
+// yet, so a close (or a Mac's blur) flush would write the empty start tab
+// over them.
+let autosaveInstalled = false;
+
 function shouldPersist(): boolean {
-  return get(settings).openMode === 'tabs' && windowLabel() === 'main';
+  return autosaveInstalled && get(settings).openMode === 'tabs' && windowLabel() === 'main';
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,6 +238,7 @@ export async function flushSessionNow(): Promise<void> {
 // Save (debounced) whenever tabs open, close, switch, or a tab's document
 // changes path. Returns a dispose function.
 export function installSessionAutosave(): () => void {
+  autosaveInstalled = true;
   const schedule = () => {
     if (!shouldPersist()) return;
     if (saveTimer) clearTimeout(saveTimer);
@@ -136,6 +252,7 @@ export function installSessionAutosave(): () => void {
   });
   const unsubActive = activeSession.subscribe(schedule);
   return () => {
+    autosaveInstalled = false;
     unsubSessions();
     unsubActive();
     docUnsubs.forEach((u) => u());

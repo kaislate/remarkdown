@@ -11,7 +11,7 @@ import { readerMode } from '../../src/stores/reader-mode';
 import { DEFAULT_SETTINGS } from '../../src/lib/settings-schema';
 import { resetMermaidRuntimeForTests, setMermaidRenderTimeoutForTests } from '../../src/lib/mermaid-runtime';
 
-const mocked = vi.hoisted(() => ({ theme: '', renders: [] as string[], hang: false }));
+const mocked = vi.hoisted(() => ({ theme: '', renders: [] as string[], hang: false, busyMs: 0 }));
 
 vi.mock('mermaid', () => ({
   default: {
@@ -20,6 +20,8 @@ vi.mock('mermaid', () => ({
     },
     render: async (id: string, source: string) => {
       mocked.renders.push(source);
+      // A diagram that takes this long to draw.
+      for (const end = performance.now() + mocked.busyMs; performance.now() < end;);
       if (mocked.hang) return new Promise<never>(() => {});
       if (source.includes('BROKEN')) {
         // mermaid leaves its temp container behind on failure.
@@ -56,6 +58,7 @@ const block = (src: string) =>
 beforeEach(() => {
   resetMermaidRuntimeForTests();
   mocked.renders.length = 0;
+  mocked.busyMs = 0;
   settings.set({ ...DEFAULT_SETTINGS, theme: 'dark' });
   document.body.innerHTML = '';
 });
@@ -166,6 +169,81 @@ describe('MermaidRenderer', () => {
       setMermaidRenderTimeoutForTests(null);
       mocked.hang = false;
     }
+  });
+
+  // A long document opened at its saved reading position: the diagram on
+  // screen is drawn first, then the ones nearest to it, not top to bottom.
+  it('draws the diagram on screen first, then the nearest ones', async () => {
+    const root = article(block('flowchart TD\nfar') + block('flowchart TD\nnear') + block('flowchart TD\nshown'));
+    const tops: Record<string, number> = { far: -9000, near: 2500, shown: 200 };
+    for (const el of root.querySelectorAll<HTMLElement>('.mermaid-block')) {
+      const name = el.dataset.mermaid!.split('\n')[1];
+      el.getBoundingClientRect = () => ({ top: tops[name], bottom: tops[name] + 300 }) as DOMRect;
+    }
+    render(MermaidRenderer, { props: { articleEl: root } });
+    for (let i = 0; i < 4; i++) await settle();
+    expect(mocked.renders.map((src) => src.split('\n')[1])).toEqual(['shown', 'near', 'far']);
+  });
+
+  // Each diagram is its own piece of work: the page gets to draw and handle
+  // input between them instead of waiting for the whole document's worth.
+  it('lets the page run between one diagram and the next', async () => {
+    const root = article(block('flowchart TD\nA') + block('flowchart TD\nB') + block('flowchart TD\nC'));
+    let rendersAtFirstTurn = -1;
+    const timer = setInterval(() => {
+      if (rendersAtFirstTurn < 0 && mocked.renders.length > 0) rendersAtFirstTurn = mocked.renders.length;
+    }, 0);
+    try {
+      render(MermaidRenderer, { props: { articleEl: root } });
+      for (let i = 0; i < 4; i++) await settle();
+    } finally {
+      clearInterval(timer);
+    }
+    expect(mocked.renders).toHaveLength(3);
+    expect(rendersAtFirstTurn).toBeLessThan(3);
+  });
+
+  // How many diagrams were drawn when the page first got a turn.
+  async function rendersAtFirstTurn(root: HTMLElement): Promise<number> {
+    let seen = -1;
+    const timer = setInterval(() => {
+      if (seen < 0 && mocked.renders.length > 0) seen = mocked.renders.length;
+    }, 0);
+    try {
+      render(MermaidRenderer, { props: { articleEl: root } });
+      for (let i = 0; i < 4; i++) await settle();
+    } finally {
+      clearInterval(timer);
+    }
+    return seen;
+  }
+
+  function placeAt(root: HTMLElement, tops: number[]): void {
+    root.querySelectorAll<HTMLElement>('.mermaid-block').forEach((el, i) => {
+      el.getBoundingClientRect = () => ({ top: tops[i], bottom: tops[i] + 300 }) as DOMRect;
+    });
+  }
+
+  // Letting the page lay out and paint between diagrams far below the
+  // screen only makes the last one later: those are drawn back to back.
+  it('draws diagrams far from the screen back to back', async () => {
+    // mermaid loaded already, as it is after the first diagram.
+    render(MermaidRenderer, { props: { articleEl: article(block('flowchart TD\nwarm')) } });
+    await settle();
+    mocked.renders.length = 0;
+    const root = article(block('flowchart TD\nA') + block('flowchart TD\nB') + block('flowchart TD\nC'));
+    placeAt(root, [5000, 9000, 13000]);
+    expect(await rendersAtFirstTurn(root)).toBe(3);
+    expect(mocked.renders).toHaveLength(3);
+  });
+
+  // ...but not for so long that the page stops answering.
+  it('still lets the page run when diagrams far from the screen take long to draw', async () => {
+    mocked.busyMs = 120;
+    const root = article(block('flowchart TD\nA') + block('flowchart TD\nB') + block('flowchart TD\nC'));
+    placeAt(root, [5000, 9000, 13000]);
+    expect(await rendersAtFirstTurn(root)).toBeLessThan(3);
+    expect(mocked.renders).toHaveLength(3);
   });
 
   it('shows a friendly error (details collapsed) and leaves nothing on <body>', async () => {

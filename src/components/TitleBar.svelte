@@ -114,6 +114,19 @@
     return () => { disposed = true; unlisten?.(); };
   });
 
+  // The aura's swoop redraws a blurred layer every frame for as long as the
+  // app is open. While the window is minimized or otherwise hidden it holds
+  // still (and picks up from there on return): no one can see it, and the
+  // GPU and battery get the rest. A window that is on screen but not focused
+  // keeps swooping, since it can still be seen beside the focused one.
+  let auraPaused = $state(false);
+  onMount(() => {
+    const sync = () => { auraPaused = document.hidden; };
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  });
+
   const minimize = () => safeCall(() => getCurrentWindow().minimize());
   const toggleMaximize = () => safeCall(() => getCurrentWindow().toggleMaximize());
   const close = () => safeCall(() => getCurrentWindow().close());
@@ -131,7 +144,7 @@
 <!-- Subtle animated aura behind the controls. Non-interactive — just a
      visual anchor that delineates where the buttons are without framing
      them in a hard panel. -->
-<div class="controls-aura" aria-hidden="true"></div>
+<div class="controls-aura" class:paused={auraPaused} aria-hidden="true"></div>
 
 <div class="titlebar-controls">
   <!-- 10x10 icons on the pixel grid (Windows' caption-button shapes),
@@ -240,6 +253,9 @@
     filter: blur(6px);
     animation: swoop 9s ease-in-out infinite;
     transform-origin: 70% 30%;
+  }
+  .controls-aura.paused {
+    animation-play-state: paused;
   }
   @keyframes swoop {
     0%   { transform: translate(0, 0) scale(1);        opacity: 0.85; }

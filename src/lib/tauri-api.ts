@@ -93,6 +93,14 @@ export async function checkPathsExist(paths: string[]): Promise<boolean[]> {
   return await withinFileWait(invoke<boolean[]>('check_paths_exist', { paths }));
 }
 
+// Per saved tab: gone, fine, or there but unreadable (with the error
+// read_document would give).
+export type SavedTabCheck = 'Missing' | 'Readable' | { Unreadable: unknown };
+
+export async function checkSavedTabs(paths: string[]): Promise<SavedTabCheck[]> {
+  return await withinFileWait(invoke<SavedTabCheck[]>('check_saved_tabs', { paths }));
+}
+
 export function toAssetUrl(absolutePath: string): string {
   return convertFileSrc(absolutePath);
 }

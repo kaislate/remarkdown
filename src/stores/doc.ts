@@ -1,16 +1,19 @@
 import { get } from 'svelte/store';
+import { tick } from 'svelte';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
+import { currentViewerRoot, docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
-import { openModal } from './modals';
+import { openModal, type ModalState } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
 import { getProgressFor } from './reading-progress';
 import { viewerScroll } from './viewport';
 import { settings } from './settings';
 import { activeProxy, activeSession, type DocSession } from './sessions';
+import { isLaunchedPath, startupMark, startupMarkWhenShown, startupTimed } from '../lib/startup-trace';
+import { editorComponent, loadEditor } from '../lib/editor-loader';
 
 export type { DocState } from './doc-types';
 
@@ -41,6 +44,17 @@ export async function loadDocument(path: string): Promise<boolean> {
   return loadIntoSession(get(activeSession), path);
 }
 
+// Says why a document couldn't be opened (read_document's error).
+export function reportOpenError(err: unknown): void {
+  if (err && typeof err === 'object' && 'NotUtf8' in err) {
+    addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
+  } else if (err && typeof err === 'object' && 'Io' in err) {
+    addToast({ kind: 'error', message: `Could not open file: ${(err as Record<string, unknown>).Io}` });
+  } else {
+    addToast({ kind: 'error', message: `Could not open file: ${String(err)}` });
+  }
+}
+
 // Loads `path` into `session`, which may be a background tab (tabs mode
 // loads a new tab before switching to it). Returns true when the document
 // is loaded (or was already loaded and unchanged), false on a read error —
@@ -49,22 +63,18 @@ let loadCounter = 0;
 
 // `force`: reload even when the file on disk is unchanged (resolving an edit
 // conflict with "use the other version" must start the editor over).
+// `noticeWhenShown`: a tab read before it's shown (a reopened tab) keeps a
+// malformed-annotations notice until it is, instead of opening it now.
 export async function loadIntoSession(
   session: DocSession,
   path: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; noticeWhenShown?: boolean } = {},
 ): Promise<boolean> {
   let r;
   try {
-    r = await readDocument(path);
+    r = await startupTimed('read', () => readDocument(path));
   } catch (err) {
-    if (err && typeof err === 'object' && 'NotUtf8' in err) {
-      addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
-    } else if (err && typeof err === 'object' && 'Io' in err) {
-      addToast({ kind: 'error', message: `Could not open file: ${(err as Record<string, unknown>).Io}` });
-    } else {
-      addToast({ kind: 'error', message: `Could not open file: ${String(err)}` });
-    }
+    reportOpenError(err);
     return false;
   }
 
@@ -82,16 +92,31 @@ export async function loadIntoSession(
   // state so the file watcher doesn't yank the UI from under the user.
   const isNewDocOpen = !current || current.path !== r.path;
 
-  const { html, plaintext, blocks } = await render(r.markdown, {
+  const launched = isLaunchedPath(path);
+  if (launched) startupMark('launched-doc-read', `${r.bytes} bytes`);
+  const { html, plaintext, blocks } = await startupTimed('render', () => render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
-  });
+  }));
+  if (launched) startupMark('launched-doc-rendered');
+  // "Open documents ready to edit": the editor's code is fetched on its own
+  // (lib/editor-loader.ts). Wait for it here, so the document appears with
+  // the editor instead of as an empty page while it arrives. If it can't be
+  // fetched, the document opens anyway and edit mode tries again.
+  if (isNewDocOpen && get(settings).openInEditMode && !get(session.editMode) && get(editorComponent) === null) {
+    await loadEditor().catch(() => {});
+  }
 
   let parsedAnnotations: Annotation[] = [];
   session.sidecarRefused = false;
+  session.pendingSidecarNotice = null;
+  const sidecarNotice = (notice: Extract<ModalState, { kind: 'corrupt-sidecar' }>) => {
+    if (opts.noticeWhenShown) session.pendingSidecarNotice = notice;
+    else openModal(notice);
+  };
   if (r.sidecarUnreadable) {
     session.sidecarRefused = true;
-    openModal({ kind: 'corrupt-sidecar', path: r.path, reason: 'unreadable' });
+    sidecarNotice({ kind: 'corrupt-sidecar', path: r.path, reason: 'unreadable' });
   } else if (r.sidecarRaw) {
     const result = loadSidecar(r.sidecarRaw);
     if (result.ok) {
@@ -99,13 +124,19 @@ export async function loadIntoSession(
     } else {
       session.sidecarRefused = true;
       console.warn('[remarkdown] sidecar load failed:', result.error);
-      openModal(
+      sidecarNotice(
         result.error.kind === 'too-many'
           ? { kind: 'corrupt-sidecar', path: r.path, reason: 'too-many' }
           : { kind: 'corrupt-sidecar', path: r.path },
       );
     }
   }
+  // The active tab's page still shows the old content until Svelte renders
+  // the new one: take it away meanwhile, so the new annotations aren't
+  // looked for in it (each would miss and scan the whole article), and give
+  // it back once it shows the new document, which resolves them, once.
+  const page = session === get(activeSession) ? get(currentViewerRoot) : null;
+  if (page) currentViewerRoot.set(null);
   session.annots.set(parsedAnnotations);
   // Undo steps belonged to the content as it was.
   resetAnnotHistory(session);
@@ -132,8 +163,22 @@ export async function loadIntoSession(
     sidecarRaw: r.sidecarRaw,
     loadId: ++loadCounter,
   });
+  if (launched) {
+    startupMark('launched-doc-set');
+    const loadId = loadCounter;
+    startupMarkWhenShown('launched-doc-paint', () =>
+      get(activeSession) === session && get(session.doc)?.loadId === loadId && !!document.querySelector('article.viewer'));
+  }
   const isActive = session === get(activeSession);
-  if (isActive) docEpoch.update((e) => e + 1);
+  if (isActive && !page) docEpoch.update((e) => e + 1);
+  const pageBack = page
+    ? tick().then(() => {
+        // Unless another page took its place meanwhile (a tab switch).
+        if (get(currentViewerRoot) !== null) return;
+        docEpoch.update((e) => e + 1); // no page yet: nothing is searched
+        if (page.isConnected) currentViewerRoot.set(page);
+      })
+    : null;
 
   // Reader mode and edit mode never go together; "ready to edit" wins.
   const s = get(settings);
@@ -156,11 +201,14 @@ export async function loadIntoSession(
     session.disposeWatcher = null;
   }
   if (!session.watcherPaused && !session.closed) {
-    const dispose = await installFileWatcher(path, () => onFileChanged(session));
+    const dispose = await startupTimed('watcher', () => installFileWatcher(path, () => onFileChanged(session)));
     // The tab may have been closed while the watcher was being set up.
     if (session.closed) await dispose();
     else session.disposeWatcher = dispose;
   }
+  // Callers (reloadSession's re-anchored count) read the annotations as
+  // resolved against the new page.
+  if (pageBack) await pageBack;
   return true;
 }
 

@@ -18,6 +18,7 @@ vi.mock('../../src/lib/tauri-api', () => ({
   openFileDialog: vi.fn(async () => null),
   loadSessionJson: vi.fn(async () => null),
   checkPathsExist: vi.fn(async (ps: string[]) => ps.map(() => true)),
+  checkSavedTabs: vi.fn(async (ps: string[]) => ps.map(() => 'Readable')),
 }));
 vi.mock('../../src/lib/file-watch', () => ({
   installFileWatcher: vi.fn(async () => async () => {}),

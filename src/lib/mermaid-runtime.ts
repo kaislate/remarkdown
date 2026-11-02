@@ -82,7 +82,24 @@ interface CacheEntry {
 let mermaidPromise: Promise<Mermaid> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
 const cache = new Map<string, CacheEntry>();
+// The latest live preview (the diagram text panel redraws as you type).
+// Held apart from the cache so a few minutes of typing can't push the
+// open document's diagrams out of it; one slot, so the version that gets
+// saved still paints at once (a lookup moves it into the cache).
+let previewSlot: { key: string; entry: CacheEntry } | null = null;
 let idCounter = 0;
+
+export interface MermaidRenderOptions {
+  // Asked when the render reaches the front of the queue: false skips it
+  // without running mermaid (a newer render replaced it, or what asked
+  // for it is gone). The caller gets a transient failure it was going to
+  // throw away anyway.
+  isCurrent?: () => boolean;
+  // A live preview: kept in the one preview slot, not the shared cache.
+  preview?: boolean;
+}
+
+const SUPERSEDED: MermaidRenderOutcome = { ok: false, error: 'Superseded by a newer drawing.', transient: true };
 
 function loadMermaid(): Promise<Mermaid> {
   if (!mermaidPromise) {
@@ -153,18 +170,35 @@ function remember(key: string, entry: CacheEntry): void {
   }
 }
 
+// A finished render of `key`, from the cache or the preview slot. A
+// preview found by anything but another preview has become a diagram in
+// its own right (it was saved): it moves into the cache.
+function lookup(key: string, preview = false): CacheEntry | null {
+  const entry = cache.get(key);
+  if (entry) {
+    // Refresh LRU position.
+    remember(key, entry);
+    return entry;
+  }
+  if (previewSlot && previewSlot.key === key) {
+    const found = previewSlot.entry;
+    if (!preview) {
+      previewSlot = null;
+      remember(key, found);
+    }
+    return found;
+  }
+  return null;
+}
+
 // Synchronous cache lookup. Callers use it to paint a known diagram in
 // the same frame the placeholder appears (no empty-block flicker).
 export function peekMermaidRender(
   source: string,
   ctx: MermaidRenderContext,
 ): MermaidRenderOutcome | null {
-  const key = cacheKey(source, ctx);
-  const entry = cache.get(key);
-  if (!entry) return null;
-  // Refresh LRU position.
-  remember(key, entry);
-  return rekey(entry);
+  const entry = lookup(cacheKey(source, ctx));
+  return entry ? rekey(entry) : null;
 }
 
 // mermaid.render() parks a temp `<div id="d<id>">` (and, for sandboxed
@@ -771,10 +805,13 @@ async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
   key: string,
+  opts: MermaidRenderOptions,
 ): Promise<MermaidRenderOutcome> {
   // A job queued behind an identical one finds the result already here.
-  const cached = cache.get(key);
+  const cached = lookup(key, opts.preview);
   if (cached) return rekey(cached);
+  // Nobody is waiting for this one any more.
+  if (opts.isCurrent && !opts.isCurrent()) return SUPERSEDED;
 
   const tooSlow = tooSlowToRead(source);
   if (tooSlow) {
@@ -831,7 +868,8 @@ async function renderNow(
   } finally {
     removeLeftovers(id);
   }
-  remember(key, entry);
+  if (opts.preview) previewSlot = { key, entry };
+  else remember(key, entry);
   return entry.outcome;
 }
 
@@ -840,14 +878,12 @@ async function renderNow(
 export function renderMermaid(
   source: string,
   ctx: MermaidRenderContext,
+  opts: MermaidRenderOptions = {},
 ): Promise<MermaidRenderOutcome> {
   const key = cacheKey(source, ctx);
-  const hit = cache.get(key);
-  if (hit) {
-    remember(key, hit);
-    return Promise.resolve(rekey(hit));
-  }
-  const job = queue.then(() => renderNow(source, ctx, key));
+  const hit = lookup(key, opts.preview);
+  if (hit) return Promise.resolve(rekey(hit));
+  const job = queue.then(() => renderNow(source, ctx, key, opts));
   queue = job.catch(() => {});
   return job;
 }
@@ -868,6 +904,7 @@ export async function warmMermaidRuntime(): Promise<void> {
 
 export function resetMermaidRuntimeForTests(): void {
   cache.clear();
+  previewSlot = null;
   queue = Promise.resolve();
 }
 

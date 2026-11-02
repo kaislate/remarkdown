@@ -12,7 +12,7 @@ function hashId(id: string): number {
   return Math.abs(h) || 1;
 }
 
-const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+export const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
 const PADDING_EM = {
   circle: 0.4,
@@ -31,16 +31,49 @@ function arrowNodes(rc: RoughSVG, tail: [number, number], tip: [number, number],
   return [rc.line(tail[0], tail[1], tip[0], tip[1], opts), barb(0.5), barb(-0.5)];
 }
 
-export function renderDrawing(
-  rc: RoughSVG,
+// Where a drawing's anchor is on screen: its text's box for a shape anchored
+// to text, its block's box for the others; null when it isn't in the
+// article. Reading layout only, so a caller drawing many can measure them
+// all before it changes anything.
+export function anchorRect(
   d: Drawing,
   root: HTMLElement,
-  zoom: number,
-  svg: SVGSVGElement,
-  roughness: number,
   // Where a shape anchored to text is, when the caller has found it already
   // (the annotation store does, for every drawing it shows).
   found?: Range | null,
+): DOMRect | null {
+  switch (d.shape.kind) {
+    case 'circle':
+    case 'rectangle':
+    case 'underline':
+    case 'strikethrough': {
+      const range = found ?? resolveAnchor(d.shape.anchor, root);
+      return range ? range.getBoundingClientRect() : null;
+    }
+    case 'circle-empty':
+    case 'margin-bar':
+    case 'freehand': {
+      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
+      return block ? block.getBoundingClientRect() : null;
+    }
+    case 'freehand-legacy': {
+      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchorBlock}"]`);
+      return block ? block.getBoundingClientRect() : null;
+    }
+  }
+}
+
+// A drawing's rough.js nodes, from its anchor's box (anchorRect), the
+// overlay svg's box and the root font size. Nothing here reads layout: the
+// same numbers always give the same nodes.
+export function drawShape(
+  rc: RoughSVG,
+  d: Drawing,
+  r: DOMRect,
+  svg_r: DOMRect,
+  rem: number,
+  zoom: number,
+  roughness: number,
 ): SVGElement[] {
   const roughOpts = {
     roughness,
@@ -51,11 +84,7 @@ export function renderDrawing(
   switch (d.shape.kind) {
     case 'circle':
     case 'rectangle': {
-      const range = found ?? resolveAnchor(d.shape.anchor, root);
-      if (!range) return [];
-      const r = range.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
-      const pad = PADDING_EM[d.shape.kind] * remPx();
+      const pad = PADDING_EM[d.shape.kind] * rem;
       const cx = r.left - svg_r.left + r.width / 2;
       const cy = r.top  - svg_r.top  + r.height / 2;
       const w = r.width + pad * 2;
@@ -68,11 +97,7 @@ export function renderDrawing(
     }
 
     case 'underline': {
-      const range = found ?? resolveAnchor(d.shape.anchor, root);
-      if (!range) return [];
-      const r = range.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
-      const y = r.bottom - svg_r.top + PADDING_EM.underline * remPx();
+      const y = r.bottom - svg_r.top + PADDING_EM.underline * rem;
       const node = rc.line(
         r.left  - svg_r.left, y,
         r.right - svg_r.left, y,
@@ -82,10 +107,6 @@ export function renderDrawing(
     }
 
     case 'strikethrough': {
-      const range = found ?? resolveAnchor(d.shape.anchor, root);
-      if (!range) return [];
-      const r = range.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
       const y = r.top - svg_r.top + r.height / 2;
       const node = rc.line(
         r.left  - svg_r.left, y,
@@ -96,11 +117,6 @@ export function renderDrawing(
     }
 
     case 'circle-empty': {
-      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
-      if (!block) return [];
-      const r = block.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
-      const rem = remPx();
       const cx = r.left - svg_r.left + d.shape.anchor.xEm * rem;
       const cy = r.top  - svg_r.top  + d.shape.anchor.yEm * rem;
       const w = d.shape.radiusXEm * rem * 2;
@@ -109,11 +125,7 @@ export function renderDrawing(
     }
 
     case 'margin-bar': {
-      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
-      if (!block) return [];
-      const r = block.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
-      const x = r.left - svg_r.left - 0.5 * remPx();
+      const x = r.left - svg_r.left - 0.5 * rem;
       return [rc.line(
         x, r.top - svg_r.top,
         x, r.bottom - svg_r.top,
@@ -122,11 +134,6 @@ export function renderDrawing(
     }
 
     case 'freehand': {
-      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
-      if (!block) return [];
-      const r = block.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
-      const rem = remPx();
       const pts = d.shape.points.map(([xEm, yEm]) =>
         [r.left - svg_r.left + xEm * rem, r.top - svg_r.top + yEm * rem] as [number, number],
       );
@@ -138,10 +145,6 @@ export function renderDrawing(
     }
 
     case 'freehand-legacy': {
-      const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchorBlock}"]`);
-      if (!block) return [];
-      const r = block.getBoundingClientRect();
-      const svg_r = svg.getBoundingClientRect();
       const scale = zoom / d.shape.captureZoom;
       const out: SVGElement[] = [];
       for (let i = 0; i < d.shape.strokes.length; i++) {
@@ -155,4 +158,18 @@ export function renderDrawing(
       return out;
     }
   }
+}
+
+export function renderDrawing(
+  rc: RoughSVG,
+  d: Drawing,
+  root: HTMLElement,
+  zoom: number,
+  svg: SVGSVGElement,
+  roughness: number,
+  found?: Range | null,
+): SVGElement[] {
+  const r = anchorRect(d, root, found);
+  if (!r) return [];
+  return drawShape(rc, d, r, svg.getBoundingClientRect(), remPx(), zoom, roughness);
 }

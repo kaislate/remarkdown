@@ -69,8 +69,21 @@ export function buildSentenceContext(
   count: number,
   stopAtParagraph: boolean,
 ): string {
-  if (blockTexts.length === 0) return '';
-  const last = blockTexts[blockTexts.length - 1];
+  return sentenceContextOf(blockTexts.length, (i) => blockTexts[i], anchorOffset, count, stopAtParagraph);
+}
+
+// The same, given how many blocks there are and a way to read block i's
+// text, which is asked for only for the blocks the sentences come from:
+// the anchor's, and as many before it as fill the count.
+export function sentenceContextOf(
+  blockCount: number,
+  textOf: (i: number) => string,
+  anchorOffset: number,
+  count: number,
+  stopAtParagraph: boolean,
+): string {
+  if (blockCount === 0) return '';
+  const last = textOf(blockCount - 1);
   const anchorSentenceIdx = sentenceIndexAt(last, anchorOffset);
 
   // First, take sentences from the anchor's own block, walking
@@ -84,8 +97,8 @@ export function buildSentenceContext(
   if (stopAtParagraph) return pieces[0];
 
   // Walk earlier blocks for the remaining sentence budget.
-  for (let i = blockTexts.length - 2; i >= 0 && needed > 0; i--) {
-    const prev = blockTexts[i];
+  for (let i = blockCount - 2; i >= 0 && needed > 0; i--) {
+    const prev = textOf(i);
     const total = countSentences(prev);
     if (total === 0) continue;
     const take = Math.min(needed, total);

@@ -10,9 +10,19 @@ export const settings = writable<Settings>(defaultSettings());
 // block app launch.
 let loadedOnce = false;
 
-export async function refreshSettings(): Promise<void> {
+// `platformSettled`: at startup the file is asked for while the platform
+// check is still out, but what's missing from it is filled in with the
+// defaults of the OS (the glide starts off on a Mac), so it is read into
+// settings only once the OS is known.
+export async function refreshSettings(platformSettled?: Promise<unknown>): Promise<void> {
+  const reading = loadSettingsJson();
+  if (platformSettled) {
+    // Handled below; not unhandled while the platform check finishes.
+    reading.catch(() => {});
+    await platformSettled.catch(() => {});
+  }
   try {
-    const raw = await loadSettingsJson();
+    const raw = await reading;
     const parsed = parseSettings(raw);
     // What's on disk now — the autosave below skips writing it back.
     lastSavedJson = serialize(parsed);

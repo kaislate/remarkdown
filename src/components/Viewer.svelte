@@ -16,7 +16,7 @@
   import type { Drawing } from '../lib/schema';
   import { editMode } from '../stores/edit-mode';
   import { pauseFileWatcher, resumeFileWatcher, loadIntoSession } from '../stores/doc';
-  import Editor from './Editor.svelte';
+  import { editorComponent, loadEditor } from '../lib/editor-loader';
   import { saveEditedMarkdown, savesSettled } from '../lib/edit-save';
   import { debounce } from '../lib/editor/debounce';
   import type { Debounced } from '../lib/editor/debounce';
@@ -43,6 +43,12 @@
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
+
+  // The editor's code arrives separately (lib/editor-loader.ts); edit mode
+  // fetches it now if the background prefetch hasn't yet.
+  $effect(() => {
+    if ($editMode) void loadEditor().catch((err) => console.error('[remarkdown] could not load the editor:', err));
+  });
 
   // Edge-style smooth scrolling for the wheel and keys. Checked per event,
   // so turning it off (or reduced motion / e-ink) applies at once; nothing
@@ -248,7 +254,9 @@
     };
   });
 
-  let pendingSave: Debounced<[string]> | null = null;
+  // Carries a reader for the edited markdown, not the text: the document is
+  // serialized when the save actually runs (or is flushed), not per keystroke.
+  let pendingSave: Debounced<[() => string]> | null = null;
 
   // CSS Custom Highlight API ranges live in a global registry; the
   // HighlightLayer component unmounts when entering edit mode but the
@@ -329,20 +337,22 @@
     const ms = $settings.saveDebounceMs;
     // Bound to this tab and file: a late flush can never write into another.
     const session = get(activeSession);
-    pendingSave = debounce((markdown: string) => {
-      void saveEditedMarkdown(session, currentDoc.path, markdown);
+    pendingSave = debounce((readMarkdown: () => string) => {
+      void saveEditedMarkdown(session, currentDoc.path, readMarkdown());
     }, ms);
     return () => pendingSave?.flush();
   });
 
-  function onEditorChange(markdown: string) {
+  function onEditorChange(readMarkdown: () => string) {
     // Only the visible tab's editor receives input.
     const session = get(activeSession);
-    session.editedMarkdown = markdown;
+    // Serialized once, by whichever asks first (the save, or a remounting
+    // editor); readMarkdown keeps the text it wrote.
+    session.deferEditedMarkdown(readMarkdown);
     // A tab opened "ready to edit" keeps watching its file until the first
     // keystroke; from here on our own saves would come back as reloads.
     if (!session.watcherPaused) void pauseFileWatcher(session);
-    pendingSave?.(markdown);
+    pendingSave?.(readMarkdown);
   }
 </script>
 
@@ -384,13 +394,16 @@
                each needs its own editor (restored from its saved state). -->
           <!-- …and on the disk version, so "use the other version" after an
                edit conflict remounts the editor on the reloaded file. -->
-          {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '') + ($doc?.loadId ?? '')}
-            <Editor
-              initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
-              onChange={onEditorChange}
-              session={$activeSession}
-            />
-          {/key}
+          {#if $editorComponent}
+            {@const Editor = $editorComponent}
+            {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '') + ($doc?.loadId ?? '')}
+              <Editor
+                initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
+                onChange={onEditorChange}
+                session={$activeSession}
+              />
+            {/key}
+          {/if}
         {/if}
       </div>
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint

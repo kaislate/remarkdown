@@ -109,7 +109,9 @@ export function splitTaskOrListItem(
 export function createEditorView(
   parent: HTMLElement,
   initialMarkdown: string,
-  onChange: (markdown: string) => void,
+  // Called on every document change with a reader for the new markdown;
+  // the document is only serialized if (and when) the reader is called.
+  onChange: (readMarkdown: () => string) => void,
   restoredState?: EditorState,
   // Turns a picture's src (relative to the document) into a URL the
   // window can load; Editor.svelte passes one for the document's folder.
@@ -210,7 +212,12 @@ export function createEditorView(
       const newState = view.state.apply(tr);
       view.updateState(newState);
       if (tr.docChanged) {
-        onChange(serializeToMarkdown(newState.doc));
+        // Not serialized here: that would cost a pass over the whole
+        // document per keystroke. Whoever needs the text (the debounced
+        // save, a flush) reads it, once.
+        const changed = newState.doc;
+        let markdown: string | null = null;
+        onChange(() => (markdown ??= serializeToMarkdown(changed)));
       }
     },
   });

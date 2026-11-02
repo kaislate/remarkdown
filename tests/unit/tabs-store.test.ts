@@ -139,14 +139,29 @@ describe('tabs', () => {
   });
 
   it('cycleSession wraps around in both directions', async () => {
-    const first = get(activeSession);
+    const first = withDoc('/first.md');
     const a = withDoc('/a.md');
     sessions.set([first, a]);
+    activeSession.set(first);
     await cycleSession(1);
     expect(get(activeSession)).toBe(a);
     await cycleSession(1);
     expect(get(activeSession)).toBe(first);
     await cycleSession(-1);
+    expect(get(activeSession)).toBe(a);
+  });
+
+  // The empty tab a window starts on isn't in the tab bar: Ctrl+Tab never
+  // lands on it.
+  it('cycleSession skips a tab with no document', async () => {
+    const a = withDoc('/a.md');
+    const empty = createSession();
+    const b = withDoc('/b.md');
+    sessions.set([a, empty, b]);
+    activeSession.set(a);
+    await cycleSession(1);
+    expect(get(activeSession)).toBe(b);
+    await cycleSession(1);
     expect(get(activeSession)).toBe(a);
   });
 

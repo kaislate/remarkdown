@@ -15,6 +15,11 @@
     text: string;
     level: number; // 1..4
     id: string;    // unique-ish ref to find the element later
+    // The heading itself, kept from when the list was built, so following
+    // the scroll doesn't search the document for each one on every event.
+    // Null for one without a block id (nested in a quote or callout): those
+    // are listed but never marked or jumped to, as before.
+    el: HTMLElement | null;
   }
 
   let open = $state(false);
@@ -34,16 +39,26 @@
     const root = $currentViewerRoot;
     if (!root) return [];
     const els = root.querySelectorAll<HTMLElement>('h1, h2, h3, h4');
-    return Array.from(els).map((el, i) => ({
-      text: el.textContent?.trim() ?? '',
-      level: parseInt(el.tagName.substring(1), 10),
-      id: el.getAttribute('data-block-id') ?? `_h_${i}`,
-    }));
+    return Array.from(els).map((el, i) => {
+      const blockId = el.getAttribute('data-block-id');
+      return {
+        text: el.textContent?.trim() ?? '',
+        level: parseInt(el.tagName.substring(1), 10),
+        id: blockId ?? `_h_${i}`,
+        // Block ids are unique (the renderer numbers the top-level blocks),
+        // so this is what a search by its id would find.
+        el: blockId === null ? null : el,
+      };
+    });
   });
 
   function headingEl(h: Heading): HTMLElement | null {
-    const root = get(currentViewerRoot);
-    return root?.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(h.id)}"]`) ?? null;
+    // Gone from the page since the list was built (a reload): look again.
+    if (h.el && !h.el.isConnected) {
+      const root = get(currentViewerRoot);
+      return root?.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(h.id)}"]`) ?? null;
+    }
+    return h.el;
   }
 
   // The section being read (the last heading come up to the top third of

@@ -44,13 +44,20 @@
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
-  import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
+  import { recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
   import { activateSession } from './stores/tabs';
-  import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
+  import {
+    restoreSavedTabs,
+    finishSessionRestore,
+    loadRestoredTabsInBackground,
+    installSessionAutosave,
+    flushSessionNow,
+  } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
+  import { finishStartupTrace, startupMark } from './lib/startup-trace';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
   import { undoAnnot, redoAnnot } from './stores/annots';
@@ -59,8 +66,8 @@
   import { unresolvedConflict, askAboutConflict } from './lib/edit-save';
   import { settlePendingSaves, installMacBlurFlush, bringForwardOnMac } from './lib/leave-flush';
   import { activeSession } from './stores/sessions';
-  import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
-  import { refreshReadingProgress } from './stores/reading-progress';
+  import { settings, installSettingsAutosave } from './stores/settings';
+  import { startStartupReads } from './lib/startup-reads';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom, minimapShown } from './stores/ui';
@@ -70,6 +77,7 @@
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import { editMode, toggleEditMode } from './stores/edit-mode';
+  import { loadEditor } from './lib/editor-loader';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -249,6 +257,17 @@
     }
   }
 
+  // Resolves when the page is next idle (after the frame in progress is
+  // drawn), or after a second at the latest.
+  function idleMoment(): Promise<void> {
+    return new Promise((resolve) => {
+      const ric = (window as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+        .requestIdleCallback;
+      if (ric) ric(() => resolve(), { timeout: 1000 });
+      else setTimeout(resolve, 16);
+    });
+  }
+
   function onToolShortcut(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     // Annotations are read-only in reader mode (the tool is parked on
@@ -268,55 +287,13 @@
     }
   }
 
-  onMount(async () => {
-    // Load persisted settings before anything else so subsequent subscribers
-    // (theme, watermark, etc.) see the user's preferences instead of defaults.
-    try { await refreshSettings(); } catch { /* fall back to defaults */ }
-    disposeSettings = installSettingsAutosave();
-
-    // Apply settings that take effect once at startup. Article width is set
-    // as a CSS variable so .text-frame's max-width follows it; default zoom
-    // seeds the zoomLevel store (within a session Ctrl+/- can override). The
-    // default highlight + ink colours seed the tool store so the next time
-    // the user picks the highlight or draw tool they start in their preferred
-    // colour rather than the historical preset[0].
-    const s = get(settings);
-    document.documentElement.style.setProperty('--article-width', `${s.articleWidth}px`);
-    zoomLevel.set(s.defaultZoom);
-    tool.update((t) => ({
-      ...t,
-      highlightColor: s.defaultHighlightColor,
-      drawColor: s.defaultInkColor,
-    }));
-
-    // Keep --article-width in sync when the user changes it from the modal.
-    const unsubWidth = settings.subscribe((next) => {
-      document.documentElement.style.setProperty('--article-width', `${next.articleWidth}px`);
-    });
-    disposeArticleWidth = unsubWidth;
-
-    try { await refreshRecent(); } catch { /* ignore on first launch */ }
-    try { await refreshReadingProgress(); } catch { /* ignore */ }
-    disposeSave = installSaveWatcher();
-    disposeDrop = await installFileDropHandler();
-    window.addEventListener('keydown', onZoomKey);
-    window.addEventListener('keydown', onAnnotUndoKey);
-    window.addEventListener('keydown', onToolShortcut);
-    window.addEventListener('keydown', onReattachEsc);
-    window.addEventListener('keydown', onTutorialKey);
-    window.addEventListener('keydown', onEditModeKey);
-
-    // Files the OS hands us later (double-click while we're running) arrive
-    // as 'open-requested'. Listen before the first drain below so nothing
-    // queued in between can be missed.
-    disposeOpenRequested = await onOpenRequested(() => { void drainPendingOpens(); });
-
-    // Flush the active tab's pending saves before the window goes away.
+  // Flush the active tab's pending saves before the window goes away.
+  // Registering this handler hands the close to JS: Tauri then calls
+  // destroy() once it resolves (needs core:window:allow-destroy). Never let a
+  // failed flush keep the window open.
+  async function installCloseFlush(): Promise<(() => void) | null> {
     try {
-      // Registering this handler hands the close to JS: Tauri then calls
-      // destroy() once it resolves (needs core:window:allow-destroy). Never
-      // let a failed flush keep the window open.
-      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
+      return await getCurrentWindow().onCloseRequested(async (event) => {
         try {
           await settlePendingSaves();
           // Edits waiting on a "changed by another program" decision would
@@ -335,31 +312,103 @@
         }
       });
     } catch {
-      // non-Tauri host
+      return null; // non-Tauri host
     }
+  }
+
+  onMount(async () => {
+    startupMark('app-init-start');
+    // Everything startup asks the backend for is independent, so it's all
+    // asked at once (settings, recents and reading progress were already
+    // started by main.ts) rather than one round trip after another.
+    const reads = startStartupReads();
+    // Files the OS hands us later (double-click while we're running) arrive
+    // as 'open-requested'. The listener is in place before the first drain
+    // below, so nothing queued in between can be missed.
+    const openListener = onOpenRequested(() => { void drainPendingOpens(); });
+    const closeFlush = installCloseFlush();
+    const dropHandler = installFileDropHandler();
     // A Mac can quit without asking any window first (Dock, logout), so
     // there each window also saves whenever it loses focus.
-    try {
-      disposeBlurFlush = await installMacBlurFlush();
-    } catch {
-      // non-Tauri host
-    }
+    const blurFlush = installMacBlurFlush().catch(() => null);
+
+    // Settings first, so what follows sees the user's preferences instead of
+    // defaults.
+    await reads.settings;
+    startupMark('settings-loaded');
+    disposeSettings = installSettingsAutosave();
+
+    // Apply settings that take effect once at startup. Article width is set
+    // as a CSS variable so .text-frame's max-width follows it; default zoom
+    // seeds the zoomLevel store (within a session Ctrl+/- can override). The
+    // default highlight + ink colours seed the tool store so the next time
+    // the user picks the highlight or draw tool they start in their preferred
+    // colour rather than the historical preset[0].
+    const s = get(settings);
+    // Documents open ready to edit: the editor's code is needed for the
+    // first one, so fetch it now, alongside the rest of startup (the
+    // document waits for it rather than showing an empty page).
+    if (s.openInEditMode) void loadEditor().catch(() => { /* edit mode tries again */ });
+    document.documentElement.style.setProperty('--article-width', `${s.articleWidth}px`);
+    zoomLevel.set(s.defaultZoom);
+    tool.update((t) => ({
+      ...t,
+      highlightColor: s.defaultHighlightColor,
+      drawColor: s.defaultInkColor,
+    }));
+
+    // Keep --article-width in sync when the user changes it from the modal.
+    const unsubWidth = settings.subscribe((next) => {
+      document.documentElement.style.setProperty('--article-width', `${next.articleWidth}px`);
+    });
+    disposeArticleWidth = unsubWidth;
+
+    disposeSave = installSaveWatcher();
+    window.addEventListener('keydown', onZoomKey);
+    window.addEventListener('keydown', onAnnotUndoKey);
+    window.addEventListener('keydown', onToolShortcut);
+    window.addEventListener('keydown', onReattachEsc);
+    window.addEventListener('keydown', onTutorialKey);
+    window.addEventListener('keydown', onEditModeKey);
+
+    // Recents before any open records one; reading progress before a
+    // document loads, so it opens where the user left off.
+    await reads.recent;
+    startupMark('recent-loaded');
+    await reads.progress;
+    startupMark('progress-loaded');
+    disposeDrop = await dropHandler;
+    startupMark('drop-handler-ready');
+    disposeOpenRequested = await openListener;
+    startupMark('open-listener-ready');
+    disposeCloseRequested = await closeFlush;
+    startupMark('close-listener-ready');
+    disposeBlurFlush = await blurFlush;
 
     // Startup-document precedence:
     //   0. A window opened in "new window per file" mode shows its file only.
     //   1. Tabs mode: reopen the previous session's tabs (if enabled), then
     //      add files we were launched with (double-click / Open with). These win
-    //      over welcome — the user asked for that file (#24).
+    //      over welcome — the user asked for that file (#24). The reopened
+    //      tabs are in the tab bar straight away, but only the document shown
+    //      first is read before it's on screen; the rest load after it.
     //   2. Otherwise, if welcome is enabled (default), open it. The user gets
     //      a guided tour every launch until they tick the dismiss option.
     //   3. Otherwise, outside tabs mode, openLastOnStartup reopens the most
     //      recent file.
     //   4. Otherwise, leave the empty state visible.
     const presetPath = (window as unknown as { __RMD_OPEN__?: string }).__RMD_OPEN__;
+    const restoring = !presetPath && s.openMode === 'tabs' && s.reopenTabsOnLaunch;
+    startupMark('app-init-ready');
     if (presetPath) {
       await openPaths([presetPath]);
     } else {
-      if (s.openMode === 'tabs' && s.reopenTabsOnLaunch) await restoreSavedTabs();
+      if (restoring) {
+        startupMark('session-restore-start');
+        await restoreSavedTabs();
+        startupMark('session-restore-end');
+      }
+      startupMark('drain-start');
       const launched = await drainPendingOpens();
       if (launched === 0) {
         if (!s.dontShowWelcomeOnLaunch) {
@@ -378,6 +427,7 @@
           }
         }
       }
+      if (restoring) await finishSessionRestore();
     }
 
     // "How do you want to use remarkdown?" — once, in the main window, for
@@ -389,6 +439,15 @@
       // storage, not settings) goes back to shown too.
       minimapShown.set(true);
       openModal({ kind: 'onboarding' });
+    }
+
+    startupMark('startup-opens-done');
+    finishStartupTrace();
+    // The editor's code, fetched once the page is idle so the first press
+    // of Edit doesn't wait for it.
+    void idleMoment().then(() => loadEditor()).catch(() => { /* edit mode tries again */ });
+    if (restoring) {
+      void loadRestoredTabsInBackground(idleMoment).then(() => startupMark('all-tabs-restored'));
     }
 
     // Remember open tabs for next launch (main window, tabs mode). Installed

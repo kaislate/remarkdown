@@ -3,6 +3,7 @@
   import { settings } from '../stores/settings';
   import { readerMode } from '../stores/reader-mode';
   import { diagramThemeFor } from '../lib/reader-themes';
+  import { startupMark } from '../lib/startup-trace';
   import {
     applyDiagramSizing,
     disarmDiagramLinks,
@@ -61,7 +62,27 @@
       if (hit) paint(el, hit, key);
       else misses.push(el);
     }
-    for (const el of misses) {
+    const total = misses.length;
+    // Diagrams nearest to what's on screen are drawn first: the reading
+    // position is restored meanwhile, and the user may scroll. One on
+    // screen or near it is followed by a break, so the page paints it and
+    // takes input before going on. Ones further away are drawn back to
+    // back, with a break every BREAK_EVERY_MS. Each break lays out and
+    // paints the whole article, and so does measuring where the blocks
+    // are once a diagram has changed it, so the order is worked out again
+    // only after a break (nothing can scroll in between).
+    let lastBreak = performance.now();
+    let breakNext = false;
+    let queue = byDistanceFromScreen(misses);
+    while (queue.length > 0) {
+      if (breakNext || performance.now() - lastBreak >= BREAK_EVERY_MS) {
+        await new Promise((r) => setTimeout(r, 0));
+        if (pass !== passSeq) return;
+        lastBreak = performance.now();
+        queue = byDistanceFromScreen(queue.map((q) => q.el));
+      }
+      const { el, distance } = queue.shift()!;
+      breakNext = distance <= window.innerHeight;
       const outcome = await renderMermaid(el.dataset.mermaid ?? '', ctx);
       // A newer pass (theme switched again, new document) owns the
       // blocks now; a detached block belongs to a document that's gone.
@@ -71,6 +92,21 @@
       // frame mid theme switch).
       paint(el, outcome, key);
     }
+    if (total > 0) startupMark('mermaid-pass-done', `${total} diagrams`);
+  }
+
+  const BREAK_EVERY_MS = 100;
+
+  // The blocks by how far each is from the visible part of the window (0
+  // on screen), nearest first; document order among equals.
+  function byDistanceFromScreen(blocks: HTMLElement[]): { el: HTMLElement; distance: number }[] {
+    const height = window.innerHeight;
+    return blocks
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { el, distance: r.bottom < 0 ? -r.bottom : r.top > height ? r.top - height : 0 };
+      })
+      .sort((a, b) => a.distance - b.distance);
   }
 
   $effect(() => {

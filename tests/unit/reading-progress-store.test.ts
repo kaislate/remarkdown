@@ -60,3 +60,76 @@ describe('reading-progress store', () => {
     expect(saveReadingProgressJson).toHaveBeenCalledTimes(1);
   });
 });
+
+// Months of use leave an entry for every file ever scrolled. Each scroll
+// event must not copy that whole history.
+describe('reading-progress store at scale', () => {
+  function seed(n: number): void {
+    const documents: Record<string, { scrollRatio: number; lastReadAt: string }> = {};
+    for (let i = 0; i < n; i++) {
+      // Older entries first: entry i was read i minutes after the epoch.
+      documents[`/old/${i}.md`] = { scrollRatio: 0.5, lastReadAt: new Date(i * 60_000).toISOString() };
+    }
+    readingProgress.set({ schemaVersion: 1, documents });
+  }
+
+  it('recording a scroll position does not copy the whole history', () => {
+    seed(5000);
+    const before = get(readingProgress).documents;
+    recordProgress('/now.md', 0.3);
+    const after = get(readingProgress).documents;
+    expect(after).toBe(before);
+    expect(after['/now.md'].scrollRatio).toBe(0.3);
+  });
+
+  it('still tells subscribers (the menu\'s "% read") on every record', () => {
+    seed(10);
+    const seen: number[] = [];
+    const unsub = readingProgress.subscribe((s) => seen.push(s.documents['/now.md']?.scrollRatio ?? -1));
+    recordProgress('/now.md', 0.25);
+    recordProgress('/now.md', 0.5);
+    unsub();
+    expect(seen.slice(-2)).toEqual([0.25, 0.5]);
+  });
+
+  // Every document's place is kept, however many: the user may come back
+  // to any of them, and dropping older ones would lose where they were.
+  it('keeps the place in every document ever read', async () => {
+    seed(1200);
+    recordProgress('/now.md', 0.7);
+    await vi.advanceTimersByTimeAsync(900);
+    expect(saveReadingProgressJson).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse((saveReadingProgressJson as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    expect(Object.keys(saved.documents)).toHaveLength(1201);
+    expect(saved.documents['/now.md'].scrollRatio).toBe(0.7);
+    expect(saved.documents['/old/0.md']).toEqual({ scrollRatio: 0.5, lastReadAt: new Date(0).toISOString() });
+    expect(Object.keys(get(readingProgress).documents)).toHaveLength(1201);
+  });
+
+  it('keeps a small history whole', async () => {
+    seed(20);
+    recordProgress('/now.md', 0.1);
+    await vi.advanceTimersByTimeAsync(900);
+    const saved = JSON.parse((saveReadingProgressJson as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    expect(Object.keys(saved.documents)).toHaveLength(21);
+  });
+
+  it('a reset after load never shares its map with a later record', async () => {
+    (loadReadingProgressJson as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    await refreshReadingProgress();
+    recordProgress('/a.md', 0.4);
+    await refreshReadingProgress();
+    expect(get(readingProgress).documents).toEqual({});
+  });
+
+  it('measures: 2000 scroll events over a 5000-file history', () => {
+    seed(5000);
+    const t0 = performance.now();
+    for (let i = 0; i < 2000; i++) recordProgress('/now.md', i / 2000);
+    const ms = performance.now() - t0;
+    // eslint-disable-next-line no-console
+    console.log(`[perf] reading-progress: 2000 records over 5000 entries took ${ms.toFixed(1)} ms`);
+    // Generous: a per-event copy of 5000 keys takes seconds here.
+    expect(ms).toBeLessThan(1500);
+  });
+});
