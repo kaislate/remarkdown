@@ -64,13 +64,24 @@ fn persist(tmp: NamedTempFile, target: &Path, dir: &Path) -> std::io::Result<()>
 
 /// The mode a saved user file should end up with. An ordinary file keeps
 /// its permission bits, but not setuid/setgid/sticky: a document is never
-/// meant to carry those. Anything else (nothing there, or a symlink the
-/// rename will replace) gets the mode of a new file.
+/// meant to carry those. A symlink, which the rename replaces with an
+/// ordinary file, gets the mode of a new file less anything the file it led
+/// to didn't allow: a link to a private 0600 journal must not leave a 0644
+/// copy behind. Anything else (nothing there, a link to no ordinary file)
+/// gets the mode of a new file.
 #[cfg(unix)]
 fn user_file_mode(target: &Path, dir: &Path) -> Option<u32> {
     use std::os::unix::fs::PermissionsExt;
+    let bits = |meta: &std::fs::Metadata| meta.permissions().mode() & 0o777;
     match std::fs::symlink_metadata(target) {
-        Ok(meta) if meta.is_file() => Some(meta.permissions().mode() & 0o777),
+        Ok(meta) if meta.is_file() => Some(bits(&meta)),
+        Ok(meta) if meta.file_type().is_symlink() => {
+            let new = new_file_mode(dir)?;
+            match std::fs::metadata(target) {
+                Ok(led_to) if led_to.is_file() => Some(new & bits(&led_to)),
+                _ => Some(new),
+            }
+        }
         _ => new_file_mode(dir),
     }
 }
@@ -219,6 +230,43 @@ mod tests {
         std::os::unix::fs::symlink("/dev/null", &target).unwrap();
         atomic_write_user_file(&target, b"{}").unwrap();
         assert!(fs::symlink_metadata(&target).unwrap().is_file());
+        assert_eq!(mode_of(&target), mode_of(&reference));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_user_file_keeps_a_linked_private_file_private() {
+        // A journal linked into Documents from a private folder (dotfiles,
+        // stow, a vault): the save replaces the link with an ordinary file,
+        // which must not be readable by anyone the original wasn't.
+        let vault = tempdir().unwrap();
+        let original = vault.path().join("journal.md");
+        fs::write(&original, b"old").unwrap();
+        set_mode(&original, 0o600);
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("journal.md");
+        std::os::unix::fs::symlink(&original, &target).unwrap();
+        atomic_write_user_file(&target, b"new").unwrap();
+        assert!(fs::symlink_metadata(&target).unwrap().is_file());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+        assert_eq!(mode_of(&target), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_user_file_gives_a_link_no_more_than_a_new_files_mode() {
+        // The file a link led to may be open to everyone; the ordinary file
+        // that replaces the link here is no more open than a new one.
+        let elsewhere = tempdir().unwrap();
+        let original = elsewhere.path().join("open.md");
+        fs::write(&original, b"old").unwrap();
+        set_mode(&original, 0o666);
+        let dir = tempdir().unwrap();
+        let reference = dir.path().join("reference.md");
+        fs::File::create(&reference).unwrap();
+        let target = dir.path().join("open.md");
+        std::os::unix::fs::symlink(&original, &target).unwrap();
+        atomic_write_user_file(&target, b"new").unwrap();
         assert_eq!(mode_of(&target), mode_of(&reference));
     }
 }
