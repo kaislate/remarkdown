@@ -17,6 +17,10 @@ import {
   genericTypesWork,
   whitespaceWork,
   textMermaidSees,
+  directiveWork,
+  runWork,
+  lineTokenWork,
+  stackWork,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -334,6 +338,107 @@ describe('mermaid runtime', () => {
       expect((await p).ok).toBe(true);
       mocked.renders.length = 0;
     }
+  });
+
+  // Where the style regex does match, it first tries each `#` after the
+  // last `;` in the matching `:`'s run, scanning to the end of the line
+  // and back for each: 45 KB took mermaid 2 s in a class diagram, 15 s
+  // in a flowchart.
+  it('weighs the `#`s a matching style line tries first', async () => {
+    const line = 'style :#;' + '#'.repeat(45_000);
+    expect(styleRegexWork(line)).toBeGreaterThan(1e8);
+    for (const header of ['classDiagram\nclass A', 'flowchart TD\nA']) {
+      const t0 = performance.now();
+      const out = await renderMermaid(`${header}\n${line}`, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  // Before its size limit, and before the directives are dropped,
+  // mermaid looks for `%%{word …}%%` directives with a regex that reads
+  // from each `%%{word` to the next `}%%`, or to the end: 80 KB of
+  // unclosed ones took 4.5 s.
+  it('turns away unclosed directives mermaid would take seconds to look for', async () => {
+    expect(directiveWork('%%{a'.repeat(20_000))).toBeGreaterThan(1e8);
+    expect(directiveWork('%%{init: {"theme": "dark"}}%%\n'.repeat(2_000))).toBeLessThan(1e6);
+    for (const source of [
+      `flowchart TD\nA-->B\n${'%%{a'.repeat(20_000)}`,
+      `flowchart TD\nA-->B\n${'%%{a\n'.repeat(20_000)}`,
+      `flowchart TD\nA-->B\n${'%%{ a '.repeat(10_000)}`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0).toBeLessThan(200);
+      expect(out.ok).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  // mermaid's lexers and parsers have more slow spots than can be listed
+  // one regex at a time, so the shape of the text is weighed as well:
+  //   - a long run with no space in it: the flowchart lexer, among
+  //     others, reads the rest of the run again for each token in it
+  //     (20,000 `#`, `&` or `;` took 5 to 6 s);
+  //   - many tokens on one long line, in the diagrams whose lexers read
+  //     the rest of the line for each token (16 KB of `a ` took 5 s);
+  //   - many tokens on many lines, in the diagrams whose parsers copy
+  //     their whole stack for each step (8,000 lines of `a` took a class
+  //     diagram 16 s, 40 KB of requirement diagram 8 s, and 10,000
+  //     kanban items, linear but slow, 3 s).
+  it('turns away text whose shape mermaid would take seconds over', async () => {
+    for (const source of [
+      `flowchart TD\nA\n${'#'.repeat(20_000)}`,
+      `flowchart TD\nA\n${'&'.repeat(20_000)}`,
+      `flowchart TD\nA\n${';'.repeat(20_000)}`,
+      `classDiagram\nclass A\n${'-a'.repeat(8_000)}`,
+      `classDiagram\nclass A\n${'a\n'.repeat(8_000)}`,
+      `block-beta\nA\n${'a '.repeat(8_000)}`,
+      `erDiagram\nA ||--o{ B : x\n${'a '.repeat(8_000)}`,
+      `stateDiagram-v2\nA\n${'a ;\n'.repeat(4_000)}`,
+      `radar-beta\naxis a\n${'}\n'.repeat(8_000)}`,
+      `gitGraph\ncommit\n${':\n'.repeat(8_000)}`,
+      `requirementDiagram\n${'#\n'.repeat(20_000)}`,
+      `kanban\n  col\n${'  a\n'.repeat(10_000)}`,
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0, source.slice(0, 30)).toBeLessThan(200);
+      expect(out.ok, source.slice(0, 30)).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('draws diagrams people write, at any size mermaid takes', async () => {
+    for (const source of [
+      `classDiagram\n${Array.from({ length: 400 }, (_, i) => `C${i} <|-- C${i + 1} : extends\n`).join('')}`,
+      `classDiagram\nclass Animal {\n${'  +int age\n'.repeat(1_000)}}`,
+      `stateDiagram-v2\n${Array.from({ length: 600 }, (_, i) => `S${i} --> S${i + 1} : go\n`).join('')}`,
+      `gitGraph\n${Array.from({ length: 800 }, (_, i) => `commit id: "c${i}"\n`).join('')}`,
+      `erDiagram\n${Array.from({ length: 2_000 }, (_, i) => `E${i} ||--o{ E${i + 1} : has\n`).join('')}`,
+      `sequenceDiagram\nA->>B: ${'word '.repeat(9_000)}`,
+      `flowchart TD\nA["${'https://example.com/a/b/c?d=e '.repeat(1_400)}"]`,
+      `mindmap\n  root\n${`    ${'words in a long branch '.repeat(80)}\n`.repeat(20)}`,
+      // Past mermaid's size limit: it draws its own notice instead.
+      `classDiagram\n${'a\n'.repeat(30_000)}`,
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length, source.slice(0, 30)).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
+  it('weighs the shape of a source in linear time', () => {
+    const t0 = performance.now();
+    expect(stackWork(`classDiagram\n${'a\n'.repeat(200_000)}`)).toBeGreaterThan(1e10);
+    expect(runWork(`flowchart TD\n${'#'.repeat(200_000)}`)).toBeGreaterThan(1e10);
+    expect(lineTokenWork(`erDiagram\n${'a '.repeat(100_000)}`)).toBeGreaterThan(1e10);
+    expect(directiveWork('%%{a'.repeat(100_000))).toBeGreaterThan(1e10);
+    expect(performance.now() - t0).toBeLessThan(500);
   });
 
   it('a failing render does not wedge the queue', async () => {

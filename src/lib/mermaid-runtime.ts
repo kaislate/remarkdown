@@ -20,7 +20,7 @@
 import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
 import { formatShortcut } from './shortcuts';
-import { detectDiagramType } from './editor/mermaid-detect';
+import { detectDiagramType, type MermaidDiagramType } from './editor/mermaid-detect';
 
 type Mermaid = typeof import('mermaid').default;
 
@@ -216,11 +216,13 @@ export function styleRegexWork(source: string): number {
       // From the end of the line, as the regex backtracks: each `:`
       // costs its run of non-spaces, plus a scan to the end of the line
       // for each `#` in that run, until one whose run holds a `#`
-      // before the last `;` (where the match succeeds).
+      // before the last `;` (where the match succeeds). That one still
+      // tries the `#`s after the `;` first, each scanning to the end.
       let perStart = len;
       let tail = 0;
       let runEnd = len;
       let hashes = 0;
+      let hashesAfterSemi = 0;
       let firstHash = Infinity;
       let matched = false;
       for (let p = len - 1; p >= first + keyword.length; p--) {
@@ -228,6 +230,7 @@ export function styleRegexWork(source: string): number {
         if (p === semi) tail = perStart - len;
         if (c === ':') {
           if (firstHash < semi) {
+            perStart += runEnd - p + hashesAfterSemi * len;
             matched = true;
             break;
           }
@@ -236,9 +239,11 @@ export function styleRegexWork(source: string): number {
         if (/\s/.test(c)) {
           runEnd = p;
           hashes = 0;
+          hashesAfterSemi = 0;
           firstHash = Infinity;
         } else if (c === '#') {
           hashes++;
+          if (p > semi) hashesAfterSemi++;
           firstHash = p;
         }
       }
@@ -387,17 +392,125 @@ export function textMermaidSees(source: string): string {
   return source.replace(/\r\n?/g, '\n').replace(frontMatterRegex, '').replace(directiveRegex, '');
 }
 
+// Before the directives are dropped (and before the size limit),
+// mermaid's detectDirective strips `%%` comments with a regex whose
+// lookahead reads a directive's body from each `%%{word`: on to the
+// next `}%%`, or to the end of the source when there is none (measured:
+// 80 KB of unclosed `%%{a` took 4.5 s, about 150,000 steps per ms).
+// Closed directives, the only kind people write, cost their own length.
+const DIRECTIVE_WORK_LIMIT = 5e7;
+
+export function directiveWork(source: string): number {
+  let work = 0;
+  let close = -1;
+  for (const m of source.matchAll(/%%\{\s*\w/g)) {
+    if (close !== Infinity && close < m.index!) {
+      const next = source.indexOf('}%%', m.index!);
+      close = next < 0 ? Infinity : next;
+    }
+    work += Math.min(close, source.length) - m.index!;
+  }
+  return work;
+}
+
+// mermaid's lexers and parsers have more slow spots than the regexes
+// weighed above, too many to weigh one by one, so the shape of the text
+// is weighed too, three ways (rates measured on mermaid 11.14):
+//   - each run of non-spaces, squared: the flowchart lexer, among
+//     others, reads the rest of the run again for each token in it
+//     (20,000 `#` took 5.8 s; the slowest rate, about 40,000 steps per
+//     ms, was a block diagram's);
+//   - each line's tokens times its length, in the diagrams whose lexers
+//     read the rest of the line again for each token (16 KB of `a ` in
+//     a block diagram took 5 s; about 40,000 per ms);
+//   - all the tokens times all the lines, in the diagrams whose parsers
+//     copy their whole stack at each step, a stack one or two entries
+//     deeper for each line not yet reduced (8,000 lines of `a` took a
+//     class diagram 16 s; about 10,000 per ms near the limit), and in
+//     the two (kanban, mindmap) that, linear or not, spend a third of a
+//     millisecond on each line (10,000 items took 3 s).
+// A quoted string counts as one token, as the lexers read it. Diagram
+// types not listed for the last two, and found linear there, are not
+// weighed by them: a sequence diagram's message is read as one token,
+// however many words it has. A diagram near any limit is far bigger
+// than people write: hundreds of classes, or a word thousands of
+// characters long. Each limit holds mermaid's parse to well under a
+// second.
+const RUN_WORK_LIMIT = 2e7;
+const LINE_TOKEN_WORK_LIMIT = 2e7;
+const STACK_WORK_LIMIT = 8e6;
+const UNKNOWN: MermaidDiagramType = 'unsupported';
+const LINE_TOKEN_TYPES = new Set<MermaidDiagramType>(['class', 'state', 'er', 'block', 'architecture', 'pie', UNKNOWN]);
+const STACK_TYPES = new Set<MermaidDiagramType>(['class', 'state', 'block', 'architecture', 'radar', 'packet', 'pie', 'gitgraph', 'requirement', 'kanban', 'mindmap', UNKNOWN]);
+
+export function runWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\S+/g)) work += run[0].length ** 2;
+  return work;
+}
+
+// Tokens per line, and each line's length.
+function lineTokens(source: string): Array<[number, number]> {
+  const lines: Array<[number, number]> = [];
+  let tokens = 0;
+  let start = 0;
+  for (const m of source.matchAll(/"[^"\n]*"|\w+|[^\w\s]|\n/g)) {
+    tokens++;
+    if (m[0] === '\n') {
+      lines.push([tokens, m.index! - start]);
+      tokens = 0;
+      start = m.index! + 1;
+    }
+  }
+  lines.push([tokens, source.length - start]);
+  return lines;
+}
+
+export function lineTokenWork(source: string): number {
+  if (!LINE_TOKEN_TYPES.has(detectDiagramType(source))) return 0;
+  let work = 0;
+  for (const [tokens, len] of lineTokens(source)) work += tokens * len;
+  return work;
+}
+
+export function stackWork(source: string): number {
+  if (!STACK_TYPES.has(detectDiagramType(source))) return 0;
+  const lines = lineTokens(source);
+  let tokens = 0;
+  for (const [t] of lines) tokens += t;
+  return tokens * lines.length;
+}
+
+// mermaid draws its own "too big" notice instead of any text longer
+// than this (it can't be raised from inside a diagram), once comments
+// are dropped too, so what it would do with such text isn't weighed.
+const MAX_TEXT_SIZE = 50_000;
+// And a source many times that size is turned away outright: every pass
+// mermaid makes before that limit reads all of it.
+const MAX_SOURCE_SIZE = 200_000;
+
 // Why mermaid would hang on `source`, if it would.
 function tooSlowToRead(source: string): string | null {
   const tangled = 'This diagram is too long and tangled to read.';
+  if (source.length > MAX_SOURCE_SIZE) return 'This diagram is too long to read.';
   if (frontMatterWork(source) > FRONT_MATTER_WORK_LIMIT) return tangled;
+  const directives = source.replace(/\r\n?/g, '\n').replace(frontMatterRegex, '');
+  if (directiveWork(directives) > DIRECTIVE_WORK_LIMIT) return tangled;
   const seen = textMermaidSees(source);
   if (styleRegexWork(seen) > STYLE_WORK_LIMIT) return 'A style line in this diagram is too long and tangled to read.';
-  return tagRegexWork(source) > TAG_WORK_LIMIT ||
+  if (
+    tagRegexWork(source) > TAG_WORK_LIMIT ||
     commentRegexWork(seen) > COMMENT_WORK_LIMIT ||
     whitespaceWork(seen) > WHITESPACE_WORK_LIMIT ||
     methodRegexWork(seen) > METHOD_WORK_LIMIT ||
     genericTypesWork(seen) > GENERIC_WORK_LIMIT
+  ) return tangled;
+  // mermaid's cleanupComments, safe to run once commentRegexWork passed.
+  const code = seen.replace(/^\s*%%(?!{)[^\n]+\n?/gm, '').trimStart();
+  if (code.length > MAX_TEXT_SIZE) return null;
+  return runWork(code) > RUN_WORK_LIMIT ||
+    lineTokenWork(code) > LINE_TOKEN_WORK_LIMIT ||
+    stackWork(code) > STACK_WORK_LIMIT
     ? tangled
     : null;
 }
