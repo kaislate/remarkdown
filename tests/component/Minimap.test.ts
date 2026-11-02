@@ -220,6 +220,32 @@ describe('Minimap keeping up with changes', () => {
     expect(content().textContent).toContain('two, edited while hidden');
   });
 
+  // While hidden it keeps no note of the blocks that changed (they'd stay
+  // alive, removed ones too, for as long as it's hidden): the whole copy it
+  // makes when shown must still match the page.
+  it('edits and removals over a long hidden spell all show once it is shown', async () => {
+    const article = mountWith('<p>one</p><p>two</p><p>three</p>');
+    flushSync(() => minimapShown.set(false));
+    for (let i = 0; i < 3; i++) {
+      const p = document.createElement('p');
+      p.textContent = `added ${i}`;
+      article.appendChild(p);
+      await settle();
+      p.textContent = `added ${i}, edited`;
+      article.children[1].textContent = `two, edit ${i}`;
+      await settle();
+      p.remove();
+      await settle();
+    }
+    minimapShown.set(true);
+    await settle();
+    expect(content().innerHTML).toBe(wholeCopyOf(article));
+    // And it goes on redrawing changes as before.
+    article.children[2].textContent = 'three, after';
+    await settle();
+    expect(content().innerHTML).toBe(wholeCopyOf(article));
+  });
+
   // What a fresh whole copy of the page would hold: the copy redrawn
   // block by block must never drift from it.
   function wholeCopyOf(article: HTMLElement): string {

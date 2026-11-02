@@ -299,7 +299,11 @@
     function snapshotArticle(): void {
       if (!sourceEl) return;
       if (!canBeSeen()) {
+        // The next snapshot copies it all, so the blocks noted so far
+        // aren't needed: kept, they'd hold every block edited (and removed)
+        // for as long as the minimap stays hidden.
         stale = true;
+        changedBlocks.clear();
         return;
       }
       if (wholeCopy || stale || !copyChanged()) copyAll();
@@ -327,7 +331,7 @@
     // Note which top-level blocks the changes fall in.
     function noteChanges(records: MutationRecord[]): void {
       const source = sourceEl;
-      if (!source) return;
+      if (!source || stale) return; // a whole copy is due anyway
       for (const r of records) {
         if (r.target === source) {
           // The source's own attributes aren't part of the copy.
