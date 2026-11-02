@@ -278,10 +278,11 @@ pub async fn check_paths_exist(paths: Vec<String>) -> Result<Vec<bool>, CommandE
 }
 
 fn check_paths_exist_blocking(paths: Vec<String>) -> Vec<bool> {
-    // Only documents are ever asked about; anything else reads as missing.
+    // Only documents are ever asked about; anything else reads as missing,
+    // as does a path read_document would refuse (a pipe, a link elsewhere).
     paths
         .iter()
-        .map(|p| document_path(p).is_ok_and(|p| p.is_file()))
+        .map(|p| document_path(p).is_ok_and(|p| check_readable(&p, is_document_path).is_ok()))
         .collect()
 }
 

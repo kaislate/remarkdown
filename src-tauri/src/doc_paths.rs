@@ -27,16 +27,20 @@ pub fn is_document_path(path: &Path) -> bool {
     if !path.is_absolute() {
         return false;
     }
-    // `\.\pipe\x.md` and `\?\GLOBALROOT\...` name devices and pipes, not
-    // files on a drive or a share. A server name reaches the same pipes
-    // (and mailslots) over SMB: `\localhost\pipe\x.md`.
+    // `\\.\pipe\x.md` and `\\?\GLOBALROOT\...` name devices and pipes, not
+    // files on a drive or a share. Rust reads the same prefixes spelled
+    // with a forward slash, `//?/GLOBALROOT/...`, as a share on a server
+    // named `?` or `.`, but Windows still reads them as device paths. A
+    // real server name reaches the same pipes (and mailslots) over SMB:
+    // `\\localhost\pipe\x.md`, or `\\localhost\IPC$\x.md`.
     #[cfg(windows)]
     if let Some(std::path::Component::Prefix(p)) = path.components().next() {
         use std::path::Prefix::{DeviceNS, Verbatim, VerbatimUNC, UNC};
         match p.kind() {
             DeviceNS(_) | Verbatim(_) => return false,
+            UNC(server, _) | VerbatimUNC(server, _) if server == "?" || server == "." => return false,
             UNC(_, share) | VerbatimUNC(_, share)
-                if share.eq_ignore_ascii_case("pipe") || share.eq_ignore_ascii_case("mailslot") =>
+                if ["pipe", "mailslot", "IPC$"].iter().any(|s| share.eq_ignore_ascii_case(s)) =>
             {
                 return false
             }
@@ -66,7 +70,7 @@ pub fn is_sidecar_name(path: &Path) -> bool {
 }
 
 /// Checks a file before a command reads it. Only a regular file is read,
-/// never a FIFO or a device, which could block or never end. The name
+/// never a FIFO, a pipe or a device, which could block or never end. The name
 /// checks above see only the link's own name, and a cloned repo or a
 /// tarball can ship `notes.md -> ~/.ssh/id_rsa`, so a symlink is followed
 /// only to a file whose own name `name_ok` accepts. Writes need no such
@@ -86,10 +90,28 @@ pub fn why_unreadable(path: &Path, name_ok: fn(&Path) -> bool) -> std::io::Resul
     if fs::symlink_metadata(path)?.file_type().is_symlink() && !name_ok(&fs::canonicalize(path)?) {
         return Ok(Some(format!("{} links to a file remarkdown does not open", path.display())));
     }
-    if !fs::metadata(path)?.is_file() {
+    if !fs::metadata(path)?.is_file() || !is_on_disk(path)? {
         return Ok(Some(format!("{} is not a file", path.display())));
     }
     Ok(None)
+}
+
+/// Windows reports a named pipe as a regular file, so the open handle is
+/// asked what it is.
+#[cfg(windows)]
+fn is_on_disk(path: &Path) -> std::io::Result<bool> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{GetFileType, FILE_TYPE_DISK};
+    // No access asked for: the handle is only queried, never read.
+    let file = fs::OpenOptions::new().access_mode(0).open(path)?;
+    Ok(unsafe { GetFileType(file.as_raw_handle()) } == FILE_TYPE_DISK)
+}
+
+/// Elsewhere metadata already tells a FIFO or a device from a file.
+#[cfg(not(windows))]
+fn is_on_disk(_: &Path) -> std::io::Result<bool> {
+    Ok(true)
 }
 
 /// The path, if it is a document (see is_document_path); a clear error
@@ -180,6 +202,26 @@ mod tests {
             r"\\localhost\PIPE\x.md",
             r"\\?\UNC\localhost\pipe\x.md",
             r"\\server\mailslot\x.md",
+            // IPC$ is the share the pipes are served from.
+            r"\\localhost\IPC$\x.md",
+            r"\\?\UNC\localhost\ipc$\x.md",
+        ] {
+            assert!(!is_document_path(Path::new(p)), "{p}");
+        }
+    }
+
+    // Rust reads `//?/` and `//./` as a share on a server named `?` or
+    // `.`; Windows reads them as the device prefixes they spell.
+    #[cfg(windows)]
+    #[test]
+    fn slash_spelled_device_paths_are_not() {
+        for p in [
+            "//?/GLOBALROOT/Device/NamedPipe/x.md",
+            r"/\?\GLOBALROOT\Device\NamedPipe\x.md",
+            "//?/UNC/localhost/pipe/x.md",
+            "//?/C:/Users/v/a.md",
+            "//./pipe/x.md",
+            "//./C:/Users/v/a.md",
         ] {
             assert!(!is_document_path(Path::new(p)), "{p}");
         }
@@ -246,6 +288,33 @@ mod tests {
         assert!(matches!(why_unreadable(&folder, is_sidecar_name), Ok(Some(_))));
         let gone = why_unreadable(&dir.path().join("c.md.remarkdown.json"), is_sidecar_name);
         assert!(matches!(gone, Err(e) if e.kind() == std::io::ErrorKind::NotFound));
+    }
+
+    // Whatever spelling gets a pipe past the name checks, it is not read:
+    // a pipe that never writes would hang the window.
+    #[cfg(windows)]
+    #[test]
+    fn a_pipe_is_not_readable() {
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+        use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES};
+        let name = format!("remarkdown-test-{}.md", std::process::id());
+        let wide: Vec<u16> = format!(r"\\.\pipe\{name}").encode_utf16().chain([0]).collect();
+        // Every open of the path, each metadata call too, takes an instance.
+        let pipes: Vec<_> = (0..16)
+            .map(|_| unsafe {
+                let max = PIPE_UNLIMITED_INSTANCES;
+                CreateNamedPipeW(wide.as_ptr(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, max, 0, 0, 0, std::ptr::null())
+            })
+            .collect();
+        assert!(pipes.iter().all(|&h| h != INVALID_HANDLE_VALUE));
+        for p in [format!(r"\\.\pipe\{name}"), format!("//?/GLOBALROOT/Device/NamedPipe/{name}")] {
+            let result = check_readable(Path::new(&p), is_document_path);
+            assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("not a file")), "{p}: {result:?}");
+        }
+        for h in pipes {
+            unsafe { CloseHandle(h) };
+        }
     }
 
     // A checked-out `notes.md -> ~/.ssh/id_rsa` is named like a document,
