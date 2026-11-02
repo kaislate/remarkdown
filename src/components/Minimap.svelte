@@ -66,13 +66,13 @@
 
   function sameShape(copy: HTMLElement, source: HTMLElement | null): boolean {
     if (!source) return false;
-    const a = copy.childNodes;
-    const b = source.childNodes;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i].nodeName !== b[i].nodeName) return false;
+    // Walked sibling by sibling: one pass, in every engine.
+    let a = copy.firstChild;
+    let b = source.firstChild;
+    for (; a && b; a = a.nextSibling, b = b.nextSibling) {
+      if (a.nodeName !== b.nodeName) return false;
     }
-    return true;
+    return !a && !b;
   }
 
   function fillClone(html: string): void {
@@ -232,39 +232,62 @@
       return !map || getComputedStyle(map).display !== 'none';
     }
 
-    // A copy of `node` (or of its children) with its ids prefixed
-    // (references rewritten to match) — the copy shares the document with
-    // the article, and each diagram svg alone carries dozens of ids its
-    // own markers, gradients and inline styles point at. See
-    // prefix-ids.ts. Returned as HTML, so a block's copy goes through the
-    // parser just as the whole copy does.
-    function copyHtml(node: Node, childrenOnly: boolean): string {
-      const holder = document.createElement('div');
-      if (childrenOnly) holder.append(...Array.from(node.cloneNode(true).childNodes));
-      else holder.appendChild(node.cloneNode(true));
-      prefixIds(holder, 'minimap-');
-      return holder.innerHTML;
-    }
-
+    // Copies have their ids prefixed (references rewritten to match): the
+    // copy shares the document with the article, and each diagram svg
+    // alone carries dozens of ids its own markers, gradients and inline
+    // styles point at. See prefix-ids.ts.
     function copyAll(): void {
       if (!sourceEl) return;
-      mirroredHtml = copyHtml(sourceEl, true);
+      const c = sourceEl.cloneNode(true) as HTMLElement;
+      prefixIds(c, 'minimap-');
+      mirroredHtml = c.innerHTML;
       fillClone(mirroredHtml);
     }
 
+    // Whether `id` is on an element in the source: a block copied on its
+    // own rewrites its links to other blocks just as a whole copy would.
+    function idInSource(source: HTMLElement, id: string): boolean {
+      if (source.isConnected) {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        if (source.contains(el)) return true;
+      }
+      // Not in the page, or the id is used twice: look the slow way.
+      for (const el of source.querySelectorAll('[id]')) if (el.id === id) return true;
+      return false;
+    }
+
+    // One block's copy, as HTML, so it goes through the parser just as
+    // the whole copy does.
+    function copyBlockHtml(source: HTMLElement, block: Node): string {
+      const holder = document.createElement('div');
+      holder.appendChild(block.cloneNode(true));
+      prefixIds(holder, 'minimap-', (id) => idInSource(source, id));
+      return holder.innerHTML;
+    }
+
     // Redraw just the changed blocks' copies. False: it can't be done
-    // block by block (the copy doesn't line up), so copy it all.
+    // block by block (the copy doesn't line up), or most of the page
+    // changed at once (select all, then Bold), where one whole copy is
+    // cheaper than a copy per block: copy it all.
     function copyChanged(): boolean {
       const source = sourceEl;
       const copy = cloneEl;
       if (!source || !copy || !aligned) return false;
-      const sourceNodes = Array.from(source.childNodes);
+      const count = source.childNodes.length;
+      if (changedBlocks.size * 4 > count) return false;
+      // Each changed block's copy, found in one walk down the page and
+      // the copy side by side (they line up node for node).
+      const copyOf = new Map<Node, ChildNode>();
+      let c = copy.firstChild;
+      for (let n = source.firstChild; n && c && copyOf.size < changedBlocks.size; n = n.nextSibling, c = c.nextSibling) {
+        if (changedBlocks.has(n)) copyOf.set(n, c);
+      }
       for (const block of changedBlocks) {
-        const i = sourceNodes.indexOf(block as ChildNode);
-        const old = i < 0 ? undefined : copy.childNodes[i];
+        const old = copyOf.get(block);
         if (!old) return false;
         const tpl = document.createElement('template');
-        tpl.innerHTML = copyHtml(block, false);
+        tpl.innerHTML = copyBlockHtml(source, block);
         const fresh = tpl.content.childNodes;
         if (fresh.length !== 1 || fresh[0].nodeName !== block.nodeName) return false;
         copy.replaceChild(fresh[0], old);

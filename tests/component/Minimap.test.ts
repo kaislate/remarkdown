@@ -8,6 +8,7 @@ import { doc } from '../../src/stores/doc';
 import { viewerScroll } from '../../src/stores/viewport';
 import { minimapShown } from '../../src/stores/ui';
 import { currentViewerRoot } from '../../src/stores/annots';
+import { prefixIds } from '../../src/lib/prefix-ids';
 
 function docState(html: string) {
   return {
@@ -217,6 +218,78 @@ describe('Minimap keeping up with changes', () => {
     minimapShown.set(true);
     // Already there as it starts to slide in.
     expect(content().textContent).toContain('two, edited while hidden');
+  });
+
+  // What a fresh whole copy of the page would hold: the copy redrawn
+  // block by block must never drift from it.
+  function wholeCopyOf(article: HTMLElement): string {
+    const c = article.cloneNode(true) as HTMLElement;
+    prefixIds(c, 'minimap-');
+    return c.innerHTML;
+  }
+
+  it('a redrawn block points its links at the copy of another block, like a whole copy', async () => {
+    const article = mountWith(
+      '<p>See<a href="#fn1" id="fnref1">1</a></p>\n' +
+      '<p>middle</p>\n<p>more</p>\n<p>and more</p>\n<p>still more</p>\n' +
+      '<ol><li id="fn1">note <a href="#fnref1">back</a></li></ol>',
+    );
+    expect(content().innerHTML).toBe(wholeCopyOf(article));
+    const middle = content().children[1];
+    article.children[0].append(' more');
+    article.querySelector('li')!.append(' too');
+    await settle();
+    expect(content().children[1]).toBe(middle); // block by block
+    expect(content().querySelector('a')!.getAttribute('href')).toBe('#minimap-fn1');
+    expect(content().innerHTML).toBe(wholeCopyOf(article));
+  });
+
+  it('when most blocks change at once it makes one whole copy instead of one per block', async () => {
+    const article = mountWith(Array.from({ length: 40 }, (_, i) => `<p>p${i}</p>`).join('\n'));
+    let deepClones = 0;
+    const clone = Node.prototype.cloneNode;
+    Node.prototype.cloneNode = function (this: Node, deep?: boolean) {
+      if (deep) deepClones++;
+      return clone.call(this, deep);
+    };
+    try {
+      for (const p of Array.from(article.children)) p.textContent += ' bold';
+      await settle();
+    } finally {
+      Node.prototype.cloneNode = clone;
+    }
+    expect(deepClones).toBe(1);
+    expect(content().innerHTML).toBe(wholeCopyOf(article));
+  });
+
+  it('never hands the page to one call as an argument per node', () => {
+    // A call takes at most about 124,000 arguments in V8, the engine
+    // WebView2 runs on Windows: a page of 62,000 short paragraphs (and
+    // the line breaks between them) passed that way throws and leaves
+    // the minimap blank. Counted on a smaller page; jsdom is slow to
+    // build a big one.
+    let most = 0;
+    const protos = [Element.prototype, DocumentFragment.prototype] as unknown as Record<string, (...a: unknown[]) => unknown>[];
+    const names = ['append', 'prepend', 'replaceChildren', 'before', 'after', 'replaceWith'];
+    const saved: [Record<string, (...a: unknown[]) => unknown>, string, (...a: unknown[]) => unknown][] = [];
+    for (const proto of protos) {
+      for (const name of names) {
+        const fn = proto[name];
+        if (typeof fn !== 'function') continue;
+        saved.push([proto, name, fn]);
+        proto[name] = function (this: unknown, ...args: unknown[]) {
+          most = Math.max(most, args.length);
+          return fn.apply(this, args);
+        };
+      }
+    }
+    try {
+      const article = mountWith('<p>x</p>\n'.repeat(2_000));
+      expect(content().childNodes.length).toBe(article.childNodes.length);
+    } finally {
+      for (const [proto, name, fn] of saved) proto[name] = fn;
+    }
+    expect(most).toBeLessThan(10);
   });
 
   it('measures: one edit in a 3000-block document', async () => {
