@@ -8,12 +8,18 @@
 // After the first full colouring, an edit only colours again the code
 // blocks it touched: the plugin state remembers where the document changed
 // (`dirty`), and the debounced pass replaces just those blocks' spans.
+//
+// Like the reader, the editor loads only the grammars its code blocks use:
+// a pass first makes sure the languages of the blocks it is about to colour
+// are loaded (for a document the reader already coloured, they are, so the
+// editor's first frame is coloured), and a block switched to, or added in,
+// another language brings that grammar when it is coloured.
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node } from 'prosemirror-model';
 import { AttrStep } from 'prosemirror-transform';
 import type { HighlighterCore as Highlighter } from 'shiki/core';
-import { SUPPORTED_LANGUAGES, resolveLanguage } from './code-block-languages';
+import { resolveLanguage } from './code-block-languages';
 import { ensureLanguages } from '../shiki-highlighter';
 import { isMermaidFence } from '../mermaid-fence';
 
@@ -27,21 +33,6 @@ interface HighlightState {
 export const codeBlockHighlightKey = new PluginKey<HighlightState>(
   'codeBlockHighlight',
 );
-
-let highlighterPromise: Promise<Highlighter> | null = null;
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    // The reader's highlighter, with every supported grammar: any code
-    // block can be switched to any language while editing.
-    const starting = ensureLanguages(SUPPORTED_LANGUAGES);
-    highlighterPromise = starting;
-    // One that couldn't start isn't kept: the next edit tries again.
-    starting.catch(() => {
-      if (highlighterPromise === starting) highlighterPromise = null;
-    });
-  }
-  return highlighterPromise;
-}
 
 // Tokens per (language, text), so an edit only tokenizes the block it
 // changed — the others come from here. Bounded, the least recently used
@@ -139,8 +130,8 @@ export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
   return buildDecorationsCounted(doc, hl).set;
 }
 
-// A full colouring, and how many code blocks it coloured.
-function buildDecorationsCounted(doc: Node, hl: Highlighter): { set: DecorationSet; blocks: number } {
+// The coloured code blocks of a document, with their positions.
+function colouredBlocks(doc: Node): Array<[Node, number]> {
   const blocks: Array<[Node, number]> = [];
   doc.descendants((node, pos) => {
     // Into lists, quotes and callouts (code can sit in them); not into
@@ -149,6 +140,22 @@ function buildDecorationsCounted(doc: Node, hl: Highlighter): { set: DecorationS
     if (isColouredCode(node)) blocks.push([node, pos]);
     return false;
   });
+  return blocks;
+}
+
+// The languages these blocks' code is coloured in: what has to be loaded
+// (ensureLanguages) before they can be coloured.
+function languagesOf(nodes: Iterable<Node>): Set<string> {
+  const langs = new Set<string>();
+  for (const node of nodes) {
+    if (isColouredCode(node)) langs.add(resolveLanguage(String(node.attrs.language || '')));
+  }
+  return langs;
+}
+
+// A full colouring, and how many code blocks it coloured.
+function buildDecorationsCounted(doc: Node, hl: Highlighter): { set: DecorationSet; blocks: number } {
+  const blocks = colouredBlocks(doc);
   const decs: Decoration[] = [];
   const cap = cacheCapFor(blocks.length);
   for (const [node, pos] of blocks) {
@@ -169,6 +176,21 @@ export function refreshDecorations(
   hl: Highlighter,
   cacheCap?: number,
 ): DecorationSet {
+  const touched = touchedTextblocks(doc, dirty);
+  if (touched.size === 0) return set;
+  const stale: Decoration[] = [];
+  const fresh: Decoration[] = [];
+  for (const [pos, node] of touched) {
+    for (const d of set.find(pos, pos + node.nodeSize)) stale.push(d);
+    if (isColouredCode(node)) {
+      for (const d of blockDecorations(node, pos, hl, cacheCap)) fresh.push(d);
+    }
+  }
+  return set.remove(stale).add(doc, fresh);
+}
+
+// Every textblock the dirty ranges touch, by position.
+function touchedTextblocks(doc: Node, dirty: Array<[number, number]>): Map<number, Node> {
   const size = doc.content.size;
   const touched = new Map<number, Node>();
   for (const [a, b] of dirty) {
@@ -185,16 +207,7 @@ export function refreshDecorations(
       return true;
     });
   }
-  if (touched.size === 0) return set;
-  const stale: Decoration[] = [];
-  const fresh: Decoration[] = [];
-  for (const [pos, node] of touched) {
-    for (const d of set.find(pos, pos + node.nodeSize)) stale.push(d);
-    if (isColouredCode(node)) {
-      for (const d of blockDecorations(node, pos, hl, cacheCap)) fresh.push(d);
-    }
-  }
-  return set.remove(stale).add(doc, fresh);
+  return touched;
 }
 
 // The ranges a transaction changed, in its resulting document.
@@ -277,16 +290,42 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       // colouring (an edit adds or removes a block or two at most).
       let cacheCap = TOKEN_CACHE_LIMIT;
 
+      // The languages the next pass over this state colours in: every code
+      // block's for a full colouring, the edited blocks' otherwise.
+      function languagesFor(state: EditorState): Set<string> {
+        const current = codeBlockHighlightKey.getState(state);
+        if (!coloured || !current) return languagesOf(colouredBlocks(state.doc).map(([node]) => node));
+        return languagesOf(touchedTextblocks(state.doc, current.dirty).values());
+      }
+
+      // The highlighter, once the grammars the pass over the current state
+      // needs are loaded (null if the editor went meanwhile). The document
+      // can change while a grammar loads; if it then needs another, that one
+      // is loaded too. Rejects if no highlighter can start (or a grammar
+      // can't load).
+      async function readyFor(view: EditorView): Promise<Highlighter | null> {
+        const asked = new Set<string>();
+        let hl: Highlighter | null = null;
+        for (;;) {
+          const langs = languagesFor(view.state);
+          if (hl && [...langs].every((l) => asked.has(l))) return hl;
+          hl = await ensureLanguages(langs);
+          if (view.isDestroyed) return null;
+          langs.forEach((l) => asked.add(l));
+        }
+      }
+
       // Single async-aware dispatcher: shared between the initial-mount path
       // and the debounced update path. The isDestroyed check guards the
-      // window between awaiting getHighlighter() and dispatching, where the
-      // editor could be torn down (e.g. component unmount during HMR).
-      // Everything after the await runs synchronously on the current state,
-      // so the dirty ranges it clears are exactly the ones it handled.
+      // window between loading what the pass needs and dispatching, where
+      // the editor could be torn down (e.g. component unmount during HMR).
+      // Everything after that runs synchronously on the current state, so
+      // the dirty ranges it clears are exactly the ones it handled, and
+      // their languages are loaded.
       function scheduleHighlight(view: EditorView): void {
         // If no highlighter can start, the code just stays uncoloured.
-        getHighlighter().then((hl) => {
-          if (view.isDestroyed) return;
+        readyFor(view).then((hl) => {
+          if (!hl || view.isDestroyed) return;
           const current = codeBlockHighlightKey.getState(view.state);
           let decs: DecorationSet;
           if (!coloured || !current) {
