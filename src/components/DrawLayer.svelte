@@ -14,8 +14,7 @@
   } from '../stores/annots';
   import { withinLoadLimits } from '../lib/sidecar';
   import { recognize, recognizeAsFreehand, arrowFromStrokes } from '../lib/drawing-recognize';
-  import { renderDrawing } from '../lib/drawing-render';
-  import { resolveAnchor } from '../lib/anchoring';
+  import { createDrawingPainter } from '../lib/drawing-layer';
   import { hitTestDrawing } from '../lib/drawing-hit-test';
   import { zoomLevel } from '../stores/ui';
   import { readerMode } from '../stores/reader-mode';
@@ -192,35 +191,9 @@
       .map((r) => ({ d: r.annotation as Drawing, range: r.range as Range | null })),
   );
 
-  function labelPositionFor(d: Drawing, root: HTMLElement, svg: SVGSVGElement, found: Range | null): { x: number; y: number } | null {
-    const svg_r = svg.getBoundingClientRect();
-    let r: DOMRect | null = null;
-    switch (d.shape.kind) {
-      case 'circle':
-      case 'rectangle':
-      case 'underline':
-      case 'strikethrough': {
-        const range = found ?? resolveAnchor(d.shape.anchor, root);
-        if (range) r = range.getBoundingClientRect();
-        break;
-      }
-      case 'circle-empty':
-      case 'margin-bar':
-      case 'freehand': {
-        const block = root.querySelector<HTMLElement>(`[data-block-id="${d.shape.anchor.blockId}"]`);
-        if (block) r = block.getBoundingClientRect();
-        break;
-      }
-      case 'freehand-legacy': {
-        const block = root.querySelector<HTMLElement>(`[data-block-id="${(d.shape as { anchorBlock: string }).anchorBlock}"]`);
-        if (block) r = block.getBoundingClientRect();
-        break;
-      }
-    }
-    if (!r) return null;
-    // Small offset above the anchor's right edge — SVG-relative coordinates.
-    return { x: r.right - svg_r.left + 4, y: r.top - svg_r.top - 2 };
-  }
+  // Paints the stable layer, keeping each drawing's shapes until what
+  // they're drawn from changes (see lib/drawing-layer.ts).
+  const paintStable = createDrawingPainter();
 
   // Re-finalize if tool changes away from draw while strokes pending.
   $effect(() => {
@@ -253,37 +226,11 @@
     const root = $currentViewerRoot;
     if (!svg || !layer || !root) return;
     const id = requestAnimationFrame(() => {
-      while (layer.firstChild) layer.removeChild(layer.firstChild);
-      const rc = rough.svg(svg);
-      for (const { d, range } of existingDrawings) {
-        try {
-          const els = renderDrawing(rc, d, root, $zoomLevel, svg, $settings.drawingRoughness, range);
-          els.forEach((el) => layer.appendChild(el));
-        } catch { /* per-drawing error swallow */ }
-        if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
-          const pos = labelPositionFor(d, root, svg, range);
-          if (pos) {
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', String(pos.x));
-            text.setAttribute('y', String(pos.y));
-            text.setAttribute('class', 'confidence-overlay');
-            text.textContent = d.recognitionConfidence.toFixed(2);
-            layer.appendChild(text);
-          }
-        }
-      }
-      // Pending strokes (released but not yet recognized + saved).
-      for (const s of pendingStrokes) {
-        const pts = s.points as Array<[number, number]>;
-        if (pts.length < 2) continue;
-        const node = rc.curve(pts, {
-          stroke: s.color, strokeWidth: s.width,
-          roughness: $settings.drawingRoughness,
-          bowing: Math.min(1.4, $settings.drawingRoughness),
-          seed: 1,
-        });
-        layer.appendChild(node);
-      }
+      paintStable(layer, svg, root, existingDrawings, pendingStrokes, {
+        zoom: $zoomLevel,
+        roughness: $settings.drawingRoughness,
+        showConfidence: $settings.showDrawingRecognitionConfidence,
+      });
     });
     return () => cancelAnimationFrame(id);
   });
