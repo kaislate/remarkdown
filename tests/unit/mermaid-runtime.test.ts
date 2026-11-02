@@ -178,6 +178,38 @@ describe('mermaid runtime', () => {
   });
 });
 
+// Renders nobody is waiting for any more (a node view torn down, or
+// given newer text) must not hold up the queue.
+describe('mermaid runtime: skipping renders no one wants', () => {
+  it('skips a queued render that is no longer wanted, without running mermaid', async () => {
+    let wanted = true;
+    const a = renderMermaid('flowchart TD\nA', DARK);
+    const b = renderMermaid('flowchart TD\nB', DARK, { isCurrent: () => wanted });
+    const c = renderMermaid('flowchart TD\nC', DARK);
+    await flush();
+    wanted = false;
+    mocked.renders[0].resolve();
+    await a;
+    const out = await b;
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.transient).toBe(true);
+    // Not remembered as a failure: drawing it later still works.
+    expect(peekMermaidRender('flowchart TD\nB', DARK)).toBeNull();
+    await flush();
+    expect(mocked.renders.map((r) => r.source)).toEqual(['flowchart TD\nA', 'flowchart TD\nC']);
+    mocked.renders[1].resolve();
+    expect((await c).ok).toBe(true);
+  });
+
+  it('still draws a render that is wanted', async () => {
+    const p = renderMermaid('flowchart TD\nA', DARK, { isCurrent: () => true });
+    await flush();
+    mocked.renders[0].resolve();
+    expect((await p).ok).toBe(true);
+    expect(peekMermaidRender('flowchart TD\nA', DARK)?.ok).toBe(true);
+  });
+});
+
 describe('applyDiagramSizing', () => {
   function svgWith(attrs: Record<string, string>): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

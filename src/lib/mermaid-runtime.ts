@@ -82,6 +82,16 @@ let queue: Promise<unknown> = Promise.resolve();
 const cache = new Map<string, CacheEntry>();
 let idCounter = 0;
 
+export interface MermaidRenderOptions {
+  // Asked when the render reaches the front of the queue: false skips it
+  // without running mermaid (a newer render replaced it, or what asked
+  // for it is gone). The caller gets a transient failure it was going to
+  // throw away anyway.
+  isCurrent?: () => boolean;
+}
+
+const SUPERSEDED: MermaidRenderOutcome = { ok: false, error: 'Superseded by a newer drawing.', transient: true };
+
 function loadMermaid(): Promise<Mermaid> {
   if (!mermaidPromise) {
     mermaidPromise = import('mermaid').then((m) => m.default);
@@ -151,18 +161,23 @@ function remember(key: string, entry: CacheEntry): void {
   }
 }
 
+// A finished render of `key` from the cache.
+function lookup(key: string): CacheEntry | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  // Refresh LRU position.
+  remember(key, entry);
+  return entry;
+}
+
 // Synchronous cache lookup. Callers use it to paint a known diagram in
 // the same frame the placeholder appears (no empty-block flicker).
 export function peekMermaidRender(
   source: string,
   ctx: MermaidRenderContext,
 ): MermaidRenderOutcome | null {
-  const key = cacheKey(source, ctx);
-  const entry = cache.get(key);
-  if (!entry) return null;
-  // Refresh LRU position.
-  remember(key, entry);
-  return rekey(entry);
+  const entry = lookup(cacheKey(source, ctx));
+  return entry ? rekey(entry) : null;
 }
 
 // mermaid.render() parks a temp `<div id="d<id>">` (and, for sandboxed
@@ -190,10 +205,13 @@ async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
   key: string,
+  opts: MermaidRenderOptions,
 ): Promise<MermaidRenderOutcome> {
   // A job queued behind an identical one finds the result already here.
-  const cached = cache.get(key);
+  const cached = lookup(key);
   if (cached) return rekey(cached);
+  // Nobody is waiting for this one any more.
+  if (opts.isCurrent && !opts.isCurrent()) return SUPERSEDED;
 
   let m: Mermaid;
   try {
@@ -242,14 +260,12 @@ async function renderNow(
 export function renderMermaid(
   source: string,
   ctx: MermaidRenderContext,
+  opts: MermaidRenderOptions = {},
 ): Promise<MermaidRenderOutcome> {
   const key = cacheKey(source, ctx);
-  const hit = cache.get(key);
-  if (hit) {
-    remember(key, hit);
-    return Promise.resolve(rekey(hit));
-  }
-  const job = queue.then(() => renderNow(source, ctx, key));
+  const hit = lookup(key);
+  if (hit) return Promise.resolve(rekey(hit));
+  const job = queue.then(() => renderNow(source, ctx, key, opts));
   queue = job.catch(() => {});
   return job;
 }
