@@ -13,7 +13,10 @@
 // a pass first makes sure the languages of the blocks it is about to colour
 // are loaded (for a document the reader already coloured, they are, so the
 // editor's first frame is coloured), and a block switched to, or added in,
-// another language brings that grammar when it is coloured.
+// another language brings that grammar when it is coloured. A pass with no
+// code to colour needs no highlighter, so a document without code never
+// starts Shiki (its WebAssembly engine and themes) until a code block
+// appears, as in the reader.
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node } from 'prosemirror-model';
@@ -130,11 +133,11 @@ function isColouredCode(node: Node): boolean {
   return node.type.name === 'code_block' && !isMermaidFence(String(node.attrs.language || ''));
 }
 
-function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheCap?: number): Decoration[] {
+function blockDecorations(node: Node, pos: number, hl: Highlighter | null, cacheCap?: number): Decoration[] {
   const decs: Decoration[] = [];
   const lang = resolveLanguage(String(node.attrs.language || ''));
   const text = node.textContent;
-  if (!text) return decs;
+  if (!text || !hl) return decs;
   let runs: Colouring;
   try {
     runs = colouringFor(hl, lang, text, cacheCap);
@@ -202,11 +205,12 @@ function buildDecorationsCounted(doc: Node, hl: Highlighter): { set: DecorationS
 // code blocks among them get fresh ones (a block that stopped being code,
 // or became a diagram, keeps none). Spans elsewhere stay as they are.
 // `cacheCap` is the token cache's size for this document (cacheCapFor).
+// `hl` is null when none of the touched blocks is coloured code.
 export function refreshDecorations(
   set: DecorationSet,
   doc: Node,
   dirty: Array<[number, number]>,
-  hl: Highlighter,
+  hl: Highlighter | null,
   cacheCap?: number,
 ): DecorationSet {
   const touched = touchedTextblocks(doc, dirty);
@@ -264,6 +268,9 @@ function changedRanges(tr: Transaction): Array<[number, number]> {
 // Past this many separate ranges (a long burst of edits all over the
 // document), one range spanning them all is cheaper to keep.
 const DIRTY_LIMIT = 64;
+
+// What readyFor gives for a pass with no code to colour.
+const NO_CODE = Symbol('no code');
 
 export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -332,15 +339,17 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       }
 
       // The highlighter, once the grammars the pass over the current state
-      // needs are loaded (null if the editor went meanwhile). The document
-      // can change while a grammar loads; if it then needs another, that one
-      // is loaded too. Rejects if no highlighter can start (or a grammar
-      // can't load).
-      async function readyFor(view: EditorView): Promise<Highlighter | null> {
+      // needs are loaded (null if the editor went meanwhile; NO_CODE, without
+      // starting one, if the pass has no code to colour). The document can
+      // change while a grammar loads; if it then needs another, that one is
+      // loaded too. Rejects if no highlighter can start (or a grammar can't
+      // load).
+      async function readyFor(view: EditorView): Promise<Highlighter | typeof NO_CODE | null> {
         const asked = new Set<string>();
         let hl: Highlighter | null = null;
         for (;;) {
           const langs = languagesFor(view.state);
+          if (!hl && langs.size === 0) return NO_CODE;
           if (hl && [...langs].every((l) => asked.has(l))) return hl;
           hl = await ensureLanguages(langs);
           if (view.isDestroyed) return null;
@@ -357,12 +366,20 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       // their languages are loaded.
       function scheduleHighlight(view: EditorView): void {
         // If no highlighter can start, the code just stays uncoloured.
-        readyFor(view).then((hl) => {
-          if (!hl || view.isDestroyed) return;
+        readyFor(view).then((ready) => {
+          if (!ready || view.isDestroyed) return;
+          // Code arrived between finding none and now: a pass that loads it.
+          if (ready === NO_CODE && languagesFor(view.state).size > 0) {
+            scheduleHighlight(view);
+            return;
+          }
+          const hl = ready === NO_CODE ? null : ready;
           const current = codeBlockHighlightKey.getState(view.state);
           let decs: DecorationSet;
           if (!coloured || !current) {
-            const full = buildDecorationsCounted(view.state.doc, hl);
+            const full = hl
+              ? buildDecorationsCounted(view.state.doc, hl)
+              : { set: DecorationSet.empty, blocks: 0 };
             decs = full.set;
             cacheCap = cacheCapFor(full.blocks);
             coloured = true;

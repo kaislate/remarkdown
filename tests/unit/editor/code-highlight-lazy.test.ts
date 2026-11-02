@@ -122,6 +122,58 @@ describe('editor code colouring with grammars loaded on demand', () => {
     t.done();
   });
 
+  it('a document without code never starts Shiki, until a code block is added', async () => {
+    let started = 0;
+    vi.doMock('shiki/core', async (importOriginal) => {
+      const real = await importOriginal<typeof import('shiki/core')>();
+      return {
+        ...real,
+        createHighlighterCore: (...args: Parameters<typeof real.createHighlighterCore>) => {
+          started++;
+          return real.createHighlighterCore(...args);
+        },
+      };
+    });
+    try {
+      const t = await fresh();
+      const md = '# Plain\n\nJust words.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n';
+      await t.renderer.render(md);
+      const v = t.mount(md);
+      await microtasks();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(started).toBe(0);
+      expect(t.decorations(v).find()).toEqual([]);
+      // Typing in prose still needs nothing.
+      v.dispatch(v.state.tr.insertText('More ', 1));
+      await new Promise((r) => setTimeout(r, 250));
+      expect(started).toBe(0);
+      // The first code block starts it, and is coloured as before.
+      const end = v.state.doc.content.size;
+      v.dispatch(v.state.tr.insert(end, t.editorSchema.nodes.code_block.create({ language: 'ts' }, t.editorSchema.text(TS))));
+      const want = await t.expected(v);
+      expect(want.length).toBeGreaterThan(0);
+      await until(() => JSON.stringify(decoList(t.decorations(v))) === JSON.stringify(want));
+      expect(started).toBe(1);
+      t.done();
+    } finally {
+      vi.doUnmock('shiki/core');
+    }
+  });
+
+  it('a code block turned into a paragraph loses its colours', async () => {
+    const t = await fresh();
+    const md = 'Intro.\n\n```ts\n' + TS + '\n```\n';
+    await t.renderer.render(md);
+    const v = t.mount(md);
+    await microtasks();
+    expect(t.decorations(v).find().length).toBeGreaterThan(0);
+    let block = -1;
+    v.state.doc.forEach((n, pos) => { if (n.type.name === 'code_block') block = pos; });
+    v.dispatch(v.state.tr.setBlockType(block + 1, block + 1, t.editorSchema.nodes.paragraph));
+    await until(() => t.decorations(v).find().length === 0);
+    t.done();
+  });
+
   it('a markdown block brings every grammar for the code inside it, as before', async () => {
     const t = await fresh();
     const md = '````markdown\n# T\n\n~~~cpp\nint main() { return 0; }\n~~~\n````\n';

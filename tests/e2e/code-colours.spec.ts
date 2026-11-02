@@ -46,3 +46,39 @@ test('a light reader theme over the dark app: light colouring while reading', as
   await expect(page.locator('body')).toHaveClass(/reader-mode/);
   await expect(keyword(page, '.viewer')).toHaveCSS('color', LIGHT);
 });
+
+test('a document without code: edit mode loads no highlighter until a code block appears', async ({ page }) => {
+  const shiki: string[] = [];
+  page.on('request', (r) => {
+    const name = r.url().split('/').pop() ?? '';
+    if (/^(wasm|github-dark|github-light)-/.test(name)) shiki.push(name);
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('rmd-settings', JSON.stringify({ schemaVersion: 1, onboardingCompleted: true, theme: 'dark' }));
+  });
+  await page.goto('/');
+  const path = '/e2e/docs/plain.md';
+  await page.evaluate(([p, md]) => (window as any).__E2E_SEED_DOC__(p, md), [path, '# Plain\n\nJust words.\n']);
+  await page.evaluate((p) => {
+    (window as any).__E2E_QUEUE_OPENS__([p]);
+    (window as any).__E2E_FIRE_OPEN_REQUESTED__();
+  }, path);
+  await expect(page.locator('.viewer h1')).toHaveText('Plain');
+  await page.locator('.edit-mode-toggle').click();
+  const para = page.locator('.editor-surface .ProseMirror p', { hasText: 'Just words.' });
+  await para.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' More.');
+  await page.waitForTimeout(500);
+  expect(shiki).toEqual([]);
+  // The first code block starts the highlighter, and its code is coloured.
+  await page.evaluate(() => {
+    (document.querySelector('.toolbar-btn[data-action="code"]') as HTMLElement | null)?.click();
+  });
+  await expect(page.locator('.editor-surface pre')).toBeVisible();
+  await page.keyboard.type('function add(a, b) {}');
+  await page.locator('.editor-surface .code-block-lang-pill').click();
+  await page.locator('.code-block-lang-option', { hasText: /^javascript$/ }).click();
+  await expect(keyword(page, '.editor-surface')).toHaveCSS('color', DARK);
+  expect(shiki.some((n) => n.startsWith('wasm-'))).toBe(true);
+});
