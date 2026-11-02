@@ -13,7 +13,10 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: 'es2022',
     minify: 'esbuild',
-    sourcemap: true,
+    // Kept for the e2e build. The release build leaves them out: Tauri
+    // embeds every file in dist/ in the executable, and the page never
+    // asks for a map, so they only made each download bigger.
+    sourcemap: mode === 'e2e',
   },
   resolve: {
     conditions: ['browser'],
