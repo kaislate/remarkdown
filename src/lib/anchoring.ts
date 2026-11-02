@@ -1,6 +1,7 @@
 // Re-use the Anchor type from the Zod schema so sidecar round-trips and anchor
 // creation share a single source of truth.
 import type { Anchor } from './schema';
+import { domVersion } from './dom-version';
 export type { Anchor };
 
 const CONTEXT_LEN = 32;
@@ -110,8 +111,11 @@ export function resolvingPass<T>(fn: () => T): T {
 // Counts work against the pass's budget (see PASS_BUDGET); outside a pass,
 // one anchor at a time, nothing is counted.
 function spend(chars: number): void {
+  counted += chars;
   if (pass) pass.budget -= chars;
 }
+// Everything counted, in or out of a pass: what an anchor's search cost.
+let counted = 0;
 
 // Whether the pass has looked at all it may, or taken all the time it may.
 function spent(): boolean {
@@ -137,14 +141,29 @@ function find(hay: string, needle: string, from = 0): number {
   return -1;
 }
 
+// An article's blocks (and their joined text, once built) are kept from one
+// pass to the next while the article doesn't change (see dom-version.ts):
+// each keystroke in a re.mark is a pass, and listing a long article's
+// blocks for each one was most of what an unchanged article cost.
+const keptBlocks = new WeakMap<HTMLElement, { version: number; blocks: Blocks }>();
+
 function blocksOf(viewerRoot: HTMLElement): Blocks {
   let blocks = pass?.blocks.get(viewerRoot);
   if (!blocks) {
-    const list = Array.from(viewerRoot.querySelectorAll<HTMLElement>('[data-block-id]'));
-    const byId = new Map<string, HTMLElement>();
-    // The first of any two with one id, as querySelector finds it.
-    for (const b of list) if (!byId.has(b.dataset.blockId!)) byId.set(b.dataset.blockId!, b);
-    blocks = { list, byId, moves: { at: new Map(), last: 0 } };
+    const version = domVersion(viewerRoot);
+    const kept = keptBlocks.get(viewerRoot);
+    if (kept && kept.version === version) {
+      blocks = kept.blocks;
+      // What a pass learns of how blocks moved is its own.
+      blocks.moves = { at: new Map(), last: 0 };
+    } else {
+      const list = Array.from(viewerRoot.querySelectorAll<HTMLElement>('[data-block-id]'));
+      const byId = new Map<string, HTMLElement>();
+      // The first of any two with one id, as querySelector finds it.
+      for (const b of list) if (!byId.has(b.dataset.blockId!)) byId.set(b.dataset.blockId!, b);
+      blocks = { list, byId, moves: { at: new Map(), last: 0 } };
+      keptBlocks.set(viewerRoot, { version, blocks });
+    }
     pass?.blocks.set(viewerRoot, blocks);
   }
   return blocks;
@@ -431,12 +450,64 @@ function uniqueInContextOfBlocks(anchor: Anchor, blocks: Blocks): Range | null {
   return rangeFromBlockOffsets(found[0].block, i, i + anchor.text.length);
 }
 
+// Where each anchor was found, kept while its article doesn't change. An
+// annotation change (a keystroke in a re.mark, a colour) leaves every other
+// annotation's anchor the same object, so the next pass needn't search for
+// any of them again. Finding an anchor depends on the article and, for one
+// whose block has moved, on what the pass learned from the anchors before
+// it of how far blocks moved (see nearbyBlocks): an entry records what it
+// read of that and what it taught, and is used only when the pass has
+// learned the same so far, teaching the pass what it did the first time.
+// So a kept place is always the one searching again would find. And what
+// the search cost is counted against the pass again, so a pass stops (see
+// PASS_BUDGET) where it would have.
+interface Found {
+  root: HTMLElement;
+  version: number;
+  range: Range | null;
+  cost: number;
+  // What it read of the pass's moves: the move learned near where its block
+  // was, and the last move learned.
+  read: { hintAt: number; learned: number | undefined; last: number } | null;
+  // The move it taught the pass.
+  taught: { hintAt: number; move: number } | null;
+}
+const found = new WeakMap<Anchor, Found>();
+// What the anchor being placed reads of the pass's moves and teaches it.
+let placing: { read: Found['read']; taught: Found['taught'] } | null = null;
+
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
   if (spent()) return null;
-  const range = place(anchor, viewerRoot);
+  const version = domVersion(viewerRoot);
+  const kept = found.get(anchor);
+  if (kept && kept.root === viewerRoot && kept.version === version && stillFound(kept, viewerRoot)) {
+    spend(kept.cost);
+    if (spent()) return null;
+    if (kept.taught) teach(blocksOf(viewerRoot), kept.taught.hintAt, kept.taught.move);
+    return kept.range;
+  }
+  const outer = placing;
+  const trace: NonNullable<typeof placing> = { read: null, taught: null };
+  placing = trace;
+  const before = counted;
+  let range: Range | null;
+  try {
+    range = place(anchor, viewerRoot);
+  } finally {
+    placing = outer;
+  }
   // A search the cap cut short may have missed places the text is, so what
-  // was made of the places it found can't be trusted.
-  return spent() ? null : range;
+  // was made of the places it found can't be trusted (nor kept: the next
+  // pass tries it again).
+  if (spent()) return null;
+  found.set(anchor, { root: viewerRoot, version, range, cost: counted - before, read: trace.read, taught: trace.taught });
+  return range;
+}
+
+function stillFound(kept: Found, viewerRoot: HTMLElement): boolean {
+  if (!kept.read) return true;
+  const { moves } = blocksOf(viewerRoot);
+  return moves.last === kept.read.last && learnedNear(moves, kept.read.hintAt) === kept.read.learned;
 }
 
 // A block's id is its kind and its place in the article (`p:12`, the
@@ -484,8 +555,22 @@ function hintPosition(blocks: Blocks, hint: string): number | null {
 function learnMove(blocks: Blocks, hintAt: number, block: HTMLElement | null): void {
   const at = block ? orderOf(blocks).ofBlock.get(block) : undefined;
   if (at === undefined) return;
-  blocks.moves.at.set(hintAt, at - hintAt);
-  blocks.moves.last = at - hintAt;
+  teach(blocks, hintAt, at - hintAt);
+  if (placing) placing.taught = { hintAt, move: at - hintAt };
+}
+
+function teach(blocks: Blocks, hintAt: number, move: number): void {
+  blocks.moves.at.set(hintAt, move);
+  blocks.moves.last = move;
+}
+
+// The move learned from the anchor found nearest to where this block was.
+function learnedNear(moves: Blocks['moves'], hintAt: number): number | undefined {
+  let learned: number | undefined;
+  for (let d = 0; d <= MOVES_SEEN && learned === undefined; d++) {
+    learned = moves.at.get(hintAt - d) ?? moves.at.get(hintAt + d);
+  }
+  return learned;
 }
 
 // The anchor in a block near where its block was (see NEARBY). Only where
@@ -509,10 +594,8 @@ function learnMove(blocks: Blocks, hintAt: number, block: HTMLElement | null): v
 // searched.
 function nearbyBlocks(anchor: Anchor, blocks: Blocks, hintAt: number, searched: HTMLElement | null): Range | null {
   const { list, moves } = blocks;
-  let learned: number | undefined;
-  for (let d = 0; d <= MOVES_SEEN && learned === undefined; d++) {
-    learned = moves.at.get(hintAt - d) ?? moves.at.get(hintAt + d);
-  }
+  const learned = learnedNear(moves, hintAt);
+  if (placing) placing.read = { hintAt, learned, last: moves.last };
   const groups = learned === undefined ? [[moves.last, 0]] : [[learned], [moves.last, 0]];
   const tried = new Set<number>();
   for (const shifts of groups) {
