@@ -16,7 +16,7 @@
   import type { Drawing } from '../lib/schema';
   import { editMode } from '../stores/edit-mode';
   import { pauseFileWatcher, resumeFileWatcher, loadIntoSession } from '../stores/doc';
-  import Editor from './Editor.svelte';
+  import { editorComponent, loadEditor } from '../lib/editor-loader';
   import { saveEditedMarkdown, savesSettled } from '../lib/edit-save';
   import { debounce } from '../lib/editor/debounce';
   import type { Debounced } from '../lib/editor/debounce';
@@ -43,6 +43,12 @@
 
   let articleEl = $state<HTMLElement | null>(null);
   let scrollEl = $state<HTMLElement | null>(null);
+
+  // The editor's code arrives separately (lib/editor-loader.ts); edit mode
+  // fetches it now if the background prefetch hasn't yet.
+  $effect(() => {
+    if ($editMode) void loadEditor().catch((err) => console.error('[remarkdown] could not load the editor:', err));
+  });
 
   // Edge-style smooth scrolling for the wheel and keys. Checked per event,
   // so turning it off (or reduced motion / e-ink) applies at once; nothing
@@ -384,13 +390,16 @@
                each needs its own editor (restored from its saved state). -->
           <!-- …and on the disk version, so "use the other version" after an
                edit conflict remounts the editor on the reloaded file. -->
-          {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '') + ($doc?.loadId ?? '')}
-            <Editor
-              initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
-              onChange={onEditorChange}
-              session={$activeSession}
-            />
-          {/key}
+          {#if $editorComponent}
+            {@const Editor = $editorComponent}
+            {#key $activeSession.id + ($doc?.path ?? '') + ($doc?.sha256 ?? '') + ($doc?.loadId ?? '')}
+              <Editor
+                initialMarkdown={$activeSession.editedMarkdown ?? $doc.markdown}
+                onChange={onEditorChange}
+                session={$activeSession}
+              />
+            {/key}
+          {/if}
         {/if}
       </div>
       <!-- DrawLayer is a sibling of the text frame so the draw tool can paint

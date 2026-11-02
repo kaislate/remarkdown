@@ -4,13 +4,14 @@ import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
 import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
-import { openModal } from './modals';
+import { openModal, type ModalState } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
 import { getProgressFor } from './reading-progress';
 import { viewerScroll } from './viewport';
 import { settings } from './settings';
 import { activeProxy, activeSession, type DocSession } from './sessions';
+import { isLaunchedPath, startupMark, startupMarkWhenShown, startupTimed } from '../lib/startup-trace';
 
 export type { DocState } from './doc-types';
 
@@ -49,14 +50,16 @@ let loadCounter = 0;
 
 // `force`: reload even when the file on disk is unchanged (resolving an edit
 // conflict with "use the other version" must start the editor over).
+// `noticeWhenShown`: a tab read before it's shown (a reopened tab) keeps a
+// malformed-annotations notice until it is, instead of opening it now.
 export async function loadIntoSession(
   session: DocSession,
   path: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; noticeWhenShown?: boolean } = {},
 ): Promise<boolean> {
   let r;
   try {
-    r = await readDocument(path);
+    r = await startupTimed('read', () => readDocument(path));
   } catch (err) {
     if (err && typeof err === 'object' && 'NotUtf8' in err) {
       addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
@@ -82,16 +85,24 @@ export async function loadIntoSession(
   // state so the file watcher doesn't yank the UI from under the user.
   const isNewDocOpen = !current || current.path !== r.path;
 
-  const { html, plaintext, blocks } = await render(r.markdown, {
+  const launched = isLaunchedPath(path);
+  if (launched) startupMark('launched-doc-read', `${r.bytes} bytes`);
+  const { html, plaintext, blocks } = await startupTimed('render', () => render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
-  });
+  }));
+  if (launched) startupMark('launched-doc-rendered');
 
   let parsedAnnotations: Annotation[] = [];
   session.sidecarRefused = false;
+  session.pendingSidecarNotice = null;
+  const sidecarNotice = (notice: Extract<ModalState, { kind: 'corrupt-sidecar' }>) => {
+    if (opts.noticeWhenShown) session.pendingSidecarNotice = notice;
+    else openModal(notice);
+  };
   if (r.sidecarUnreadable) {
     session.sidecarRefused = true;
-    openModal({ kind: 'corrupt-sidecar', path: r.path, reason: 'unreadable' });
+    sidecarNotice({ kind: 'corrupt-sidecar', path: r.path, reason: 'unreadable' });
   } else if (r.sidecarRaw) {
     const result = loadSidecar(r.sidecarRaw);
     if (result.ok) {
@@ -99,7 +110,7 @@ export async function loadIntoSession(
     } else {
       session.sidecarRefused = true;
       console.warn('[remarkdown] sidecar load failed:', result.error);
-      openModal(
+      sidecarNotice(
         result.error.kind === 'too-many'
           ? { kind: 'corrupt-sidecar', path: r.path, reason: 'too-many' }
           : { kind: 'corrupt-sidecar', path: r.path },
@@ -132,6 +143,12 @@ export async function loadIntoSession(
     sidecarRaw: r.sidecarRaw,
     loadId: ++loadCounter,
   });
+  if (launched) {
+    startupMark('launched-doc-set');
+    const loadId = loadCounter;
+    startupMarkWhenShown('launched-doc-paint', () =>
+      get(activeSession) === session && get(session.doc)?.loadId === loadId && !!document.querySelector('article.viewer'));
+  }
   const isActive = session === get(activeSession);
   if (isActive) docEpoch.update((e) => e + 1);
 
@@ -156,7 +173,7 @@ export async function loadIntoSession(
     session.disposeWatcher = null;
   }
   if (!session.watcherPaused && !session.closed) {
-    const dispose = await installFileWatcher(path, () => onFileChanged(session));
+    const dispose = await startupTimed('watcher', () => installFileWatcher(path, () => onFileChanged(session)));
     // The tab may have been closed while the watcher was being set up.
     if (session.closed) await dispose();
     else session.disposeWatcher = dispose;

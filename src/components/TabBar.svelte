@@ -21,7 +21,7 @@
   import { backOut, cubicIn } from 'svelte/easing';
   import { tick } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { sessions, activeSession, type DocSession } from '../stores/sessions';
+  import { sessions, activeSession, sessionPath, type DocSession } from '../stores/sessions';
   import {
     activateSession,
     closeSession,
@@ -43,8 +43,9 @@
     path: string;
   }
 
-  // Sessions whose document is loaded, kept in sync with each session's
-  // own doc store (a tab's path can change when its file is reloaded).
+  // Sessions with a document (loaded, or reopened and waiting to load), kept
+  // in sync with each session's own doc store (a tab's path can change when
+  // its file is reloaded).
   const tabItems = readable<TabItem[]>([], (set) => {
     let docUnsubs: Array<() => void> = [];
     const unsubList = sessions.subscribe((list) => {
@@ -52,9 +53,8 @@
       const update = () => {
         set(
           list
-            .map((session) => ({ session, doc: get(session.doc) }))
-            .filter((x) => x.doc !== null)
-            .map((x) => ({ session: x.session, path: x.doc!.path })),
+            .map((session) => ({ session, path: sessionPath(session) }))
+            .filter((x): x is TabItem => x.path !== null),
         );
       };
       docUnsubs = list.map((s) => s.doc.subscribe(update));

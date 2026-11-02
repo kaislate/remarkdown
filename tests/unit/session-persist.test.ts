@@ -15,6 +15,7 @@ vi.mock('../../src/stores/doc', async () => {
   return {
     ...actual,
     loadIntoSession: vi.fn(async (session: import('../../src/stores/sessions').DocSession, path: string) => {
+      if (path.includes('broken')) return false;
       session.doc.set({ path, dir: '/', sha256: path, bytes: 1, markdown: '', html: '', plaintext: '', blocks: [], sidecarRaw: null });
       return true;
     }),
@@ -25,18 +26,30 @@ import {
   serializeSession,
   parseSession,
   restoreSavedTabs,
+  finishSessionRestore,
+  loadRestoredTabsInBackground,
   installSessionAutosave,
   flushSessionNow,
 } from '../../src/stores/session-persist';
+import { loadIntoSession } from '../../src/stores/doc';
 import { loadSessionJson, saveSessionJson, windowLabel } from '../../src/lib/tauri-api';
 import { recordRecent } from '../../src/stores/recent';
-import { sessions, activeSession } from '../../src/stores/sessions';
+import { sessions, activeSession, resetSessionsForTests } from '../../src/stores/sessions';
 import { updateSettings, resetSettings } from '../../src/stores/settings';
 import { openPaths } from '../../src/lib/open-files';
-import { activateSession, closeSession } from '../../src/stores/tabs';
+import {
+  activateSession,
+  closeOtherSessions,
+  closeSession,
+  closeSessionsAfter,
+  findSessionByPath,
+} from '../../src/stores/tabs';
 
 const openTabs = () => get(sessions).map((s) => get(s.doc)?.path ?? null);
 const activePath = () => get(get(activeSession).doc)?.path ?? null;
+// What the tab bar shows: loaded tabs and ones still waiting to load.
+const tabPaths = () => get(sessions).map((s) => get(s.doc)?.path ?? s.lazyPath).filter((p) => p !== null);
+const loadedPaths = () => vi.mocked(loadIntoSession).mock.calls.map((c) => c[1]);
 
 describe('session.json format', () => {
   it('round-trips', () => {
@@ -59,27 +72,161 @@ describe('session.json format', () => {
 
 describe('restoreSavedTabs', () => {
   beforeEach(() => {
+    resetSessionsForTests();
+    resetSettings();
     vi.mocked(recordRecent).mockClear();
+    vi.mocked(loadIntoSession).mockClear();
   });
 
-  it('reopens saved tabs (skipping missing files) and activates the saved one', async () => {
+  // A plain launch: the saved tabs come back, the saved active one is shown,
+  // and only that one is read and rendered before the window is usable.
+  it('reopens saved tabs (skipping missing files) and shows the saved one, loading only it', async () => {
     vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/gone.md', '/b.md', '/c.md'], 2));
     await restoreSavedTabs();
-    expect(openTabs()).toEqual(['/a.md', '/b.md', '/c.md']);
+    await finishSessionRestore();
+    expect(tabPaths()).toEqual(['/a.md', '/b.md', '/c.md']);
     expect(activePath()).toBe('/b.md');
+    expect(loadedPaths()).toEqual(['/b.md']);
     expect(recordRecent).not.toHaveBeenCalled();
   });
 
   it('falls back to the first tab when the saved active one is missing', async () => {
     vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/gone.md'], 1));
     await restoreSavedTabs();
+    await finishSessionRestore();
     expect(activePath()).toBe('/a.md');
+    expect(tabPaths()).toEqual(['/a.md']);
+  });
+
+  it('falls back to the next tab when the saved active one cannot be read', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/broken.md', '/c.md'], 1));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(activePath()).toBe('/a.md');
+    expect(tabPaths()).toEqual(['/a.md', '/c.md']);
   });
 
   it('does nothing without a saved session', async () => {
     vi.mocked(loadSessionJson).mockResolvedValueOnce(null);
     await restoreSavedTabs();
+    await finishSessionRestore();
     expect(openTabs()).toEqual([null]);
+  });
+
+  // A double-clicked file: it opens right after the saved active tab, as it
+  // always has, and is the only document read before it is on screen.
+  it('a launched file opens after the saved active tab and is the only one loaded first', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 1));
+    await restoreSavedTabs();
+    await openPaths(['/new.md']);
+    await finishSessionRestore();
+    expect(tabPaths()).toEqual(['/a.md', '/b.md', '/new.md', '/c.md']);
+    expect(activePath()).toBe('/new.md');
+    expect(loadedPaths()).toEqual(['/new.md']);
+    expect(get(sessions)).toHaveLength(4);
+  });
+
+  it('a launched file that was already a saved tab switches to that tab, with no extra empty tab', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await openPaths(['/c.md']);
+    await finishSessionRestore();
+    expect(tabPaths()).toEqual(['/a.md', '/b.md', '/c.md']);
+    expect(get(sessions)).toHaveLength(3);
+    expect(activePath()).toBe('/c.md');
+    expect(loadedPaths()).toEqual(['/c.md']);
+  });
+
+  it('the welcome document opens after the saved active tab, like a launched file', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md'], 0));
+    await restoreSavedTabs();
+    await openPaths(['/welcome.md']);
+    await finishSessionRestore();
+    expect(tabPaths()).toEqual(['/a.md', '/welcome.md', '/b.md']);
+    expect(activePath()).toBe('/welcome.md');
+  });
+
+  it('the rest load in the background afterwards, in tab order; one that fails to load goes away', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/broken.md', '/b.md', '/c.md'], 2));
+    await restoreSavedTabs();
+    await openPaths(['/new.md']);
+    await finishSessionRestore();
+    await loadRestoredTabsInBackground();
+    expect(loadedPaths()).toEqual(['/new.md', '/a.md', '/broken.md', '/b.md', '/c.md']);
+    expect(openTabs()).toEqual(['/a.md', '/b.md', '/new.md', '/c.md']);
+    expect(activePath()).toBe('/new.md');
+  });
+
+  it('switching to a tab that has not loaded yet loads it first', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(activePath()).toBe('/a.md');
+    await activateSession(get(sessions)[1].id);
+    expect(activePath()).toBe('/b.md');
+    expect(loadedPaths()).toEqual(['/a.md', '/b.md']);
+  });
+
+  it('closing the active tab shows its neighbour fully loaded', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    await closeSession(get(activeSession).id);
+    expect(activePath()).toBe('/b.md');
+    expect(tabPaths()).toEqual(['/b.md']);
+  });
+
+  it('a tab closed before it loaded is never loaded', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    await closeSession(get(sessions)[1].id);
+    await loadRestoredTabsInBackground();
+    expect(loadedPaths()).toEqual(['/a.md', '/c.md']);
+    expect(tabPaths()).toEqual(['/a.md', '/c.md']);
+  });
+
+  // "Close others" / "Close tabs to the right" first show the tab the user
+  // right-clicked. If that tab turns out to be unreadable it drops out, and
+  // nothing else may be closed: not the tab being read, not the saved set.
+  it('"Close others" on a tab that cannot be read closes nothing else', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/broken.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    const broken = get(sessions).find((s) => s.lazyPath === '/broken.md')!;
+    await closeOtherSessions(broken.id);
+    expect(activePath()).toBe('/a.md');
+    expect(tabPaths()).toEqual(['/a.md', '/c.md']);
+  });
+
+  it('"Close tabs to the right" of a tab that cannot be read closes nothing else', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/broken.md', '/d.md'], 3));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(activePath()).toBe('/d.md');
+    const broken = get(sessions).find((s) => s.lazyPath === '/broken.md')!;
+    await closeSessionsAfter(broken.id);
+    expect(activePath()).toBe('/d.md');
+    expect(tabPaths()).toEqual(['/a.md', '/b.md', '/d.md']);
+  });
+
+  it('"Close others" on a tab not loaded yet loads it and closes the rest', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    await closeOtherSessions(get(sessions)[2].id);
+    expect(activePath()).toBe('/c.md');
+    expect(tabPaths()).toEqual(['/c.md']);
+  });
+
+  it('tabs not loaded yet are still found by path and still saved', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/b.md', '/c.md'], 1));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    expect(findSessionByPath('/c.md')).toBe(get(sessions)[2]);
+    vi.mocked(saveSessionJson).mockClear();
+    await flushSessionNow();
+    expect(JSON.parse(vi.mocked(saveSessionJson).mock.lastCall![0])).toMatchObject({ tabs: ['/a.md', '/b.md', '/c.md'], active: 1 });
   });
 });
 

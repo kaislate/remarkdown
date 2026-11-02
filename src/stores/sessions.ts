@@ -16,6 +16,7 @@ import { writable, get, type Writable } from 'svelte/store';
 import type { EditorState } from 'prosemirror-state';
 import type { Annotation } from '../lib/schema';
 import type { DocState } from './doc-types';
+import type { ModalState } from './modals';
 
 export interface EditConflict {
   path: string;
@@ -64,6 +65,15 @@ export interface DocSession {
   // the tab shows no annotations. It is never saved over as it stands: the
   // first real annotation backs it up first (lib/save.ts).
   sidecarRefused: boolean;
+  // A tab reopened from the last session that hasn't been read yet: the file
+  // it will show. Its tab is in the tab bar, but `doc` is still null until it
+  // loads (in the background after startup, or when switched to first —
+  // see tabs.ts ensureSessionLoaded). Null for every other tab.
+  lazyPath: string | null;
+  // A reopened tab read in the background couldn't load its annotations
+  // file (malformed, too large, unreadable): the notice, shown when the tab first is (see tabs.ts
+  // setActive) rather than over whatever the user has open.
+  pendingSidecarNotice: Extract<ModalState, { kind: 'corrupt-sidecar' }> | null;
 }
 
 let counter = 0;
@@ -89,7 +99,15 @@ export function createSession(): DocSession {
     skipExitReload: false,
     discardPendingEdits: false,
     sidecarRefused: false,
+    lazyPath: null,
+    pendingSidecarNotice: null,
   };
+}
+
+// The file a tab shows (or will show, once a reopened tab has loaded); null
+// for the empty "Open a markdown file" tab.
+export function sessionPath(s: DocSession): string | null {
+  return get(s.doc)?.path ?? s.lazyPath;
 }
 
 // A window always has at least one session; an empty one (doc === null) is

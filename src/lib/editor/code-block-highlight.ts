@@ -7,9 +7,9 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node } from 'prosemirror-model';
-import type { Highlighter, BundledLanguage, SpecialLanguage } from 'shiki';
-import { resolveLanguage } from './code-block-languages';
-import { getHighlighter } from '../shiki-highlighter';
+import type { HighlighterCore as Highlighter } from 'shiki/core';
+import { SUPPORTED_LANGUAGES, resolveLanguage } from './code-block-languages';
+import { ensureLanguages } from '../shiki-highlighter';
 
 interface HighlightState {
   decorations: DecorationSet;
@@ -18,6 +18,21 @@ interface HighlightState {
 export const codeBlockHighlightKey = new PluginKey<HighlightState>(
   'codeBlockHighlight',
 );
+
+let highlighterPromise: Promise<Highlighter> | null = null;
+function getHighlighter(): Promise<Highlighter> {
+  if (!highlighterPromise) {
+    // The reader's highlighter, with every supported grammar: any code
+    // block can be switched to any language while editing.
+    const starting = ensureLanguages(SUPPORTED_LANGUAGES);
+    highlighterPromise = starting;
+    // One that couldn't start isn't kept: the next edit tries again.
+    starting.catch(() => {
+      if (highlighterPromise === starting) highlighterPromise = null;
+    });
+  }
+  return highlighterPromise;
+}
 
 // Tokens per (language, text), so an edit only tokenizes the block it
 // changed — the others come from here. Bounded: the oldest go first.
@@ -40,7 +55,7 @@ function tokensFor(hl: Highlighter, lang: string, text: string): Tokens {
   // colourings, as in the reader: dark by default, the light one
   // (--shiki-light) swapped in by article.css on light pages.
   const tokens = hl.codeToTokensWithThemes(text, {
-    lang: lang as BundledLanguage | SpecialLanguage,
+    lang,
     themes: { dark: 'github-dark', light: 'github-light' },
   });
   cache.set(key, tokens);

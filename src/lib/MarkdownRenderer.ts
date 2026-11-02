@@ -4,13 +4,13 @@ import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
 import subPlugin from 'markdown-it-sub';
 import supPlugin from 'markdown-it-sup';
-import type { Highlighter } from 'shiki';
 import { calloutsPlugin } from './markdown-it-callouts';
 import { frontMatterPlugin } from './markdown-it-frontmatter';
 import { resolveLanguage } from './editor/code-block-languages';
-import { getHighlighter } from './shiki-highlighter';
+import { ensureLanguages } from './shiki-highlighter';
 import { isMermaidFence } from './mermaid-fence';
 import { resolveImageSrc } from './image-paths';
+import { startupMark } from './startup-trace';
 
 export interface RenderResult {
   html: string;
@@ -59,28 +59,39 @@ const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g
 
 async function highlightFences(html: string): Promise<string> {
   if (!html.includes('<pre><code class="language-')) return html;
-  let highlighter: Highlighter;
+  // resolveLanguage handles case-folding, alias lookup, and unknown-lang
+  // fallback to 'text' so the same matrix the editor uses applies here.
+  // Only the grammars this document uses are loaded (see shiki-highlighter).
+  const langs = new Set<string>();
+  for (const m of html.matchAll(fenceRe)) langs.add(resolveLanguage(m[1]));
+  const first = !shikiStarted;
+  if (first) {
+    shikiStarted = true;
+    startupMark('shiki-start');
+  }
+  let highlighter: Awaited<ReturnType<typeof ensureLanguages>>;
   try {
-    highlighter = await getHighlighter();
+    highlighter = await ensureLanguages(langs);
   } catch {
-    // No highlighter could start: the code reads fine plain.
+    // No highlighter could start (or a grammar couldn't load): the code
+    // reads fine plain.
     return html;
   }
+  if (first) startupMark('shiki-ready');
   // Use the callback form so every match is replaced, even if two fences share identical text.
   return html.replace(fenceRe, (_m, lang, body) => {
     const raw = decodeEntities(body);
-    // resolveLanguage handles case-folding, alias lookup, and unknown-lang
-    // fallback to 'text' so the same matrix the editor uses applies here.
-    const resolvedLang = resolveLanguage(lang);
     // Both colourings, dark by default; on light pages article.css swaps
     // in the light one (--shiki-light).
     return highlighter.codeToHtml(raw, {
-      lang: resolvedLang,
+      lang: resolveLanguage(lang),
       themes: { dark: 'github-dark', light: 'github-light' },
       defaultColor: 'dark',
     });
   });
 }
+
+let shikiStarted = false;
 
 function decodeEntities(s: string): string {
   return s

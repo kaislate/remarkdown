@@ -18,6 +18,7 @@ import { askAboutConflict } from './edit-save';
 import { recordRecent } from '../stores/recent';
 import { addToast } from '../stores/toasts';
 import { openDocumentWindow, openFileDialog, takePendingOpens } from './tauri-api';
+import { noteLaunchedPaths } from './startup-trace';
 
 // Opens run one at a time. They can overlap in practice — the startup
 // drain and an 'open-requested' event (Explorer multi-select launches a
@@ -62,7 +63,7 @@ async function openPathsNow(paths: string[], opts: OpenOptions): Promise<number>
     }
 
     const active = get(activeSession);
-    const activeEmpty = get(active.doc) === null;
+    const activeEmpty = get(active.doc) === null && active.lazyPath === null;
 
     if (mode === 'replace' || activeEmpty) {
       const current = get(active.doc);
@@ -133,7 +134,9 @@ async function record(path: string): Promise<void> {
 // Open whatever the OS handed us (launch argv, or a second launch while
 // we're running). Safe to call concurrently: the Rust queue drains once.
 export async function drainPendingOpens(): Promise<number> {
-  return openPaths(await takePendingOpens());
+  const paths = await takePendingOpens();
+  noteLaunchedPaths(paths);
+  return openPaths(paths);
 }
 
 export async function openViaDialog(): Promise<void> {

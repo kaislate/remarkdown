@@ -153,6 +153,9 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     case 'save_session':
       localStorage.setItem('rmd-session', args?.json as string);
       return;
+    case 'startup_trace':
+      // Tracing is off unless REMARKDOWN_STARTUP_TRACE is set for the real app.
+      return;
     case 'backup_corrupt_sidecar': {
       const path = args?.mdPath as string;
       const raw = localStorage.getItem(sidecarKey(path));
