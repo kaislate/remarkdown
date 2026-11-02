@@ -24,7 +24,12 @@ function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     // The reader's highlighter, with every supported grammar: any code
     // block can be switched to any language while editing.
-    highlighterPromise = ensureLanguages(SUPPORTED_LANGUAGES);
+    const starting = ensureLanguages(SUPPORTED_LANGUAGES);
+    highlighterPromise = starting;
+    // One that couldn't start isn't kept: the next edit tries again.
+    starting.catch(() => {
+      if (highlighterPromise === starting) highlighterPromise = null;
+    });
   }
   return highlighterPromise;
 }
@@ -151,13 +156,14 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       // window between awaiting getHighlighter() and dispatching, where the
       // editor could be torn down (e.g. component unmount during HMR).
       function scheduleHighlight(view: EditorView): void {
-        void getHighlighter().then((hl) => {
+        // If no highlighter can start, the code just stays uncoloured.
+        getHighlighter().then((hl) => {
           if (view.isDestroyed) return;
           const decs = buildDecorations(view.state.doc, hl);
           view.dispatch(
             view.state.tr.setMeta(codeBlockHighlightKey, { decorations: decs }),
           );
-        });
+        }, () => {});
       }
 
       // Initial highlight on mount (in case the doc opens with code blocks).

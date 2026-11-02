@@ -9,6 +9,13 @@
 // loaded (markdown's fenced code, svelte's <style lang="…"> / markdown
 // blocks, F#'s doc comments, which are markdown). For those, every
 // supported grammar is loaded first, as before.
+//
+// Shiki's default regex engine (Oniguruma) is WebAssembly, which the CSP
+// allows through 'wasm-unsafe-eval'. WebKit before Safari 16 (macOS 12's)
+// doesn't know that keyword and refuses WebAssembly outright, so there the
+// highlighter starts on Shiki's JavaScript regex engine instead. It is
+// loaded only then, and is forgiving: a grammar pattern it can't express
+// is skipped rather than failing the language.
 
 import { createHighlighterCore, type HighlighterCore, type LanguageInput } from 'shiki/core';
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
@@ -46,12 +53,31 @@ const NEEDS_ALL = new Set<string>(['markdown', 'svelte', 'fsharp']);
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 const loaded = new Map<string, Promise<void>>();
 
+const themes = () => [import('shiki/themes/github-dark.mjs'), import('shiki/themes/github-light.mjs')];
+
 export function getHighlighter(): Promise<HighlighterCore> {
-  highlighterPromise ??= createHighlighterCore({
-    themes: [import('shiki/themes/github-dark.mjs'), import('shiki/themes/github-light.mjs')],
-    langs: [],
-    engine: createOnigurumaEngine(import('shiki/wasm')),
-  });
+  if (!highlighterPromise) {
+    const starting = createHighlighterCore({
+      themes: themes(),
+      langs: [],
+      engine: createOnigurumaEngine(import('shiki/wasm')),
+    }).catch(async () => {
+      const { createJavaScriptRegexEngine } = await import('shiki/engine/javascript');
+      return createHighlighterCore({
+        themes: themes(),
+        langs: [],
+        engine: createJavaScriptRegexEngine({ forgiving: true }),
+      });
+    });
+    highlighterPromise = starting;
+    // A highlighter that couldn't start isn't kept: the next caller tries
+    // again, from scratch (no grammar is registered on a new one yet).
+    starting.catch(() => {
+      if (highlighterPromise !== starting) return;
+      highlighterPromise = null;
+      loaded.clear();
+    });
+  }
   return highlighterPromise;
 }
 
@@ -72,12 +98,23 @@ export async function ensureLanguages(langs: Iterable<string>): Promise<Highligh
   // In list order, as the old highlighter registered them.
   // The modules download in parallel; they're registered one by one.
   const order = SUPPORTED_LANGUAGES.filter((l) => wanted.has(l));
-  const modules = new Map(order.filter((l) => !loaded.has(l)).map((l) => [l, (GRAMMARS[l] as () => Promise<unknown>)()]));
+  const modules = new Map(order.filter((l) => !loaded.has(l)).map((l) => {
+    const grammar = (GRAMMARS[l] as () => Promise<unknown>)();
+    // Reported where it's registered; not unhandled if an earlier one fails.
+    grammar.catch(() => {});
+    return [l, grammar] as const;
+  }));
   for (const lang of order) {
     let load = loaded.get(lang);
     if (!load) {
-      load = hl.loadLanguage(modules.get(lang) as LanguageInput);
-      loaded.set(lang, load);
+      const loading = hl.loadLanguage(modules.get(lang) as LanguageInput);
+      // A grammar that failed to load isn't kept either: asked again, it
+      // loads again.
+      loading.catch(() => {
+        if (loaded.get(lang) === loading) loaded.delete(lang);
+      });
+      loaded.set(lang, loading);
+      load = loading;
     }
     await load;
   }

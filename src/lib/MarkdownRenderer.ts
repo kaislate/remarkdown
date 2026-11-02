@@ -67,7 +67,14 @@ async function highlightFences(html: string): Promise<string> {
     shikiStarted = true;
     startupMark('shiki-start');
   }
-  const highlighter = await ensureLanguages(langs);
+  let highlighter: Awaited<ReturnType<typeof ensureLanguages>>;
+  try {
+    highlighter = await ensureLanguages(langs);
+  } catch {
+    // No highlighter could start (or a grammar couldn't load): the code
+    // reads fine plain.
+    return html;
+  }
   if (first) startupMark('shiki-ready');
   // Use the callback form so every match is replaced, even if two fences share identical text.
   return html.replace(fenceRe, (_m, lang, body) => {
