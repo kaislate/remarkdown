@@ -11,6 +11,17 @@ pub fn explorer_select_arg(path: &str) -> String {
     format!("/select,\"{}\"", path.replace('/', "\\"))
 }
 
+/// Explorer's argument for "open this folder", when Rust's own quoting
+/// would not do. Explorer splits its command line at commas, and Rust
+/// quotes an argument only when it has a space or a quote, so a folder
+/// named `docs,x` would reach Explorer as two arguments. Such a folder is
+/// passed raw, in quotes, as `/select,` does; any other is left as it was.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub fn explorer_folder_arg(dir: &Path) -> Option<String> {
+    let dir = dir.to_string_lossy();
+    dir.contains(',').then(|| format!("\"{dir}\""))
+}
+
 /// An absolute `file://` URI for a path. Everything but RFC 3986's unreserved
 /// characters and `/` is percent-encoded byte by byte, so quotes and spaces
 /// can't break the GVariant text the file manager is handed. A plain string
@@ -85,7 +96,10 @@ pub fn reveal_in_folder(path: String) -> Result<(), CommandError> {
         let mut cmd = std::process::Command::new("explorer.exe");
         match target {
             Reveal::Select(_) => cmd.raw_arg(explorer_select_arg(&path)),
-            Reveal::Folder(dir) => cmd.arg(dir),
+            Reveal::Folder(dir) => match explorer_folder_arg(&dir) {
+                Some(arg) => cmd.raw_arg(arg),
+                None => cmd.arg(dir),
+            },
         };
         // Explorer's exit code is meaningless (it returns 1 on success).
         cmd.spawn().map_err(|e| CommandError::Io(e.to_string()))?;
@@ -156,6 +170,22 @@ mod tests {
     #[test]
     fn select_arg_uses_backslashes() {
         assert_eq!(explorer_select_arg("C:/a/b.md"), r#"/select,"C:\a\b.md""#);
+    }
+
+    // Explorer splits its command line at commas, so `docs,x` would reach
+    // it as two arguments; Rust quotes only for spaces and quotes.
+    #[test]
+    fn folder_arg_quotes_a_folder_with_a_comma() {
+        assert_eq!(
+            explorer_folder_arg(Path::new(r"C:\notes\docs,calc.exe")),
+            Some(r#""C:\notes\docs,calc.exe""#.to_string())
+        );
+    }
+
+    #[test]
+    fn folder_arg_leaves_other_folders_to_rusts_quoting() {
+        assert_eq!(explorer_folder_arg(Path::new(r"C:\My Docs")), None);
+        assert_eq!(explorer_folder_arg(Path::new(r"C:\")), None);
     }
 
     #[test]
