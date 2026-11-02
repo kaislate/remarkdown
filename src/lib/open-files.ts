@@ -63,7 +63,7 @@ async function openPathsNow(paths: string[], opts: OpenOptions): Promise<number>
     }
 
     const active = get(activeSession);
-    const activeEmpty = get(active.doc) === null;
+    const activeEmpty = get(active.doc) === null && active.lazyPath === null;
 
     if (mode === 'replace' || activeEmpty) {
       const current = get(active.doc);

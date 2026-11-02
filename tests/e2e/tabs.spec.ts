@@ -168,6 +168,31 @@ test('closing the active tab shows its right-hand neighbour; tabs come back afte
   await expect(h1(page)).toHaveText('Gamma');
 });
 
+// A double-click while tabs are saved: that file is shown first, right after
+// the saved active tab, and the reopened tabs are all in the tab bar. They
+// are read after it, and a click on one shows it in full.
+test('a file opened at launch shows first; reopened tabs keep their order and open when clicked', async ({ page }) => {
+  const D = '/e2e/tabs/Delta.md';
+  await page.evaluate(([a, b, c, d]) => {
+    (window as any).__E2E_SEED_DOC__(d, '# Delta\n\nOpened from the file manager.\n');
+    localStorage.setItem('rmd-session', JSON.stringify({ schemaVersion: 1, tabs: [a, b, c], active: 1 }));
+  }, [A, B, C, D]);
+  await page.addInitScript((d) => { (window as any).__E2E_PENDING_OPENS__ = [d]; }, D);
+  await page.reload();
+  await expect(labels(page)).toHaveText(['Alpha', 'Beta', 'Delta', 'Gamma notes']);
+  await expect(tabs(page).nth(2)).toHaveAttribute('aria-selected', 'true');
+  await expect(h1(page)).toHaveText('Delta');
+  await tabs(page).nth(3).click();
+  await expect(h1(page)).toHaveText('Gamma');
+  await page.getByRole('button', { name: 'Close Gamma notes' }).click();
+  await expect(h1(page)).toHaveText('Delta');
+  await tabs(page).nth(0).click();
+  await expect(h1(page)).toHaveText('Alpha');
+  await page.waitForTimeout(500); // session autosave debounce
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('rmd-session')!));
+  expect(saved).toMatchObject({ tabs: [A, B, D], active: 0 });
+});
+
 test('closing the last tab returns to the empty state', async ({ page }) => {
   await openViaLaunch(page, [A]);
   await expect(tabs(page)).toHaveCount(1);

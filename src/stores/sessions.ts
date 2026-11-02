@@ -60,6 +60,11 @@ export interface DocSession {
   // when the tab is about to load a different file anyway.
   skipExitReload: boolean;
   discardPendingEdits: boolean;
+  // A tab reopened from the last session that hasn't been read yet: the file
+  // it will show. Its tab is in the tab bar, but `doc` is still null until it
+  // loads (in the background after startup, or when switched to first —
+  // see tabs.ts ensureSessionLoaded). Null for every other tab.
+  lazyPath: string | null;
 }
 
 let counter = 0;
@@ -84,7 +89,14 @@ export function createSession(): DocSession {
     saveChain: Promise.resolve(),
     skipExitReload: false,
     discardPendingEdits: false,
+    lazyPath: null,
   };
+}
+
+// The file a tab shows (or will show, once a reopened tab has loaded); null
+// for the empty "Open a markdown file" tab.
+export function sessionPath(s: DocSession): string | null {
+  return get(s.doc)?.path ?? s.lazyPath;
 }
 
 // A window always has at least one session; an empty one (doc === null) is

@@ -8,9 +8,9 @@
 
 import { get } from 'svelte/store';
 import { tick } from 'svelte';
-import { activeSession, createSession, sessions, type DocSession } from './sessions';
+import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
 import { docEpoch } from './annots';
-import { reloadSession } from './doc';
+import { loadIntoSession, reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
@@ -59,9 +59,37 @@ export function samePath(a: string, b: string): boolean {
 
 export function findSessionByPath(path: string): DocSession | null {
   return get(sessions).find((s) => {
-    const d = get(s.doc);
-    return !!d && samePath(d.path, path);
+    const p = sessionPath(s);
+    return p !== null && samePath(p, path);
   }) ?? null;
+}
+
+// A tab reopened from the last session is only read and rendered when it's
+// first needed: switched to, or its turn in the background load after
+// startup. Both can ask at once; they share one load. A tab whose file can't
+// be read (already reported with a toast) leaves the tab bar, as it never
+// appeared before reopened tabs loaded lazily. Resolves to whether the tab
+// now holds its document.
+const lazyLoads = new WeakMap<DocSession, Promise<boolean>>();
+
+export function ensureSessionLoaded(session: DocSession): Promise<boolean> {
+  const path = session.lazyPath;
+  if (path === null) return Promise.resolve(!session.closed);
+  let load = lazyLoads.get(session);
+  if (!load) {
+    load = (async () => {
+      if (session.closed) return false;
+      const ok = await loadIntoSession(session, path);
+      session.lazyPath = null;
+      if (!ok) {
+        session.closed = true;
+        sessions.update((l) => l.filter((s) => s !== session));
+      }
+      return ok && !session.closed;
+    })();
+    lazyLoads.set(session, load);
+  }
+  return load;
 }
 
 // New tabs open right after the active one, like a browser. Pass `after`
@@ -99,6 +127,10 @@ export async function activateSession(id: string): Promise<void> {
   if (!target || target === get(activeSession)) return;
   const ticket = ++switchTicket;
   cancelReattach();
+  // A reopened tab not loaded yet: load it before leaving the current one,
+  // so the switch never shows an empty page.
+  if (target.lazyPath !== null && !(await ensureSessionLoaded(target))) return;
+  if (ticket !== switchTicket) return;
   await runBeforeSwitch();
   if (ticket !== switchTicket || target.closed) return;
   setActive(target);
@@ -161,12 +193,21 @@ export async function closeSession(id: string): Promise<void> {
     await runBeforeSwitch();
     if (keepForConflict()) return;
     closing.closed = true;
+    const neighbourOf = (): DocSession | null => {
+      const current = get(sessions).filter((s) => s === closing || !s.closed);
+      const i = current.indexOf(closing);
+      return current[i + 1] ?? current[i - 1] ?? null;
+    };
+    // A reopened tab not loaded yet is loaded before it takes over (one that
+    // can't be read drops out, and the next neighbour is asked).
+    let neighbour = neighbourOf();
+    while (neighbour && neighbour.lazyPath !== null) {
+      await ensureSessionLoaded(neighbour);
+      neighbour = neighbourOf();
+    }
     // A newer switch may have happened meanwhile — then leave it be, unless
     // the closing tab is somehow still the visible one.
     if (ticket === switchTicket || get(activeSession) === closing) {
-      const current = get(sessions).filter((s) => s === closing || !s.closed);
-      const i = current.indexOf(closing);
-      const neighbour = current[i + 1] ?? current[i - 1] ?? null;
       if (neighbour) {
         setActive(neighbour);
       } else {

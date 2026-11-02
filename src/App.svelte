@@ -47,7 +47,13 @@
   import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
   import { activateSession } from './stores/tabs';
-  import { restoreSavedTabs, installSessionAutosave, flushSessionNow } from './stores/session-persist';
+  import {
+    restoreSavedTabs,
+    finishSessionRestore,
+    loadRestoredTabsInBackground,
+    installSessionAutosave,
+    flushSessionNow,
+  } from './stores/session-persist';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
@@ -250,6 +256,17 @@
     }
   }
 
+  // Resolves when the page is next idle (after the frame in progress is
+  // drawn), or after a second at the latest.
+  function idleMoment(): Promise<void> {
+    return new Promise((resolve) => {
+      const ric = (window as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+        .requestIdleCallback;
+      if (ric) ric(() => resolve(), { timeout: 1000 });
+      else setTimeout(resolve, 16);
+    });
+  }
+
   function onToolShortcut(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     // Annotations are read-only in reader mode (the tool is parked on
@@ -357,23 +374,24 @@
     //   0. A window opened in "new window per file" mode shows its file only.
     //   1. Tabs mode: reopen the previous session's tabs (if enabled), then
     //      add files we were launched with (double-click / Open with). These win
-    //      over welcome — the user asked for that file (#24).
+    //      over welcome — the user asked for that file (#24). The reopened
+    //      tabs are in the tab bar straight away, but only the document shown
+    //      first is read before it's on screen; the rest load after it.
     //   2. Otherwise, if welcome is enabled (default), open it. The user gets
     //      a guided tour every launch until they tick the dismiss option.
     //   3. Otherwise, outside tabs mode, openLastOnStartup reopens the most
     //      recent file.
     //   4. Otherwise, leave the empty state visible.
     const presetPath = (window as unknown as { __RMD_OPEN__?: string }).__RMD_OPEN__;
+    const restoring = !presetPath && s.openMode === 'tabs' && s.reopenTabsOnLaunch;
     startupMark('app-init-ready');
     if (presetPath) {
       await openPaths([presetPath]);
     } else {
-      if (s.openMode === 'tabs' && s.reopenTabsOnLaunch) {
+      if (restoring) {
         startupMark('session-restore-start');
         await restoreSavedTabs();
         startupMark('session-restore-end');
-        // Every saved tab is fully loaded by the time restore returns.
-        startupMark('all-tabs-restored');
       }
       startupMark('drain-start');
       const launched = await drainPendingOpens();
@@ -394,6 +412,7 @@
           }
         }
       }
+      if (restoring) await finishSessionRestore();
     }
 
     // "How do you want to use remarkdown?" — once, in the main window, for
@@ -409,6 +428,9 @@
 
     startupMark('startup-opens-done');
     finishStartupTrace();
+    if (restoring) {
+      void loadRestoredTabsInBackground(idleMoment).then(() => startupMark('all-tabs-restored'));
+    }
 
     // Remember open tabs for next launch (main window, tabs mode). Installed
     // after the startup opens so restoring doesn't trigger a rewrite storm.
