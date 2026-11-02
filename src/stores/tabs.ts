@@ -274,14 +274,18 @@ export async function closeSession(id: string): Promise<void> {
     const ticket = ++switchTicket;
     switchTarget = null;
     cancelReattach();
-    await runBeforeSwitch();
-    if (keepForConflict()) return;
-    closing.closed = true;
     const neighbourOf = (): DocSession | null => {
       const current = get(sessions).filter((s) => s === closing || !s.closed);
       const i = current.indexOf(closing);
       return current[i + 1] ?? current[i - 1] ?? null;
     };
+    // A reopened neighbour not read yet starts loading now, alongside the
+    // closing tab's last save rather than after it.
+    const next = neighbourOf();
+    if (next && next.lazyPath !== null) void ensureSessionLoaded(next);
+    await runBeforeSwitch();
+    if (keepForConflict()) return;
+    closing.closed = true;
     // A reopened tab not loaded yet is loaded before it takes over (one that
     // can't be read drops out, and the next neighbour is asked).
     let neighbour = neighbourOf();

@@ -9,7 +9,7 @@
 
 import { get } from 'svelte/store';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
-import { activateSession, ensureSessionLoaded, restoringTab, switchesSettled } from './tabs';
+import { activateSession, ensureSessionLoaded, restoringTab, shownTab, switchesSettled } from './tabs';
 import { settings } from './settings';
 import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
 import { runOpenExclusive } from '../lib/open-files';
@@ -154,19 +154,33 @@ async function showSavedActiveTab(): Promise<void> {
   }
 }
 
-// Read the reopened tabs that haven't been yet, one at a time and in tab
-// order, letting the page breathe in between so scrolling and clicks on the
-// document already shown stay smooth. Tabs switched to meanwhile load then
-// (sharing the load if this was already reading them).
+// Read the reopened tabs that haven't been yet, one at a time, letting the
+// page breathe in between so scrolling and clicks on the document already
+// shown stay smooth. Tabs switched to meanwhile load then (sharing the load
+// if this was already reading them).
 export async function loadRestoredTabsInBackground(
   breathe: () => Promise<void> = () => Promise.resolve(),
 ): Promise<void> {
   for (;;) {
-    const next = get(sessions).find((s) => s.lazyPath !== null && !s.closed);
+    const next = nearestUnloadedTab();
     if (!next) return;
     await breathe();
     await ensureSessionLoaded(next);
   }
+}
+
+// The tab not read yet that's nearest the shown one, the one to its right
+// before the one to its left: the tabs Ctrl+Tab and closing the shown tab
+// go to are ready first.
+function nearestUnloadedTab(): DocSession | null {
+  const list = get(sessions);
+  const waiting = (s: DocSession | undefined) => !!s && s.lazyPath !== null && !s.closed;
+  const at = Math.max(0, list.indexOf(get(shownTab)));
+  for (let d = 0; d < list.length; d++) {
+    if (waiting(list[at + d])) return list[at + d];
+    if (d > 0 && waiting(list[at - d])) return list[at - d];
+  }
+  return null;
 }
 
 function currentSnapshot(): string {
