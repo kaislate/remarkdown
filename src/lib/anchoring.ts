@@ -492,31 +492,56 @@ function learnMove(blocks: Blocks, hintAt: number, block: HTMLElement | null): v
 // its whole saved context is found, word for word, in one place in the
 // block, and nothing more of the block before or after it than when it was
 // saved: what the whole article's search would score highest, so this only
-// finds sooner what that would, or picks the nearest of places that read the
-// same, which that would refuse.
+// finds sooner what that would.
+//
+// All the blocks near each centre are looked at, not just up to the first
+// that reads right: a song's chorus, a poem's refrain or a repeated heading
+// reads the same two places up as where it is, and after a line added at the
+// top, the copy above is nearer to where the block was than the block is. So
+// two blocks that read right are a tie, which only an anchor found beside
+// this one in the pass may break (the nearest to where its block would be
+// had it moved as far). Near a guess at the move (the last one, or none) the
+// blocks around both are looked at together, and a tie there is left to the
+// whole article's search, which refuses it, so the highlight is shown as
+// orphaned rather than on the wrong copy. A tie broken isn't learned from,
+// so one wrong guess can't lead the anchors after it astray. Null, whether
+// nothing near reads right or more than one does: the whole article is
+// searched.
 function nearbyBlocks(anchor: Anchor, blocks: Blocks, hintAt: number, searched: HTMLElement | null): Range | null {
   const { list, moves } = blocks;
   let learned: number | undefined;
   for (let d = 0; d <= MOVES_SEEN && learned === undefined; d++) {
     learned = moves.at.get(hintAt - d) ?? moves.at.get(hintAt + d);
   }
+  const groups = learned === undefined ? [[moves.last, 0]] : [[learned], [moves.last, 0]];
   const tried = new Set<number>();
-  for (const shift of [learned ?? moves.last, moves.last, 0]) {
-    for (let d = 0; d <= NEARBY; d++) {
-      for (const at of d ? [hintAt + shift - d, hintAt + shift + d] : [hintAt + shift]) {
-        if (at < 0 || at >= list.length || tried.has(at)) continue;
+  for (const shifts of groups) {
+    // Every block near these centres that reads right, and how far it is
+    // from the nearest of them.
+    const hits: { block: HTMLElement; i: number; d: number }[] = [];
+    for (const shift of shifts) {
+      const centre = hintAt + shift;
+      for (let at = Math.max(0, centre - NEARBY); at <= centre + NEARBY && at < list.length; at++) {
+        if (tried.has(at)) continue;
         tried.add(at);
         const block = list[at];
-        if (block === searched) continue;
         const full = blockText(block);
         const i = uniqueInContext(anchor, full);
         if (spent()) return null;
-        if (i >= 0 && scoreCandidate(anchor, full, i) === 1) {
-          learnMove(blocks, hintAt, block);
-          return rangeFromBlockOffsets(block, i, i + anchor.text.length);
-        }
+        if (i >= 0 && scoreCandidate(anchor, full, i) === 1) hits.push({ block, i, d: Math.abs(at - centre) });
       }
     }
+    if (hits.length === 0) continue;
+    // The block its hint names was searched already and turned it down.
+    if (hits.some((h) => h.block === searched)) return null;
+    if (hits.length === 1) {
+      learnMove(blocks, hintAt, hits[0].block);
+      return rangeFromBlockOffsets(hits[0].block, hits[0].i, hits[0].i + anchor.text.length);
+    }
+    if (shifts.length > 1) return null;
+    hits.sort((a, b) => a.d - b.d);
+    if (hits[0].d === hits[1].d) return null;
+    return rangeFromBlockOffsets(hits[0].block, hits[0].i, hits[0].i + anchor.text.length);
   }
   return null;
 }

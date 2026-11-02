@@ -635,4 +635,71 @@ describe('highlights in an article whose paragraphs moved', () => {
     });
     expect((range!.startContainer.parentElement as HTMLElement).dataset.blockId).toBe('p:4');
   });
+
+  // A song: its title, then four verses, each followed by the same chorus.
+  // A line added under the title moves every block down by one, so the
+  // chorus a highlight was in is one place below where it was, and the one
+  // before it is one place above.
+  describe('in a song whose chorus repeats, after a line is added at the top', () => {
+    const chorus = 'And we sing along, we sing along, the night is young and so are we, so sing along with me tonight.';
+    const verses = [
+      'Walking down the road in the morning light.',
+      'Rain on the windows, coffee on the stove.',
+      'Friends at the table, stories to be told.',
+      'Lights in the harbour, boats coming home.',
+    ];
+    const song = (top: string[]) =>
+      buildRoot([...top, ...verses.flatMap((v) => [v, chorus])].map((b, i) => `<p data-block-id="p:${i + 1}">${b}</p>`).join(''));
+    const blockOf = (r: Range | null) => (r ? (r.startContainer.parentElement as HTMLElement).dataset.blockId : null);
+    // Title p:1, then verse and chorus pairs: choruses at p:3, 5, 7 and 9.
+    function highlights(ids: string[], text: string) {
+      const before = song(['My Song']);
+      const anchors = ids.map((id) => createAnchor(rangeOf(before, id, text), before)!);
+      before.remove();
+      return { anchors, after: song(['My Song', 'by Someone']) };
+    }
+
+    it('never moves a highlight in the second chorus to the first', () => {
+      const { anchors, after } = highlights(['p:5'], 'the night is young');
+      const got = resolvingPass(() => blockOf(resolveAnchor(anchors[0], after)));
+      // Its own chorus, or unplaced (shown in Orphaned Annotations).
+      expect([null, 'p:6']).toContain(got);
+    });
+
+    it('never moves highlights in several choruses to the chorus before', () => {
+      const { anchors, after } = highlights(['p:5', 'p:7', 'p:9'], 'the night is young');
+      const got = resolvingPass(() => anchors.map((a) => blockOf(resolveAnchor(a, after))));
+      got.forEach((id, k) => expect([null, ['p:6', 'p:8', 'p:10'][k]]).toContain(id));
+    });
+
+    it('puts a chorus highlight in its own chorus once a verse beside it showed how far it moved', () => {
+      const before = song(['My Song']);
+      const verse = createAnchor(rangeOf(before, 'p:4', 'coffee'), before)!;
+      const chorusHighlight = createAnchor(rangeOf(before, 'p:5', 'the night is young'), before)!;
+      before.remove();
+      const after = song(['My Song', 'by Someone']);
+      const got = resolvingPass(() => [verse, chorusHighlight].map((a) => blockOf(resolveAnchor(a, after))));
+      expect(got).toEqual(['p:5', 'p:6']);
+    });
+  });
+
+  it('never puts a highlight on a copy of its paragraph near where paragraphs further on moved to', () => {
+    // A paragraph added at the top moved the start of the article by one,
+    // and four more further on moved the rest by five. Paragraph 10 (one
+    // place down now) reads the same as paragraph 17 (eight places down from
+    // where 10 was, a guess of five places plus three).
+    const para = (i: number) => (i === 9 || i === 16 ? 'Same words here, again and again.' : `Paragraph ${i} says its own thing ${i}.`);
+    const old = Array.from({ length: 300 }, (_, i) => para(i));
+    const root0 = buildRoot(old.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const far = createAnchor(rangeOf(root0, 'p:200', 'Paragraph 199 says'), root0)!;
+    const same = createAnchor(rangeOf(root0, 'p:10', 'words here'), root0)!;
+    root0.remove();
+    const added = ['New first.', ...old.slice(0, 150), 'Added a.', 'Added b.', 'Added c.', 'Added d.', ...old.slice(150)];
+    const moved = buildRoot(added.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const blockOf = (r: Range | null) => (r ? (r.startContainer.parentElement as HTMLElement).dataset.blockId : null);
+    const got = resolvingPass(() => [far, same].map((a) => blockOf(resolveAnchor(a, moved))));
+    expect(got[0]).toBe('p:205');
+    // Its own paragraph, or unplaced; never the copy.
+    expect([null, 'p:11']).toContain(got[1]);
+  });
 });
