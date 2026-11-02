@@ -77,6 +77,7 @@
   import { reattachTarget, cancelReattach } from './stores/reattach';
   import { toggleTutorial } from './stores/tutorial';
   import { editMode, toggleEditMode } from './stores/edit-mode';
+  import { loadEditor } from './lib/editor-loader';
   import type { Tool } from './lib/schema';
   import { get } from 'svelte/store';
 
@@ -438,6 +439,9 @@
 
     startupMark('startup-opens-done');
     finishStartupTrace();
+    // The editor's code, fetched once the page is idle so the first press
+    // of Edit doesn't wait for it.
+    void idleMoment().then(() => loadEditor()).catch(() => { /* edit mode tries again */ });
     if (restoring) {
       void loadRestoredTabsInBackground(idleMoment).then(() => startupMark('all-tabs-restored'));
     }
