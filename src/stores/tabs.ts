@@ -15,7 +15,7 @@ import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
 import { getProgressFor } from './reading-progress';
 import { askAboutConflict, savesSettled } from '../lib/edit-save';
-import { activeModal, closeModal } from './modals';
+import { activeModal, closeModal, openModal } from './modals';
 import { platform } from '../lib/platform';
 
 type BeforeSwitchHook = (outgoing: DocSession) => void | Promise<void>;
@@ -79,7 +79,7 @@ export function ensureSessionLoaded(session: DocSession): Promise<boolean> {
   if (!load) {
     load = (async () => {
       if (session.closed) return false;
-      const ok = await loadIntoSession(session, path);
+      const ok = await loadIntoSession(session, path, { noticeWhenShown: true });
       session.lazyPath = null;
       if (!ok) {
         session.closed = true;
@@ -115,6 +115,13 @@ function setActive(session: DocSession): void {
   activeSession.set(session);
   docEpoch.update((e) => e + 1);
   restoreScroll(session);
+  // A reopened tab read in the background with a malformed annotations
+  // file: say so now that it's on screen (unless another dialog is up —
+  // then the next time it's shown).
+  if (session.pendingSidecarNotice !== null && get(activeModal) === null) {
+    openModal(session.pendingSidecarNotice);
+    session.pendingSidecarNotice = null;
+  }
 }
 
 // Each switch/close takes a ticket; a switch whose before-switch work

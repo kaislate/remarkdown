@@ -16,6 +16,7 @@ import { writable, get, type Writable } from 'svelte/store';
 import type { EditorState } from 'prosemirror-state';
 import type { Annotation } from '../lib/schema';
 import type { DocState } from './doc-types';
+import type { ModalState } from './modals';
 
 export interface EditConflict {
   path: string;
@@ -65,6 +66,10 @@ export interface DocSession {
   // loads (in the background after startup, or when switched to first —
   // see tabs.ts ensureSessionLoaded). Null for every other tab.
   lazyPath: string | null;
+  // A reopened tab read in the background found its annotations file
+  // malformed: the notice, shown when the tab first is (see tabs.ts
+  // setActive) rather than over whatever the user has open.
+  pendingSidecarNotice: Extract<ModalState, { kind: 'corrupt-sidecar' }> | null;
 }
 
 let counter = 0;
@@ -90,6 +95,7 @@ export function createSession(): DocSession {
     skipExitReload: false,
     discardPendingEdits: false,
     lazyPath: null,
+    pendingSidecarNotice: null,
   };
 }
 

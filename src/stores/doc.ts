@@ -4,7 +4,7 @@ import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
 import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
-import { openModal } from './modals';
+import { openModal, type ModalState } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
 import type { Annotation } from '../lib/schema';
 import { getProgressFor } from './reading-progress';
@@ -50,10 +50,12 @@ let loadCounter = 0;
 
 // `force`: reload even when the file on disk is unchanged (resolving an edit
 // conflict with "use the other version" must start the editor over).
+// `noticeWhenShown`: a tab read before it's shown (a reopened tab) keeps a
+// malformed-annotations notice until it is, instead of opening it now.
 export async function loadIntoSession(
   session: DocSession,
   path: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; noticeWhenShown?: boolean } = {},
 ): Promise<boolean> {
   let r;
   try {
@@ -92,13 +94,18 @@ export async function loadIntoSession(
   if (launched) startupMark('launched-doc-rendered');
 
   let parsedAnnotations: Annotation[] = [];
+  session.pendingSidecarNotice = null;
+  const sidecarNotice = (notice: Extract<ModalState, { kind: 'corrupt-sidecar' }>) => {
+    if (opts.noticeWhenShown) session.pendingSidecarNotice = notice;
+    else openModal(notice);
+  };
   if (r.sidecarRaw) {
     const result = loadSidecar(r.sidecarRaw);
     if (result.ok) {
       parsedAnnotations = result.value.annotations;
     } else {
       console.warn('[remarkdown] sidecar load failed:', result.error);
-      openModal({ kind: 'corrupt-sidecar', path: r.path });
+      sidecarNotice({ kind: 'corrupt-sidecar', path: r.path });
     }
   }
   session.annots.set(parsedAnnotations);
