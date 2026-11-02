@@ -20,7 +20,12 @@ vi.mock('../../src/lib/tauri-api', async () => {
       sha256: path,
       bytes: 3,
       markdown: '# ' + path,
-      sidecarRaw: path.includes('bad-notes') ? '{not json' : null,
+      sidecarRaw: path.includes('bad-notes')
+        ? '{not json'
+        : path.includes('many-notes')
+          ? JSON.stringify({ version: 1, annotations: Array.from({ length: 20_001 }, () => ({})) })
+          : null,
+      sidecarUnreadable: path.includes('locked-notes'),
     })),
     toAssetUrl: (p: string) => p,
   };
@@ -90,5 +95,30 @@ describe('a reopened tab with a malformed annotations file', () => {
   it('a document the user opens still tells them straight away', async () => {
     await loadDocument('/bad-notes.md');
     expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path: '/bad-notes.md' });
+  });
+});
+
+// The annotations file can also be unreadable (locked, no permission) or too
+// big to load: those notices wait for the tab the same way.
+describe.each([
+  ['unreadable', '/locked-notes.md', 'unreadable'],
+  ['too big to load', '/many-notes.md', 'too-many'],
+] as const)('a reopened tab whose annotations file is %s', (_what, path, reason) => {
+  it('loaded in the background, leaves the open dialog alone and tells the user when the tab is shown', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', path], 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    openModal({ kind: 'onboarding' });
+    await loadRestoredTabsInBackground();
+    expect(get(activeModal)).toEqual({ kind: 'onboarding' });
+
+    closeModal();
+    await activateSession(tabFor(path).id);
+    expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path, reason });
+  });
+
+  it('a document the user opens still tells them straight away', async () => {
+    await loadDocument(path);
+    expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path, reason });
   });
 });
