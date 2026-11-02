@@ -9,6 +9,7 @@ import { test, expect } from './support/test';
 const START = '/e2e/links/Start.md';
 const OTHER = '/e2e/links/other.md';
 const FORM = '/e2e/links/Form.md';
+const MATH = '/e2e/links/Math.md';
 const FILLER = Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}, long enough to take a line or two of the column.`).join('\n\n');
 const DOCS: Record<string, string> = {
   [START]: [
@@ -36,6 +37,24 @@ const DOCS: Record<string, string> = {
     '```mermaid',
     'flowchart TD',
     `  A["<form action='http://xn--a.attacker.example/'><button>Update required</button></form>"] --> B["<form method='post' action='/'><button>Reload</button></form>"]`,
+    '```',
+    '',
+  ].join('\n'),
+  // WebKit (macOS and Linux) follows a click on any MathML element with an
+  // href; DOMPurify keeps both in an HTML label. One link would replace the
+  // app, the other reload it (the app's own origin), losing the edit.
+  [MATH]: [
+    '# Math',
+    '',
+    '```mermaid',
+    'flowchart TD',
+    `  A["<math><mrow href='http://127.0.0.1:9/pwned-mermaid'><mi>far</mi></mrow></math>"] --> B["<math><mrow href='/'><mi>home</mi></mrow></math>"]`,
+    '```',
+    '',
+    // A kind the visual editor doesn't cover: changed in the text panel.
+    '```mermaid',
+    'block-beta',
+    `  C["<math><mrow href='/'><mi>block</mi></mrow></math>"]`,
     '```',
     '',
   ].join('\n'),
@@ -204,6 +223,55 @@ test("a form in a diagram's label goes nowhere", async ({ page, context }) => {
   await page.waitForTimeout(300);
   expect(left).toEqual([]);
   expect(page.url()).toBe(url);
+  expect(await page.evaluate(() => (window as any).__E2E_STILL_HERE__)).toBe(true);
+  await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
+  expect(context.pages()).toHaveLength(1);
+});
+
+// A MathML link in a diagram's label goes nowhere, in the reader, the
+// editor and the diagram text panel's preview. The window's own guard
+// holds on its own too, on a MathML link put on the page as a sanitizer
+// slip would.
+test("a MathML link in a diagram's label goes nowhere", async ({ page, context }) => {
+  const left: string[] = [];
+  page.on('request', (r) => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) left.push(`${r.method()} ${r.url()}`);
+  });
+  await open(page, MATH, 'Math');
+  left.length = 0;
+  const url = page.url();
+  await page.evaluate(() => ((window as any).__E2E_STILL_HERE__ = true));
+
+  const reader = page.locator('.viewer .mermaid-block');
+  await expect(reader.getByText('far', { exact: true })).toBeVisible();
+  await reader.getByText('far', { exact: true }).click();
+  await reader.getByText('home', { exact: true }).click();
+  await reader.getByText('block', { exact: true }).click();
+  await page.evaluate(() => {
+    document.querySelector('.viewer .mermaid-block')!.insertAdjacentHTML(
+      'beforeend',
+      `<math><mrow href="/"><mi id="slip">slip</mi></mrow></math>`,
+    );
+  });
+  await page.locator('#slip').click();
+
+  await page.locator('.edit-mode-toggle').click();
+  const editor = page.locator('.editor-surface .mermaid-block-editor .mermaid-rendered');
+  await expect(editor.getByText('far', { exact: true })).toBeVisible();
+  await editor.getByText('far', { exact: true }).click();
+  await editor.getByText('home', { exact: true }).click();
+  await editor.getByText('block', { exact: true }).click();
+
+  const blocks = page.locator('.editor-surface .mermaid-block-editor');
+  await blocks.nth(1).getByRole('button', { name: 'Edit diagram text' }).click();
+  const preview = page.getByRole('dialog', { name: 'Edit diagram text' }).locator('.mermaid-text-preview');
+  await expect(preview.getByText('block', { exact: true })).toBeVisible();
+  await preview.getByText('block', { exact: true }).click();
+
+  await page.waitForTimeout(300);
+  expect(left).toEqual([]);
+  expect(page.url()).toBe(url);
+  expect(await external(page)).toEqual([]);
   expect(await page.evaluate(() => (window as any).__E2E_STILL_HERE__)).toBe(true);
   await expect(page.locator('.editor-surface .ProseMirror')).toBeVisible();
   expect(context.pages()).toHaveLength(1);

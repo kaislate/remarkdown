@@ -171,6 +171,17 @@ describe('mermaid runtime', () => {
     expect(forbid).toEqual(expect.arrayContaining(['style', 'form', 'button', 'input', 'select', 'textarea']));
   });
 
+  // WebKit follows a click on MathML with an href, and DOMPurify keeps
+  // both. A label's own links have nowhere to go, so their targets go.
+  it("has mermaid's sanitizer drop link targets from labels", async () => {
+    const p = renderMermaid('flowchart TD\nA', LIGHT);
+    await flush();
+    mocked.renders[0].resolve();
+    await p;
+    const forbid = (mocked.configs[0].dompurifyConfig as { FORBID_ATTR?: string[] } | undefined)?.FORBID_ATTR;
+    expect(forbid).toEqual(expect.arrayContaining(['href', 'xlink:href']));
+  });
+
   it('caches by (theme, font, source) and hands out a fresh svg id on every hit', async () => {
     const p = renderMermaid('flowchart TD\nA', DARK);
     await flush();
@@ -549,6 +560,36 @@ describe('disarmDiagramLinks', () => {
     disarmDiagramLinks(host);
     expect(host.querySelector('form, button, input, select, textarea')).toBeNull();
     expect(host.querySelector('.nodeLabel')?.textContent).toBe('Update required');
+  });
+});
+
+describe('disarmDiagramLinks on what is not an <a>', () => {
+  // WebKit (macOS and Linux) follows a click on any MathML element with an
+  // href; an HTML label can hold MathML, and an image map's <area> too.
+  // Mermaid's own pictures (svg <image>, and <use>) keep theirs.
+  it('takes the target off MathML and area links, and keeps the pictures', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' +
+      '<g class="node"><foreignObject><div><span class="nodeLabel">' +
+      '<math href="tauri://localhost/"><mrow href="http://127.0.0.1:9/pwned"><mi>x</mi></mrow></math>' +
+      '<map name="m"><area shape="rect" coords="0,0,9,9" href="http://127.0.0.1:9/area"></map>' +
+      '</span></div></foreignObject></g>' +
+      '<image href="data:image/png;base64,AA==" xlink:href="data:image/png;base64,AA=="></image>' +
+      '<use href="#icon"></use>' +
+      '</svg>';
+    const mrow = host.querySelector('mrow')!;
+    mrow.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', 'http://127.0.0.1:9/x');
+    expect(mrow.namespaceURI).toBe('http://www.w3.org/1998/Math/MathML');
+    disarmDiagramLinks(host);
+    for (const el of host.querySelectorAll('math, mrow, area')) {
+      expect(el.getAttribute('href'), el.localName).toBeNull();
+      expect(el.getAttributeNS('http://www.w3.org/1999/xlink', 'href'), el.localName).toBeNull();
+    }
+    expect(host.querySelector('mi')?.textContent).toBe('x');
+    expect(host.querySelector('image')?.getAttribute('href')).toBe('data:image/png;base64,AA==');
+    expect(host.querySelector('image')?.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe('data:image/png;base64,AA==');
+    expect(host.querySelector('use')?.getAttribute('href')).toBe('#icon');
   });
 });
 

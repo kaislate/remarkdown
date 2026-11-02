@@ -13,6 +13,11 @@
 // an '#id' has nothing to mean there. A diagram's links and the editor's
 // go nowhere (the editor is for changing them, not following them).
 //
+// WebKit (macOS and Linux) also follows a click on any MathML element
+// with an href, and a diagram's HTML label can hold MathML. Chromium
+// (Windows) never follows one, so such a link goes nowhere on any of them:
+// not even to the browser.
+//
 // A form is the other way a page leaves: mermaid keeps form controls in a
 // diagram's HTML labels, and a click on the button would go to the form's
 // action. No form in the app submits by navigating (the link popover
@@ -23,15 +28,33 @@ import { linkAction } from './link-action';
 const XLINK = 'http://www.w3.org/1999/xlink';
 // Where a link is someone else's to route, or nobody's.
 const NOT_OURS = '[data-own-links], .mermaid-block, .mermaid-block-editor, [contenteditable]';
+const MATHML = 'http://www.w3.org/1998/Math/MathML';
+
+// The MathML element with an href that a click at `el` would follow.
+function mathLink(el: Element): Element | null {
+  for (let at = el.closest('[href]'); at; at = at.parentElement?.closest('[href]') ?? null) {
+    if (at.namespaceURI === MATHML) return at;
+  }
+  return null;
+}
 
 export function installLinkGuard(target: Window, external: (url: string) => void): () => void {
   const onLink = (e: MouseEvent) => {
     // A middle click arrives as auxclick; the right button's is the
     // context menu's.
     if (e.type === 'auxclick' && e.button !== 1) return;
-    const a = (e.target as Element | null)?.closest?.('a, area');
+    const el = e.target as Element | null;
+    if (typeof el?.closest !== 'function') return;
+    const a = el.closest('a, area');
     // An SVG link (a diagram's) may carry its target as xlink:href.
     const href = a?.getAttribute('href') ?? a?.getAttributeNS(XLINK, 'href');
+    // A MathML link goes nowhere, unless a link inside it is nearer the
+    // click (that one is what the click follows).
+    const math = mathLink(el);
+    if (math && (href == null || !math.contains(a))) {
+      e.preventDefault();
+      return;
+    }
     if (!a || href == null) return;
     e.preventDefault();
     if (a.closest(NOT_OURS)) return;

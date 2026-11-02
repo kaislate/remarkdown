@@ -538,10 +538,13 @@ const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextS
 // on doing so: a frame showing an asset url could call the app's commands
 // (see asset_protocol.rs). Its defaults keep forms, though: a label's
 // button would send the window to the form's action, so the form controls
-// go too.
+// go too. So do a label's link targets: WebKit (macOS and Linux) follows
+// a click on any MathML element with an href, and a link in a diagram has
+// nowhere to go (see disarmDiagramLinks). Mermaid's own links and icons
+// aren't labels and never pass through here.
 const LABEL_PURIFY = {
   FORBID_TAGS: ['style', 'image', 'feimage', 'form', 'button', 'input', 'select', 'textarea'],
-  FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'xlink:href'],
+  FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'href', 'xlink:href'],
 };
 
 const UNSAFE_PICTURE = "This diagram has a picture that can't be shown here.";
@@ -750,12 +753,19 @@ export function applyDiagramSizing(svg: SVGSVGElement): void {
 // the node and its look stay. A form in an HTML label would do the same
 // through its button; mermaid's sanitizer is told to drop them
 // (renderMermaid), and any that get past it go here, keeping their words.
+// Not only an <a> is a link: WebKit follows a click on any MathML element
+// with an href, and an HTML label may hold an image map's <area>. So
+// everything loses its target but the svg elements whose href is a
+// picture (mermaid's icons, already vetted by drawsUnsafePicture).
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 export function disarmDiagramLinks(root: ParentNode): void {
-  for (const a of root.querySelectorAll('a')) {
-    a.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
-    a.removeAttribute('xlink:href');
-    a.removeAttribute('href');
-    a.removeAttribute('target');
+  for (const el of root.querySelectorAll('*')) {
+    if (el.namespaceURI === SVG_NS && LINKED_PICTURES.includes(el.localName.toLowerCase())) continue;
+    el.removeAttributeNS(XLINK_NS, 'href');
+    el.removeAttribute('xlink:href');
+    el.removeAttribute('href');
+    if (el.localName === 'a') el.removeAttribute('target');
   }
   for (const el of root.querySelectorAll('form, button')) el.replaceWith(...el.childNodes);
   for (const el of root.querySelectorAll('input, select, textarea')) el.remove();

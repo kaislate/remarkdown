@@ -67,6 +67,42 @@ describe('installLinkGuard', () => {
     expect(external.mock.calls).toEqual([['https://example.com/a'], ['https://example.com/b']]);
   });
 
+  // WebKit (macOS and Linux) follows a click on any MathML element with an
+  // href, and a diagram's HTML label can hold MathML. Chromium (Windows)
+  // never follows one, so it goes nowhere here either: not to the browser.
+  it('holds MathML links too, and sends them nowhere', () => {
+    for (const html of [
+      '<math><mrow data-t href="http://127.0.0.1:9/pwned"><mi>x</mi></mrow></math>',
+      '<math data-t href="tauri://localhost/"><mi>x</mi></math>',
+      '<div class="mermaid-block"><svg><foreignObject><div><math><mrow data-t href="https://example.com/"><mi>x</mi></mrow></math></div></foreignObject></svg></div>',
+    ]) {
+      const el = link(html);
+      expect(click(el.querySelector('mi') ?? el), html).toBe(false);
+      expect(click(el.querySelector('mi') ?? el, { button: 1 }, 'auxclick'), html).toBe(false);
+    }
+    expect(external).not.toHaveBeenCalled();
+  });
+
+  // Of a MathML link and an <a>, the click follows the nearer one.
+  it('takes the nearer of a MathML link and an <a>', () => {
+    const outer = link('<a href="https://example.com/outer"><math><mrow data-t href="/"><mi>x</mi></mrow></math></a>');
+    expect(click(outer.querySelector('mi')!)).toBe(false);
+    expect(external).not.toHaveBeenCalled();
+    const inner = link('<math><mrow href="/"><mtext><a data-t href="https://example.com/inner">x</a></mtext></mrow></math>');
+    expect(inner.namespaceURI).toBe('http://www.w3.org/1999/xhtml');
+    expect(click(inner)).toBe(false);
+    expect(external).toHaveBeenCalledWith('https://example.com/inner');
+    const bare = link('<math><mrow href="/"><mtext><a data-t>x</a></mtext></mrow></math>');
+    expect(click(bare)).toBe(false);
+    expect(external).toHaveBeenCalledTimes(1);
+  });
+
+  // A diagram's icons are svg <image href>: a picture, not a link.
+  it("leaves a click on a diagram's picture alone", () => {
+    const img = link('<div class="mermaid-block"><svg><image data-t href="data:image/png;base64,AA=="></image></svg></div>');
+    expect(click(img)).toBe(true);
+  });
+
   it('takes a middle click the same way, and leaves the other buttons alone', () => {
     const a = link('<a data-t href="https://example.com/">x</a>');
     expect(click(a, { button: 1 }, 'auxclick')).toBe(false);
