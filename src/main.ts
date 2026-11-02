@@ -6,6 +6,11 @@ import App from './App.svelte';
 import { flushSave } from './lib/save';
 import { installE2EBridge } from './lib/e2e-debug-bridge';
 import { initPlatform } from './lib/platform';
+import { startStartupReads } from './lib/startup-reads';
+
+// Settings, recents and reading progress are read while the platform check
+// below is out; App picks them up when it mounts.
+startStartupReads();
 
 // Settle which OS we're on before the first paint, so shortcuts and chrome
 // are right from the start.

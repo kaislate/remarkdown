@@ -44,7 +44,7 @@
   import NotesPanel from './components/NotesPanel.svelte';
   import WelcomeDismiss from './components/WelcomeDismiss.svelte';
   import ReattachBanner from './components/ReattachBanner.svelte';
-  import { refreshRecent, recent, recentExistence, markMissing } from './stores/recent';
+  import { recent, recentExistence, markMissing } from './stores/recent';
   import { openPaths, drainPendingOpens } from './lib/open-files';
   import { activateSession } from './stores/tabs';
   import {
@@ -66,8 +66,8 @@
   import { unresolvedConflict, askAboutConflict } from './lib/edit-save';
   import { settlePendingSaves, installMacBlurFlush, bringForwardOnMac } from './lib/leave-flush';
   import { activeSession } from './stores/sessions';
-  import { settings, refreshSettings, installSettingsAutosave } from './stores/settings';
-  import { refreshReadingProgress } from './stores/reading-progress';
+  import { settings, installSettingsAutosave } from './stores/settings';
+  import { startStartupReads } from './lib/startup-reads';
   import { installSaveWatcher, savedPulse } from './lib/save';
   import { installFileDropHandler } from './lib/file-drop';
   import { zoomLevel, increaseZoom, decreaseZoom, resetZoom, minimapShown } from './stores/ui';
@@ -286,11 +286,54 @@
     }
   }
 
+  // Flush the active tab's pending saves before the window goes away.
+  // Registering this handler hands the close to JS: Tauri then calls
+  // destroy() once it resolves (needs core:window:allow-destroy). Never let a
+  // failed flush keep the window open.
+  async function installCloseFlush(): Promise<(() => void) | null> {
+    try {
+      return await getCurrentWindow().onCloseRequested(async (event) => {
+        try {
+          await settlePendingSaves();
+          // Edits waiting on a "changed by another program" decision would
+          // be lost: keep the window open and ask instead.
+          const waiting = unresolvedConflict();
+          if (waiting) {
+            event.preventDefault();
+            await bringForwardOnMac();
+            if (get(activeSession) !== waiting) await activateSession(waiting.id);
+            askAboutConflict(waiting);
+            return;
+          }
+          await flushSessionNow();
+        } catch (err) {
+          console.error('[remarkdown] flush on close failed:', err);
+        }
+      });
+    } catch {
+      return null; // non-Tauri host
+    }
+  }
+
   onMount(async () => {
-    // Load persisted settings before anything else so subsequent subscribers
-    // (theme, watermark, etc.) see the user's preferences instead of defaults.
     startupMark('app-init-start');
-    try { await refreshSettings(); } catch { /* fall back to defaults */ }
+    // Everything startup asks the backend for is independent, so it's all
+    // asked at once (settings, recents and reading progress were already
+    // started by main.ts) rather than one round trip after another.
+    const reads = startStartupReads();
+    // Files the OS hands us later (double-click while we're running) arrive
+    // as 'open-requested'. The listener is in place before the first drain
+    // below, so nothing queued in between can be missed.
+    const openListener = onOpenRequested(() => { void drainPendingOpens(); });
+    const closeFlush = installCloseFlush();
+    const dropHandler = installFileDropHandler();
+    // A Mac can quit without asking any window first (Dock, logout), so
+    // there each window also saves whenever it loses focus.
+    const blurFlush = installMacBlurFlush().catch(() => null);
+
+    // Settings first, so what follows sees the user's preferences instead of
+    // defaults.
+    await reads.settings;
     startupMark('settings-loaded');
     disposeSettings = installSettingsAutosave();
 
@@ -315,13 +358,7 @@
     });
     disposeArticleWidth = unsubWidth;
 
-    try { await refreshRecent(); } catch { /* ignore on first launch */ }
-    startupMark('recent-loaded');
-    try { await refreshReadingProgress(); } catch { /* ignore */ }
-    startupMark('progress-loaded');
     disposeSave = installSaveWatcher();
-    disposeDrop = await installFileDropHandler();
-    startupMark('drop-handler-ready');
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onAnnotUndoKey);
     window.addEventListener('keydown', onToolShortcut);
@@ -329,46 +366,19 @@
     window.addEventListener('keydown', onTutorialKey);
     window.addEventListener('keydown', onEditModeKey);
 
-    // Files the OS hands us later (double-click while we're running) arrive
-    // as 'open-requested'. Listen before the first drain below so nothing
-    // queued in between can be missed.
-    disposeOpenRequested = await onOpenRequested(() => { void drainPendingOpens(); });
+    // Recents before any open records one; reading progress before a
+    // document loads, so it opens where the user left off.
+    await reads.recent;
+    startupMark('recent-loaded');
+    await reads.progress;
+    startupMark('progress-loaded');
+    disposeDrop = await dropHandler;
+    startupMark('drop-handler-ready');
+    disposeOpenRequested = await openListener;
     startupMark('open-listener-ready');
-
-    // Flush the active tab's pending saves before the window goes away.
-    try {
-      // Registering this handler hands the close to JS: Tauri then calls
-      // destroy() once it resolves (needs core:window:allow-destroy). Never
-      // let a failed flush keep the window open.
-      disposeCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
-        try {
-          await settlePendingSaves();
-          // Edits waiting on a "changed by another program" decision would
-          // be lost: keep the window open and ask instead.
-          const waiting = unresolvedConflict();
-          if (waiting) {
-            event.preventDefault();
-            await bringForwardOnMac();
-            if (get(activeSession) !== waiting) await activateSession(waiting.id);
-            askAboutConflict(waiting);
-            return;
-          }
-          await flushSessionNow();
-        } catch (err) {
-          console.error('[remarkdown] flush on close failed:', err);
-        }
-      });
-    } catch {
-      // non-Tauri host
-    }
+    disposeCloseRequested = await closeFlush;
     startupMark('close-listener-ready');
-    // A Mac can quit without asking any window first (Dock, logout), so
-    // there each window also saves whenever it loses focus.
-    try {
-      disposeBlurFlush = await installMacBlurFlush();
-    } catch {
-      // non-Tauri host
-    }
+    disposeBlurFlush = await blurFlush;
 
     // Startup-document precedence:
     //   0. A window opened in "new window per file" mode shows its file only.
