@@ -6,7 +6,7 @@
 // own that state; the incoming tab's stores are already complete, so the
 // proxies re-emit and the UI redraws from memory.
 
-import { get } from 'svelte/store';
+import { get, readable, writable, type Readable } from 'svelte/store';
 import { tick } from 'svelte';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
 import { currentViewerRoot } from './annots';
@@ -127,6 +127,41 @@ function setActive(session: DocSession): void {
     session.pendingSidecarNotice = null;
   }
 }
+
+// At startup every reopened tab is in the tab bar before the saved active
+// one has been read; the window is still on its empty start tab until then.
+// session-persist names the saved tab here meanwhile, so it's the one shown
+// selected (and the one Ctrl+Tab and Ctrl+W act on), rather than none.
+export const restoringTab = writable<DocSession | null>(null);
+
+// The tab the tab bar shows as the current one: the active tab, or, while
+// the window is still on the empty start tab, the saved tab being read.
+export const shownTab: Readable<DocSession> = readable<DocSession>(get(activeSession), (set) => {
+  let active = get(activeSession);
+  let restoring: DocSession | null = null;
+  const update = () => {
+    const waiting = restoring !== null && !restoring.closed && sessionPath(active) === null;
+    set(waiting ? restoring! : active);
+  };
+  let unsubDoc = () => {};
+  const unsubActive = activeSession.subscribe((s) => {
+    unsubDoc();
+    active = s;
+    unsubDoc = s.doc.subscribe(update);
+  });
+  const unsubRestoring = restoringTab.subscribe((s) => {
+    restoring = s;
+    update();
+  });
+  // A closed tab stops being shown as selected.
+  const unsubList = sessions.subscribe(update);
+  return () => {
+    unsubDoc();
+    unsubActive();
+    unsubRestoring();
+    unsubList();
+  };
+});
 
 // Each switch/close takes a ticket; a switch whose before-switch work
 // finishes after a newer request was made doesn't apply (rapid clicks must
@@ -283,11 +318,12 @@ export async function closeSession(id: string): Promise<void> {
 }
 
 // Ctrl+Tab / Ctrl+Shift+Tab: one tab on from the one being switched to, if
-// a switch is still on its way, else from the one shown.
+// a switch is still on its way, else from the one shown. Only tabs in the
+// tab bar count (not the empty tab the window starts on).
 export async function cycleSession(delta: 1 | -1): Promise<void> {
-  const list = get(sessions);
+  const from = switchTarget && !switchTarget.closed ? switchTarget : get(shownTab);
+  const list = get(sessions).filter((s) => s === from || sessionPath(s) !== null);
   if (list.length < 2) return;
-  const from = switchTarget && !switchTarget.closed ? switchTarget : get(activeSession);
   const i = list.indexOf(from);
   await activateSession(list[(i + delta + list.length) % list.length].id);
 }

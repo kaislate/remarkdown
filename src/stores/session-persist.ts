@@ -9,7 +9,7 @@
 
 import { get } from 'svelte/store';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
-import { activateSession, ensureSessionLoaded, switchesSettled } from './tabs';
+import { activateSession, ensureSessionLoaded, restoringTab, switchesSettled } from './tabs';
 import { settings } from './settings';
 import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
 import { runOpenExclusive } from '../lib/open-files';
@@ -106,6 +106,7 @@ async function restoreSavedTabsNow(): Promise<void> {
   sessions.set([...restored.slice(0, activeAt + 1), start, ...restored.slice(activeAt + 1)]);
   startTab = start;
   savedActiveTab = restored[activeAt];
+  restoringTab.set(savedActiveTab);
 }
 
 // After the launch's own opens: if nothing loaded into the start tab, show
@@ -118,6 +119,14 @@ export function finishSessionRestore(): Promise<void> {
 }
 
 async function finishSessionRestoreNow(): Promise<void> {
+  try {
+    await showSavedActiveTab();
+  } finally {
+    restoringTab.set(null);
+  }
+}
+
+async function showSavedActiveTab(): Promise<void> {
   const start = startTab;
   const preferred = savedActiveTab;
   startTab = null;

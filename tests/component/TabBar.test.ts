@@ -23,7 +23,7 @@ vi.mock('../../src/lib/tauri-api', async () => {
 import { get } from 'svelte/store';
 import { viewerScroll } from '../../src/stores/viewport';
 import TabBar from '../../src/components/TabBar.svelte';
-import { activateSession, closeSession, cycleSession, closeOtherSessions, closeSessionsAfter } from '../../src/stores/tabs';
+import { activateSession, closeSession, cycleSession, closeOtherSessions, closeSessionsAfter, restoringTab } from '../../src/stores/tabs';
 import { revealInFolder } from '../../src/lib/tauri-api';
 import { settings } from '../../src/stores/settings';
 import { openViaDialog } from '../../src/lib/open-files';
@@ -160,6 +160,28 @@ describe('TabBar', () => {
     expect(cycleSession).not.toHaveBeenCalled();
     expect(closeSession).not.toHaveBeenCalled();
     expect(openViaDialog).not.toHaveBeenCalled();
+  });
+
+  // Startup puts every reopened tab in the bar before the saved active one
+  // has been read; meanwhile the window is still on its empty start tab.
+  // The saved tab is the one shown selected, and Ctrl+W closes it.
+  it('while startup reads the saved tab, that tab shows as selected and Ctrl+W closes it', async () => {
+    const a = createSession();
+    a.lazyPath = '/x/a.md';
+    const saved = createSession();
+    saved.lazyPath = '/x/saved.md';
+    const start = createSession();
+    sessions.set([a, saved, start]);
+    activeSession.set(start);
+    restoringTab.set(saved);
+    render(TabBar);
+    await tick();
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'true']);
+    await fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    expect(closeSession).toHaveBeenCalledWith(saved.id);
+    restoringTab.set(null);
+    await tick();
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'false']);
   });
 
   it('a held-down Ctrl+W closes one tab, not several', async () => {

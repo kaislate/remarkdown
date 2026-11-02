@@ -21,13 +21,14 @@
   import { backOut, cubicIn } from 'svelte/easing';
   import { tick } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { sessions, activeSession, sessionPath, type DocSession } from '../stores/sessions';
+  import { sessions, sessionPath, type DocSession } from '../stores/sessions';
   import {
     activateSession,
     closeSession,
     closeOtherSessions,
     closeSessionsAfter,
     cycleSession,
+    shownTab,
   } from '../stores/tabs';
   import { openViaDialog } from '../lib/open-files';
   import { showInFolder, copyPath } from '../lib/file-actions';
@@ -163,7 +164,7 @@
   let overflowing = $state(false);
 
   function measure() {
-    const el = tabEls[get(activeSession).id];
+    const el = tabEls[get(shownTab).id];
     if (!el || !stripEl || left) {
       indicator = { ...indicator, shown: false };
       return;
@@ -173,13 +174,13 @@
   }
 
   $effect(() => {
-    void $activeSession;
+    void $shownTab;
     void $tabItems;
     void left;
     if (!visible) return;
     void tick().then(() => {
       measure();
-      tabEls[get(activeSession).id]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      tabEls[get(shownTab).id]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     });
   });
 
@@ -258,9 +259,9 @@
     } else if (key === 'w' && !e.shiftKey) {
       e.preventDefault();
       if (e.repeat) return; // holding Ctrl+W must not close tab after tab
-      const active = get(activeSession);
-      if (get(active.doc) === null) return;
-      void closeSession(active.id);
+      const shown = get(shownTab);
+      if (sessionPath(shown) === null) return;
+      void closeSession(shown.id);
     } else if (key === 'o' && !e.shiftKey) {
       e.preventDefault();
       void openViaDialog();
@@ -363,7 +364,7 @@
         onwheel={onWheel}
       >
         {#each $tabItems as item, i (item.session.id)}
-          {@const active = item.session === $activeSession}
+          {@const active = item.session === $shownTab}
           <div
             class="tab"
             class:active
@@ -414,7 +415,7 @@
         bind:this={stripEl}
       >
         {#each $tabItems as item, i (item.session.id)}
-          {@const active = item.session === $activeSession}
+          {@const active = item.session === $shownTab}
           {@const name = label(item.path)}
           <div
             class="tab side-tab"

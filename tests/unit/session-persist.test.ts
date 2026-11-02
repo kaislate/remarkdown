@@ -49,6 +49,7 @@ import {
   closeSessionsAfter,
   cycleSession,
   findSessionByPath,
+  shownTab,
 } from '../../src/stores/tabs';
 
 const openTabs = () => get(sessions).map((s) => get(s.doc)?.path ?? null);
@@ -274,6 +275,43 @@ describe('switching while reopened tabs are still loading', () => {
     const back = cycleSession(-1);
     await Promise.all([forward, back]);
     expect(activePath()).toBe('/d2.md');
+  });
+
+  // Until it has been read, the saved active tab is the one the tab bar
+  // shows as selected, and Ctrl+Tab steps on from it (never onto the
+  // hidden empty tab the window starts with).
+  it('the saved tab is shown selected while it loads, and Ctrl+Tab steps on from it', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(docs, 2));
+    await restoreSavedTabs();
+    const saved = get(sessions).find((s) => s.lazyPath === '/d2.md')!;
+    expect(get(shownTab)).toBe(saved);
+    loadDelays.set('/d2.md', 30);
+    const finishing = finishSessionRestore();
+    await pause(5);
+    expect(get(shownTab)).toBe(saved);
+    const press = cycleSession(1);
+    await Promise.all([finishing, press]);
+    expect(activePath()).toBe('/d3.md');
+    expect(get(shownTab)).toBe(get(activeSession));
+  });
+
+  it('Ctrl+Tab before startup reads the saved tab steps on from it too', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(docs, 2));
+    await restoreSavedTabs();
+    const press = cycleSession(-1);
+    await finishSessionRestore();
+    await press;
+    expect(activePath()).toBe('/d1.md');
+  });
+
+  it('a file opened at launch into the start tab is the one shown selected', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(docs, 2));
+    await restoreSavedTabs();
+    await openPaths(['/new.md']);
+    expect(get(shownTab)).toBe(get(activeSession));
+    await finishSessionRestore();
+    expect(get(shownTab)).toBe(get(activeSession));
+    expect(activePath()).toBe('/new.md');
   });
 
   // The tab bar fills with every reopened tab at once, while the saved
