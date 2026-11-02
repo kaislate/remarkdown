@@ -169,6 +169,34 @@ describe('the pen layer', () => {
     expect(events.slice(firstWrite)).not.toContain('read');
   });
 
+  it('keeps every drawing when the reader scrolls', () => {
+    const paint = createDrawingPainter();
+    const list = drawings();
+    paint(layer, svg, root, list, [], opts);
+    const before = Array.from(layer.childNodes);
+    const html = layer.innerHTML;
+
+    // The overlay scrolls with the article: every box, the overlay's too,
+    // moves up by the same amount, and no drawing moves on it.
+    const scroll = 517.25;
+    const scrolled = [svg, ...root.querySelectorAll('p'), ...list.map((x) => x.range).filter((r) => r !== null)];
+    for (const el of scrolled) {
+      const at = (el as Element).getBoundingClientRect.bind(el);
+      (el as Element).getBoundingClientRect = () => {
+        const r = at();
+        return new DOMRect(r.x, r.y - scroll, r.width, r.height);
+      };
+    }
+    generated = 0;
+    events = [];
+    paint(layer, svg, root, [...list], [], opts);
+    expect(generated).toBe(0);
+    expect(events.filter((e) => e === 'write')).toEqual([]);
+    expect(Array.from(layer.childNodes)).toEqual(before);
+    expect(layer.innerHTML).toBe(html);
+    expect(layer.innerHTML).toBe(everyShapeAfresh(list, [], opts));
+  });
+
   it('draws a drawing again when its anchor moves', () => {
     const paint = createDrawingPainter();
     const list = drawings();

@@ -7,9 +7,10 @@
 //
 // So it measures every anchor first, before changing anything, and keeps
 // each drawing's nodes for as long as the numbers they're drawn from are
-// the same: a drawing whose annotation, anchor box, overlay box, root font
-// size, zoom and roughness haven't changed is the same picture (rough.js
-// is seeded per drawing), so it's reused rather than drawn again.
+// the same: a drawing whose annotation, anchor box (where it is on the
+// overlay), root font size, zoom and roughness haven't changed is the same
+// picture (rough.js is seeded per drawing), so it's reused rather than
+// drawn again, scrolled or not.
 
 import rough from 'roughjs';
 import type { RoughSVG } from 'roughjs/bin/svg';
@@ -67,7 +68,13 @@ export function createDrawingPainter(): Painter {
       const box = boxes[i];
       const r = 'r' in box ? box.r : null;
       if (r) {
-        const key = [r.x, r.y, r.width, r.height, svg_r.x, svg_r.y, rem, opts.zoom, opts.roughness].join(',');
+        // Where its anchor is on the overlay, as drawShape reads it: the
+        // overlay scrolls with the article, so a scroll leaves these (and
+        // the picture) as they were.
+        const key = [
+          r.left - svg_r.left, r.top - svg_r.top, r.right - svg_r.left, r.bottom - svg_r.top,
+          r.width, r.height, rem, opts.zoom, opts.roughness,
+        ].join(',');
         let kept = shapes.get(d);
         if (kept?.key !== key) {
           kept = undefined;
