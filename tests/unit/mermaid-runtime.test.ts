@@ -689,7 +689,9 @@ describe('mermaid runtime', () => {
     expect(blockWork(`flowchart TD\n${'subgraph s\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
     expect(listWork(`xychart\nline [${'1,'.repeat(200_000)}1]`)).toBeGreaterThan(1e9);
     expect(listWork(`xychart\nx-axis [${'a, \n'.repeat(50_000)}a]`)).toBeGreaterThan(1e9);
-    expect(performance.now() - t0).toBeLessThan(500);
+    // About 0.3 s here, more on a busy CI runner. Quadratic weighing of
+    // 100,000 lines would be some 1e10 steps: minutes.
+    expect(performance.now() - t0).toBeLessThan(5_000);
   });
 
   it('a failing render does not wedge the queue', async () => {
