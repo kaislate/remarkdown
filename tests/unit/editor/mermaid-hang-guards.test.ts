@@ -15,7 +15,10 @@ import { matchMethod, parseClassSource, parseGenericTypes } from '../../../src/l
 import { parseErSource } from '../../../src/lib/editor/mermaid/er-parser';
 import { parseStateSource } from '../../../src/lib/editor/mermaid/state-parser';
 import { styleSemicolons, swapTagQuotes } from '../../../src/lib/editor/mermaid/entity-text';
-import { commentRanges } from '../../../src/lib/editor/mermaid/state-parser';
+import { commentRanges, frontMatterLength } from '../../../src/lib/editor/mermaid/state-parser';
+import { detectDiagramType } from '../../../src/lib/editor/mermaid-detect';
+import { canEditDiagram } from '../../../src/lib/editor/mermaid/controller';
+import '../../../src/lib/editor/mermaid/registry';
 import { tildeWordAhead } from '../../../src/lib/editor/mermaid/er-lexer';
 import { aheadOnLine } from '../../../src/lib/editor/mermaid/line-ahead';
 import { parseJourney } from '../../../src/lib/editor/mermaid/journey-data';
@@ -578,6 +581,35 @@ describe('frontmatter and labels', () => {
       const expected = line[2] ? `${line[1]}**${line[2]}**${line[3]}` : row;
       expect(serializeRich([{ text: row, bold: true, italic: false }]), JSON.stringify(row)).toBe(expected);
     }
+  });
+
+  // The state parser cut the frontmatter with mermaid's own regex,
+  // which on a `---` followed by many line breaks and no closing `---`
+  // right after them read the rest of the source once for each break.
+  // A ` ---` close (which the preamble accepts) left the type a state
+  // diagram: 80,000 breaks took 3 s on every render in edit mode, and
+  // 20,000 breaks before 600 KB of comment 3.4 s.
+  it('cuts the frontmatter in linear time', () => {
+    const source = `---${'\n'.repeat(20_000)} ---\nstateDiagram-v2\nA\n%% ${'x'.repeat(600_000)}\n`;
+    expect(detectDiagramType(source)).toBe('state');
+    const { ms } = timed(() => parseStateSource(source));
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it('cuts the frontmatter the way mermaid’s regex does', () => {
+    const fm = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s;
+    for (const row of randomRows(['-', '---', '\n', '\r', ' ', '\t', 'a', ' '], 20_000, 8)) {
+      const text = `---${row}`;
+      expect(frontMatterLength(text), JSON.stringify(text)).toBe(fm.exec(text)?.[0].length ?? 0);
+    }
+  });
+
+  // Edit mode has the same size limit as mermaid: past it, a diagram
+  // isn't read for editing at all.
+  it('does not read a diagram for editing past mermaid’s size limit', () => {
+    const source = `stateDiagram-v2\n${'A --> B\n'.repeat(7_000)}`;
+    expect(canEditDiagram('state', source)).toBe(false);
+    expect(canEditDiagram('state', `stateDiagram-v2\n${'A --> B\n'.repeat(5_000)}`)).toBe(true);
   });
 
   it('writes a formatted label with a long run of spaces in linear time', () => {

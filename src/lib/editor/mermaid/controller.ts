@@ -82,6 +82,12 @@ export function createController(type: MermaidDiagramType, host: DiagramHost): D
   return registry.get(type)?.create(host) ?? null;
 }
 
+// mermaid draws only a "too big" notice for a diagram longer than its
+// maxTextSize, so a longer source isn't read for editing either: it is
+// changed through its text. The parsers run on the UI thread on every
+// render, edit and theme switch, so this also bounds what they read.
+export const MAX_EDITABLE_SOURCE = 50_000;
+
 export function canEditDiagram(type: MermaidDiagramType, source: string): boolean {
-  return registry.get(type)?.canEdit(source) ?? false;
+  return source.length <= MAX_EDITABLE_SOURCE && (registry.get(type)?.canEdit(source) ?? false);
 }

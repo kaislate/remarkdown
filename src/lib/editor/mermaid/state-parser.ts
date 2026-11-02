@@ -277,6 +277,44 @@ export function commentRanges(text: string): Array<[number, number]> {
   return out;
 }
 
+const isBreak = (c: string | undefined) => c === '\n' || c === '\r';
+
+// The end of a frontmatter close at `c` (a line break, `---`, then
+// whitespace holding a line break: up to the last of those), or 0.
+function closeEnd(text: string, c: number): number {
+  if (!isBreak(text[c]) || !text.startsWith('---', c + 1)) return 0;
+  let end = 0;
+  for (let k = c + 4; k < text.length && /\s/.test(text[k]); k++) if (isBreak(text[k])) end = k + 1;
+  return end;
+}
+
+// How much of `text` mermaid's frontmatter regex,
+// /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s, matches (0: none), found
+// by hand. The regex tries each line break in the whitespace after the
+// opening `---` as the one that ends that line, the last one first, and
+// from each reads on to the first close: with many breaks and no close
+// it read the rest of the source once per break. Every close after the
+// last break is after the others too, so only the first of those is
+// looked for; the one close an earlier break also reaches is the one
+// starting at the last break itself, when that ends the whitespace.
+export function frontMatterLength(text: string): number {
+  if (!text.startsWith('---')) return 0;
+  let runEnd = 3;
+  let last = -1;
+  let previous = -1;
+  for (; runEnd < text.length && /\s/.test(text[runEnd]); runEnd++) {
+    if (isBreak(text[runEnd])) [previous, last] = [last, runEnd];
+  }
+  if (last < 0) return 0;
+  const close = /[\n\r]---/g;
+  close.lastIndex = last + 1;
+  for (let m = close.exec(text); m; m = close.exec(text)) {
+    const end = closeEnd(text, m.index);
+    if (end) return end;
+  }
+  return previous >= 0 && last === runEnd - 1 ? closeEnd(text, last) : 0;
+}
+
 // mermaid's preprocessDiagram + Diagram.fromText, in the same order.
 function preprocess(source: string): Mapped {
   let m: Mapped = { text: source, map: Array.from({ length: source.length + 1 }, (_, i) => i) };
@@ -286,8 +324,8 @@ function preprocess(source: string): Mapped {
   t = swapTagQuotes(t);
   m = { text: t, map: m.map };
   // Frontmatter.
-  const fm = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s.exec(m.text);
-  if (fm) m = dropRanges(m, [[0, fm[0].length]]);
+  const fm = frontMatterLength(m.text);
+  if (fm) m = dropRanges(m, [[0, fm]]);
   // %%{…}%% directives (anywhere).
   m = dropRanges(m, matchRanges(m.text, /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi));
   // %% comment lines, then leading whitespace.
