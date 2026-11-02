@@ -19,11 +19,13 @@ export interface StartupReads {
 let reads: StartupReads | null = null;
 
 // Failures are swallowed like the refresh calls' callers always did: settings
-// fall back to defaults, recents and progress start empty.
-export function startStartupReads(): StartupReads {
+// fall back to defaults, recents and progress start empty. `platformSettled`
+// (main.ts's platform check): settings are filled in with that OS's
+// defaults, as when they were read after it.
+export function startStartupReads(platformSettled?: Promise<unknown>): StartupReads {
   if (!reads) {
     reads = {
-      settings: refreshSettings().catch(() => {}),
+      settings: refreshSettings(platformSettled).catch(() => {}),
       recent: refreshRecent().catch(() => {}),
       progress: refreshReadingProgress().catch(() => {}),
     };
