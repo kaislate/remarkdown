@@ -430,19 +430,21 @@ export function directiveWork(source: string): number {
 //     class diagram 16 s; about 10,000 per ms near the limit), and in
 //     the two (kanban, mindmap) that, linear or not, spend a third of a
 //     millisecond on each line (10,000 items took 3 s).
-// A quoted string counts as one token, as the lexers read it. Diagram
-// types not listed for the last two, and found linear there, are not
-// weighed by them: a sequence diagram's message is read as one token,
-// however many words it has. A diagram near any limit is far bigger
-// than people write: hundreds of classes, or a word thousands of
+// A quoted string counts as one token, as the lexers read it. Every
+// diagram type is weighed the last two ways, except the ones measured
+// linear there, at 6 and 24 KB: a sequence diagram's message is read as
+// one token, however many words it has, and its parser takes 5,000
+// flat messages in under a second. A diagram near any limit is far
+// bigger than people write: hundreds of classes, or a word thousands of
 // characters long. Each limit holds mermaid's parse to well under a
 // second.
 const RUN_WORK_LIMIT = 2e7;
 const LINE_TOKEN_WORK_LIMIT = 2e7;
 const STACK_WORK_LIMIT = 8e6;
-const UNKNOWN: MermaidDiagramType = 'unsupported';
-const LINE_TOKEN_TYPES = new Set<MermaidDiagramType>(['class', 'state', 'er', 'block', 'architecture', 'pie', UNKNOWN]);
-const STACK_TYPES = new Set<MermaidDiagramType>(['class', 'state', 'block', 'architecture', 'radar', 'packet', 'pie', 'gitgraph', 'requirement', 'kanban', 'mindmap', UNKNOWN]);
+// An xychart's lexer is linear too; its lists are weighed by listWork.
+const LINE_TOKEN_LINEAR = new Set<MermaidDiagramType>(['sequence', 'gantt', 'mindmap', 'timeline', 'kanban', 'journey', 'quadrant', 'gitgraph', 'requirement', 'sankey', 'xychart']);
+// A flowchart's and a sequence diagram's blocks are weighed by blockWork.
+const STACK_LINEAR = new Set<MermaidDiagramType>(['flowchart', 'sequence', 'er', 'gantt', 'timeline', 'journey', 'quadrant', 'xychart']);
 
 export function runWork(source: string): number {
   let work = 0;
@@ -468,18 +470,98 @@ function lineTokens(source: string): Array<[number, number]> {
 }
 
 export function lineTokenWork(source: string): number {
-  if (!LINE_TOKEN_TYPES.has(detectDiagramType(source))) return 0;
+  if (LINE_TOKEN_LINEAR.has(detectDiagramType(source))) return 0;
   let work = 0;
   for (const [tokens, len] of lineTokens(source)) work += tokens * len;
   return work;
 }
 
 export function stackWork(source: string): number {
-  if (!STACK_TYPES.has(detectDiagramType(source))) return 0;
+  if (STACK_LINEAR.has(detectDiagramType(source))) return 0;
   const lines = lineTokens(source);
   let tokens = 0;
   for (const [t] of lines) tokens += t;
   return tokens * lines.length;
+}
+
+// An xychart's parser copies its list so far for each item it adds to an
+// axis or a data series (a list can't go past the end of its line), so
+// each line's items are weighed squared: 1,800 x-axis labels took 0.7 s,
+// 16,000 took 35 s (strings, the slowest kind, at about 5,000 per ms).
+// Five series of a year's daily readings weigh 700,000.
+const LIST_WORK_LIMIT = 1.5e6;
+
+export function listWork(source: string): number {
+  if (detectDiagramType(source) !== 'xychart') return 0;
+  let work = 0;
+  for (const line of source.split('\n')) work += (line.split(',').length - 1) ** 2;
+  return work;
+}
+
+// Every statement a sequence diagram's parser reads inside an open block
+// (loop, alt, opt, par, critical, break, rect, box), and after each of
+// its branches (else, and, option), is read with a stack that much
+// deeper, and the parser copies its stack at each step: 3,000 nested
+// loops took 4 s, 3,000 `else` branches of one `alt` 4.8 s (about 2,500
+// steps per ms). So each statement weighs the blocks and branches open
+// around it. `;` ends a statement as a line break does.
+//
+// An opening statement counts wherever one could be. An `end` counts
+// only at the start of a line, and not on a line inside an actor's data
+// (`@{ … }`) or a description (`accDescr { … }`), which mermaid reads
+// as one piece of text whatever lines it holds: an `end` there closes
+// nothing, and blocks it seemed to close would weigh nothing.
+const BLOCK_WORK_LIMIT = 1.5e6;
+const SEQUENCE_OPENS = /^(?:loop|rect|opt|alt|par|par_over|critical|break|box)\b/i;
+const SEQUENCE_BRANCHES = /^(?:else|and|option)\b/i;
+const SEQUENCE_SPANS = /@\{[^}]*(?:\}|$)|accDescr\s*\{[^}]*(?:\}|$)/gi;
+
+function sequenceBlockWork(source: string): number {
+  const lines = source.split('\n');
+  const outside = source.replace(SEQUENCE_SPANS, (span) => span.replace(/[^\n]/g, '')).split('\n');
+  const open: number[] = [];
+  let branches = 0;
+  let work = 0;
+  lines.forEach((line, i) => {
+    for (const piece of line.split(';')) {
+      const statement = piece.trim();
+      if (!statement) continue;
+      if (SEQUENCE_OPENS.test(statement)) open.push(0);
+      else if (SEQUENCE_BRANCHES.test(statement)) {
+        branches++;
+        if (open.length) open[open.length - 1]++;
+      }
+      work += open.length + branches;
+    }
+    const closes = /^\s*end\b/i;
+    if (open.length && closes.test(line) && closes.test(outside[i])) branches -= open.pop()!;
+  });
+  return work;
+}
+
+// A flowchart's subgraphs nest the same way (2,400 nested took 3.9 s),
+// and there each token is read deeper (about 3,000 per ms). But a
+// flowchart's `end` can be text: a label or a string can hold a line
+// break, and the lexer reads them several ways that can't be told apart
+// here. So no `end` is counted, and each token weighs every subgraph
+// opened before it: a flowchart of 100 subgraphs, each with ten edges,
+// weighs 330,000.
+function subgraphWork(source: string): number {
+  const tokens = lineTokens(source);
+  let open = 0;
+  let work = 0;
+  source.split('\n').forEach((line, i) => {
+    open += line.match(/\bsubgraph\b/g)?.length ?? 0;
+    work += tokens[i][0] * open;
+  });
+  return work;
+}
+
+export function blockWork(source: string): number {
+  const type = detectDiagramType(source);
+  if (type === 'sequence') return sequenceBlockWork(source);
+  if (type === 'flowchart') return subgraphWork(source);
+  return 0;
 }
 
 // mermaid draws its own "too big" notice instead of any text longer
@@ -511,7 +593,9 @@ function tooSlowToRead(source: string): string | null {
   if (code.length > MAX_TEXT_SIZE) return null;
   return runWork(code) > RUN_WORK_LIMIT ||
     lineTokenWork(code) > LINE_TOKEN_WORK_LIMIT ||
-    stackWork(code) > STACK_WORK_LIMIT
+    stackWork(code) > STACK_WORK_LIMIT ||
+    listWork(code) > LIST_WORK_LIMIT ||
+    blockWork(code) > BLOCK_WORK_LIMIT
     ? tangled
     : null;
 }

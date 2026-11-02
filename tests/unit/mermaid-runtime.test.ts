@@ -22,6 +22,8 @@ import {
   runWork,
   lineTokenWork,
   stackWork,
+  blockWork,
+  listWork,
 } from '../../src/lib/mermaid-runtime';
 
 const mocked = vi.hoisted(() => {
@@ -373,7 +375,7 @@ describe('mermaid runtime', () => {
   it('draws style lines people write, however long', async () => {
     for (const source of [
       'flowchart TD\nA --> B\nstyle A fill:#f9f,stroke:#333,stroke-width:4px',
-      `flowchart TD\n${'style A fill:#f00;'.repeat(1_500)}`,
+      `flowchart TD\n${'style A fill:#f00;\n'.repeat(1_500)}`,
       `flowchart TD\nA["${'a style: #1 '.repeat(2_000)}"]`,
     ]) {
       const p = renderMermaid(source, DARK);
@@ -477,12 +479,168 @@ describe('mermaid runtime', () => {
     }
   });
 
+  // The weighing above skipped the diagram types whose lexers and
+  // parsers were thought linear, but some aren't: an xychart's axis or
+  // data list, a sankey's rows, a C4 diagram's statements and a
+  // flowchart's `&` or style list are quadratic in mermaid 11.14
+  // (48 KB of x-axis took 63 s, 8,000 sankey rows 30 s, 12,000 `&` 14 s).
+  // So every type is weighed now, except the ones measured linear.
+  it('turns away chart rows and lists mermaid would take seconds over', async () => {
+    for (const source of [
+      'xychart\nx-axis [' + 'a, '.repeat(16_000) + 'a]',
+      'xychart\nx-axis [' + 'a, '.repeat(4_000) + 'a]',
+      'xychart\nline [' + '1, '.repeat(16_000) + '1]',
+      'sankey\n' + 'a,b,1\n'.repeat(8_000),
+      'sankey\n' + 'a,b,1\n'.repeat(2_000),
+      'flowchart TD\n' + 'a & '.repeat(12_000) + 'a',
+      'flowchart TD\nstyle a ' + 'x:y, '.repeat(9_000) + 'x:y',
+      'flowchart TD\n' + 'a & a;'.repeat(6_000),
+      // Any statements on one line: the flowchart lexer reads the rest
+      // of the line for each token (1,500 style statements took 1.8 s).
+      'flowchart TD\nA\n' + 'style A fill:red;'.repeat(1_500),
+      'C4Context\n' + 'Person(a, "b")\n'.repeat(3_200),
+      'C4Context\nPerson(a, ' + '"b", '.repeat(6_000) + '"b")',
+      'radar-beta\naxis ' + 'a, '.repeat(8_000) + 'a',
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0, source.slice(0, 30)).toBeLessThan(200);
+      expect(out.ok, source.slice(0, 30)).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('draws the charts, flowcharts and C4 diagrams people write', async () => {
+    const list = (n: number, f: (i: number) => string) => Array.from({ length: n }, (_, i) => f(i)).join(', ');
+    for (const source of [
+      'xychart\n    title "Sales Revenue"\n    x-axis [jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec]\n' +
+        '    y-axis "Revenue (in $)" 4000 --> 11000\n    bar [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]\n' +
+        '    line [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]',
+      // A year of daily readings, three series.
+      `xychart\nx-axis [${list(366, (i) => `d${i}`)}]\n${`line [${list(366, (i) => `${i}.5`)}]\n`.repeat(3)}`,
+      `sankey\n${Array.from({ length: 300 }, (_, i) => `Source ${i},Target ${i % 17},${i}.5\n`).join('')}`,
+      'sankey\n"Agricultural \'waste\'",Bio-conversion,124.729\nBio-conversion,Liquid,0.597\nBio-conversion,Losses,26.862\n',
+      `flowchart TD\n${Array.from({ length: 80 }, (_, i) => `a${i} & b${i} & c${i} --> d${i} & e${i}\n`).join('')}`,
+      `flowchart TD\nA --> B\n${Array.from({ length: 300 }, (_, i) => `style N${i} fill:#f9f,stroke:#333,stroke-width:4px\n`).join('')}`,
+      `flowchart TD\nA --> B\nlinkStyle ${list(400, (i) => `${i}`)} stroke:#f00,stroke-width:2px`,
+      'C4Context\n  title System Context diagram for Internet Banking System\n' +
+        '  Person(customerA, "Banking Customer A", "A customer of the bank, with personal bank accounts.")\n' +
+        '  Enterprise_Boundary(b1, "BankBoundary") {\n    System(SystemAA, "Internet Banking System", "Allows customers to view information.")\n  }\n' +
+        '  Rel(customerA, SystemAA, "Uses")\n',
+      `C4Context\n${Array.from({ length: 300 }, (_, i) => `Person(p${i}, "Person ${i}", "Someone who uses the system")\n`).join('')}`,
+      'radar-beta\n  axis A, B, C, D, E\n  curve c1{1, 2, 3, 4, 5}\n  curve c2{5, 4, 3, 2, 1}',
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length, source.slice(0, 30)).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
+  // mermaid's parsers copy their whole stack on every step, and each
+  // block a sequence diagram or flowchart has open, and each branch
+  // (`else`, `and`, `option`) of one, keeps the stack a little deeper:
+  // 3,000 `else` branches took 4.8 s, 3,000 nested loops 4 s, 2,400
+  // nested subgraphs 3.9 s.
+  it('turns away blocks nested or branched thousands deep', async () => {
+    for (const source of [
+      'sequenceDiagram\nalt x\n' + 'A->>B: x\nelse y\n'.repeat(3_000) + 'end',
+      'sequenceDiagram\ncritical x\n' + 'A->>B: x\noption y\n'.repeat(2_700) + 'end',
+      'sequenceDiagram\ncritical x\n' + 'option y\n'.repeat(3_000) + 'end',
+      'sequenceDiagram\npar x\n' + 'A->>B: x\nand y\n'.repeat(3_000) + 'end',
+      'sequenceDiagram\n' + 'loop x\n'.repeat(3_000) + 'end\n'.repeat(3_000),
+      'sequenceDiagram\n' + 'rect rgb(0,0,0)\n'.repeat(2_400) + 'A->>B: x\n' + 'end\n'.repeat(2_400),
+      'sequenceDiagram\n' + 'opt x\n'.repeat(1_000) + 'A->>B: x\n'.repeat(3_000) + 'end\n'.repeat(1_000),
+      // `;` ends a statement as a line break does.
+      'sequenceDiagram\nalt x;' + 'A->>B: x;else y;'.repeat(2_000) + 'end',
+      // An `end` inside an actor's data or a description closes nothing.
+      'sequenceDiagram\n' + 'loop x\n'.repeat(1_500) + 'participant A@{ "type": "database", "alias": a\n' + 'end\n'.repeat(1_500) + '}\n' + 'A->>B: x\n'.repeat(3_000),
+      'sequenceDiagram\n' + 'loop x\n'.repeat(1_500) + 'accDescr {\n' + 'end\n'.repeat(1_500) + '}\n' + 'A->>B: x\n'.repeat(3_000),
+      'flowchart TD\n' + 'subgraph s\n'.repeat(2_400) + 'x\n' + 'end\n'.repeat(2_400),
+      'flowchart TD\n' + 'subgraph s\n'.repeat(1_000) + 'a\n'.repeat(3_000) + 'end\n'.repeat(1_000),
+      // A flowchart's `end` can be text inside a label or a string.
+      'flowchart TD\n' + 'subgraph s\n'.repeat(1_000) + 'A["\n' + 'end\n'.repeat(1_000) + '"]\n' + 'a\n'.repeat(3_000),
+    ]) {
+      const t0 = performance.now();
+      const out = await renderMermaid(source, DARK);
+      expect(performance.now() - t0, source.slice(0, 30)).toBeLessThan(200);
+      expect(out.ok, source.slice(0, 30)).toBe(false);
+    }
+    expect(mocked.renders.length).toBe(0);
+  });
+
+  it('draws the sequence diagrams and subgraphs people write', async () => {
+    const docs = `sequenceDiagram
+    autonumber
+    box Purple Alice & John
+    participant A as Alice
+    participant J as John
+    end
+    rect rgb(191, 223, 255)
+    A->>J: Hello John, how are you?
+    alt is sick
+        J->>A: Not so good :(
+    else is well
+        J->>A: Feeling fresh like a daisy
+    end
+    opt Extra response
+        J->>A: Thanks for asking
+    end
+    end
+    par Alice to Bob
+        A->>J: Hello guys!
+    and Alice to John
+        A->>J: Hello guys!
+    end
+    critical Establish a connection to the DB
+        A-->J: connect
+    option Network timeout
+        A-->J: Log error
+    end
+    break when the booking process fails
+        A-->J: show failure
+    end
+    loop Every minute
+        J-->A: Great!
+    end`;
+    for (const source of [
+      docs,
+      // Flat, as long as mermaid takes.
+      `sequenceDiagram\n${'A->>B: x\n'.repeat(5_500)}`,
+      `sequenceDiagram\n${'loop every minute\n    A->>B: ping\n    B-->>A: pong\nend\n'.repeat(800)}`,
+      `sequenceDiagram\n${'alt ok\n  A->>B: yes\nelse no\n  A->>B: no\nend\n'.repeat(800)}`,
+      `sequenceDiagram\nloop forever\n${'  A->>B: x\n'.repeat(4_000)}end`,
+      `sequenceDiagram\nalt a\n  A->>B: x\n${Array.from({ length: 100 }, (_, i) => `else b${i}\n  A->>B: x\n`).join('')}end`,
+      `sequenceDiagram\n${'loop a\n'.repeat(20)}${'  A->>B: x\n'.repeat(2_000)}${'end\n'.repeat(20)}`,
+      `sequenceDiagram\nparticipant A@{ "type": "database" }\n${'loop a\n  A->>B: x\nend\n'.repeat(500)}`,
+      `flowchart TD\n${Array.from({ length: 100 }, (_, i) => `subgraph S${i}\n${Array.from({ length: 10 }, (_, j) => `  N${i}_${j} --> N${i}_${j + 1}\n`).join('')}end\n`).join('')}`,
+      `flowchart TD\n${'subgraph a\n'.repeat(10)}${'  A --> B\n'.repeat(400)}${'end\n'.repeat(10)}`,
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length, source.slice(0, 30)).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
   it('weighs the shape of a source in linear time', () => {
     const t0 = performance.now();
     expect(stackWork(`classDiagram\n${'a\n'.repeat(200_000)}`)).toBeGreaterThan(1e10);
     expect(runWork(`flowchart TD\n${'#'.repeat(200_000)}`)).toBeGreaterThan(1e10);
     expect(lineTokenWork(`erDiagram\n${'a '.repeat(100_000)}`)).toBeGreaterThan(1e10);
     expect(directiveWork('%%{a'.repeat(100_000))).toBeGreaterThan(1e10);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it('weighs blocks and lists in linear time', () => {
+    const t0 = performance.now();
+    expect(blockWork(`sequenceDiagram\n${'loop x\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
+    expect(blockWork(`flowchart TD\n${'subgraph s\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
+    expect(listWork(`xychart\nline [${'1,'.repeat(200_000)}1]`)).toBeGreaterThan(1e10);
     expect(performance.now() - t0).toBeLessThan(500);
   });
 
