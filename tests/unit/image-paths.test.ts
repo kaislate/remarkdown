@@ -1,4 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileSrcFromAssetUrl, imageSrcFor, isUnsafeImageSrc, resolveImageSrc } from '../../src/lib/image-paths';
 import { setPlatformForTests } from '../../src/lib/platform';
 
@@ -79,16 +81,19 @@ const unsafe = [
   'asset://localhost/%5C%5Chost%5Cs%5Cx.png',
   'ASSET://localhost/x.png',
   'asset:x.png',
-  // WebView2 hands every http(s)://asset.<any host> (and ipc., tauri.) to
-  // the app's own handlers, whatever comes after the first dot
+  'https://ipc.localhost/x',
+  'https://tauri.localhost./x.png',
+  // WebView2 hands every http://asset.<any host> (and ipc., tauri.) to the
+  // app's own handlers, whatever comes after the first dot
   'http://asset.evil.example/%5C%5Cattacker%5Cs%5Cx.png',
   'http://asset.localhost.evil.example/x.png',
   'http://asset./x.png',
   'http:asset.evil/x.png',
-  'HTTPS://Asset.Evil.Example/x.png',
+  'HTTP://Asset.Evil.Example/x.png',
   'http://ipc.evil.example/x',
   'http://tauri.evil.example/x.png',
   '//asset.evil.example/x.png',
+  '//ipc.localhost/x',
   // protocol-relative: the window reads it as http://asset.localhost/…
   '//asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png',
   '%2F%2Fasset.localhost%2Fx.png',
@@ -184,11 +189,24 @@ describe('ordinary pictures still load', () => {
       'blob:http://tauri.localhost/1234',
       'https://assets.example.com/a.png',
       'https://cdn.example.com/asset.png',
+      // Only the app's own hosts are refused: another *.localhost is a
+      // server on this machine, and WebView2 hands only http://asset.*
+      // to the app (the app isn't served over https).
+      'http://app.localhost:3000/shot.png',
+      'https://asset.example.com/x.png',
+      'HTTPS://Asset.Evil.Example/x.png',
     ]) {
       expect(resolveImageSrc(src, 'C:/docs', toAsset)).toBe(src);
       expect(isUnsafeImageSrc(src)).toBe(false);
     }
     expect(toAsset).not.toHaveBeenCalled();
+  });
+
+  // WebView2 sends only http://asset.* to the app because the app is served
+  // over http; letting https://asset.<host> through rests on that.
+  it('the app is served over http on windows', () => {
+    const conf = JSON.parse(readFileSync(resolve(__dirname, '../../src-tauri/tauri.conf.json'), 'utf-8'));
+    for (const w of conf.app.windows) expect(w.useHttpsScheme ?? false).toBe(false);
   });
 
   it('a file whose name only looks odd is still a file', () => {
