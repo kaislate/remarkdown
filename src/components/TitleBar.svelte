@@ -115,21 +115,16 @@
   });
 
   // The aura's swoop redraws a blurred layer every frame for as long as the
-  // app is open. While another window has focus, or this one is minimized,
-  // it holds still (and picks up from there on return): no one is watching
-  // it move, and the GPU and battery get the rest.
+  // app is open. While the window is minimized or otherwise hidden it holds
+  // still (and picks up from there on return): no one can see it, and the
+  // GPU and battery get the rest. A window that is on screen but not focused
+  // keeps swooping, since it can still be seen beside the focused one.
   let auraPaused = $state(false);
   onMount(() => {
-    const sync = () => { auraPaused = document.hidden || !document.hasFocus(); };
+    const sync = () => { auraPaused = document.hidden; };
     sync();
-    window.addEventListener('focus', sync);
-    window.addEventListener('blur', sync);
     document.addEventListener('visibilitychange', sync);
-    return () => {
-      window.removeEventListener('focus', sync);
-      window.removeEventListener('blur', sync);
-      document.removeEventListener('visibilitychange', sync);
-    };
+    return () => document.removeEventListener('visibilitychange', sync);
   });
 
   const minimize = () => safeCall(() => getCurrentWindow().minimize());

@@ -205,8 +205,9 @@ describe('TitleBar', () => {
 });
 
 // The aura's swoop is a blurred layer redrawn every frame. Nobody sees it
-// move while another window has focus or this one is minimized, so it
-// holds still then and picks up where it left off on return.
+// move while the window is minimized or hidden, so it holds still then and
+// picks up where it left off on return. Beside another, focused window it
+// can still be seen, so it keeps swooping there.
 describe('TitleBar aura', () => {
   const aura = () => document.querySelector('.controls-aura') as HTMLElement;
   let focused = true;
@@ -230,28 +231,34 @@ describe('TitleBar aura', () => {
     expect(aura()).not.toHaveClass('paused');
   });
 
-  it('holds still while the window is in the background, and resumes on focus', async () => {
+  it('keeps swooping while another window has focus', async () => {
     render(TitleBar);
     focused = false;
     window.dispatchEvent(new Event('blur'));
     await Promise.resolve();
-    expect(aura()).toHaveClass('paused');
-    focused = true;
-    window.dispatchEvent(new Event('focus'));
-    await Promise.resolve();
     expect(aura()).not.toHaveClass('paused');
   });
 
-  it('holds still while the window is minimized', async () => {
+  it('holds still while the window is minimized, and resumes on return', async () => {
     render(TitleBar);
     hidden = true;
     document.dispatchEvent(new Event('visibilitychange'));
     await Promise.resolve();
     expect(aura()).toHaveClass('paused');
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await Promise.resolve();
+    expect(aura()).not.toHaveClass('paused');
   });
 
-  it('starts still when the window opens behind another', () => {
+  it('swoops from the start when the window opens behind another', () => {
     focused = false;
+    render(TitleBar);
+    expect(aura()).not.toHaveClass('paused');
+  });
+
+  it('starts still when the window opens hidden', () => {
+    hidden = true;
     render(TitleBar);
     expect(aura()).toHaveClass('paused');
   });
