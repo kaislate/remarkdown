@@ -206,3 +206,57 @@ describe('per-block serializer: work done', () => {
     );
   });
 });
+
+// A changelog or an outline is often one long list: a single top-level
+// block. prosemirror-markdown looks at the tail of its output with regexes
+// that scan the whole output (before every line, and before every link), so
+// one block of 300 KB took seconds to write, on every save, Done and tab
+// switch. Each block is now written with its output kept short.
+describe('per-block serializer: one very large block', () => {
+  function bigList(items: number): string {
+    const out: string[] = [];
+    for (let i = 0; i < items; i++) {
+      out.push(`- item ${i} with **bold** words and a [link](https://example.com/${i}) here`);
+      if (i % 7 === 0) out.push(`  - nested ${i}! [after a bang](https://example.com/n${i})`);
+      // A literal backslash, a bang, then a link: only the last two
+      // characters written decide whether the bang gets escaped.
+      if (i % 3 === 0) out.push(`  - tail ${'x'.repeat(i % 29)}\\\\\\![l${i}](u${i})`);
+      if (i % 11 === 0) out.push(`  1. ordered ${i}\\![not an image](x)`);
+      if (i % 13 === 0) out.push(`  > quoted ${i}\n  > second line`);
+      if (i % 17 === 0) out.push('  ```js\n  const v = ' + i + ';\n  ```');
+    }
+    return out.join('\n') + '\n';
+  }
+
+  it('writes a big list exactly as the whole-document pass does', () => {
+    const md = bigList(600);
+    let state = EditorState.create({ doc: parseMarkdownToDoc(md), schema: editorSchema });
+    expect(state.doc.childCount).toBe(1);
+    expect(serializeDocToMarkdown(state.doc)).toBe(serializeWholeDocForTests(state.doc));
+    const rand = rng(4242);
+    for (let i = 0; i < 4; i++) {
+      state = randomEdit(state, rand);
+      expect(serializeDocToMarkdown(state.doc), `after edit ${i}`).toBe(serializeWholeDocForTests(state.doc));
+    }
+    // A quote holding a long list, and one long paragraph full of links.
+    const quoted = parseMarkdownToDoc(md.split('\n').map((l) => (l ? '> ' + l : '>')).join('\n'));
+    expect(serializeDocToMarkdown(quoted)).toBe(serializeWholeDocForTests(quoted));
+    const para = parseMarkdownToDoc(
+      Array.from({ length: 800 }, (_, i) => `word${i}! [l${i}](u${i}) **b** w${'y'.repeat(i % 31)}\\\\\\![m](v)`).join(' ') + '\n',
+    );
+    expect(serializeDocToMarkdown(para)).toBe(serializeWholeDocForTests(para));
+  });
+
+  it('writes a 4,500-item list in well under a second', () => {
+    const md = bigList(4500); // ~400 KB, one top-level block
+    const d = parseMarkdownToDoc(md);
+    expect(d.childCount).toBe(1);
+    const t0 = performance.now();
+    const out = serializeDocToMarkdown(d);
+    const ms = performance.now() - t0;
+    expect(out.length).toBeGreaterThan(300_000);
+    console.log(`[perf F16] one ${(md.length / 1024).toFixed(0)} KB list: ${ms.toFixed(0)} ms`);
+    // Seconds before; tens of milliseconds here. Generous for slow runners.
+    expect(ms).toBeLessThan(2000);
+  });
+});

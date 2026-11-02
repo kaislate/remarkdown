@@ -285,6 +285,19 @@ export const serializerWork = { blocksRendered: 0, fallbacks: 0 };
 
 const stateOptions = Object.assign({}, editorMarkdownSerializer.options);
 
+// Inside one block, prosemirror-markdown still checks the end of its output
+// with regexes that scan all of it: atBlank() before every line it writes,
+// and text()'s look for a `!` before every link. One block can be a whole
+// document (a changelog that is a single list), which made that quadratic
+// again: seconds for a 400 KB list. So a block's state never holds more
+// than about SPILL_AT characters; the rest is set aside as it is written
+// and joined back at the end. Those checks only ever look at the last two
+// characters (a newline, or a `!` and the one before it), and nothing else
+// reads the state's output, so leaving SPILL_KEEP characters behind changes
+// no byte. The byte-identity tests cover lists, quotes and long paragraphs.
+const SPILL_AT = 1024;
+const SPILL_KEEP = 64;
+
 function renderBlock(node: Node, parent: Node, index: number): BlockOut {
   const hit = blockMemo.get(node);
   if (hit) return hit;
@@ -301,8 +314,21 @@ function renderBlock(node: Node, parent: Node, index: number): BlockOut {
     wrote = true;
     flushClose.call(this, size);
   };
+  // Keep the state's own output short (see SPILL_AT): what is written past
+  // it moves to `spilled`, and only the last characters stay behind.
+  const spilled: string[] = [];
+  const write = state.write;
+  state.write = function (content?: string) {
+    if (this.out.length > SPILL_AT) {
+      const cut = this.out.length - SPILL_KEEP;
+      spilled.push(this.out.slice(0, cut));
+      this.out = this.out.slice(cut);
+    }
+    write.call(this, content);
+  };
   state.render(node, parent, index);
-  const result: BlockOut = { out: state.out, wrote, closed: state.closed ? state.closed.type : null };
+  const out = spilled.length ? spilled.join('') + state.out : state.out;
+  const result: BlockOut = { out, wrote, closed: state.closed ? state.closed.type : null };
   blockMemo.set(node, result);
   return result;
 }
