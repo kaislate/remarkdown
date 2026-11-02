@@ -1,3 +1,5 @@
+// First, so its evaluation marks when the entry chunk starts to run.
+import { startupMark } from './lib/startup-trace';
 import '@fontsource/patrick-hand/400.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
@@ -8,8 +10,10 @@ import { initPlatform } from './lib/platform';
 // Settle which OS we're on before the first paint, so shortcuts and chrome
 // are right from the start.
 await initPlatform();
+startupMark('platform-ready');
 
 const app = mount(App, { target: document.getElementById('app')! });
+startupMark('app-mounted');
 
 // Flush on window close; Tauri 2.x emits beforeunload through the webview.
 // Skip in e2e mode — the handler races with Playwright's page.reload() and

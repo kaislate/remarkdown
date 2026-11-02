@@ -15,6 +15,7 @@ mod session_file;
 mod settings;
 mod shell;
 mod sidecar;
+mod startup_trace;
 mod welcome;
 
 use tauri::Manager;
@@ -52,7 +53,9 @@ fn integrate_appimage() {
 }
 
 fn main() {
-    // First statement: set_var is only sound before any other thread exists.
+    // Opt-in (REMARKDOWN_STARTUP_TRACE): the clock every startup mark counts from.
+    startup_trace::init();
+    // Still before any other thread exists, the only time set_var is sound.
     #[cfg(target_os = "linux")]
     if linux_gpu::needs_dmabuf_workaround(std::path::Path::new("/sys/class/drm"), |k| {
         std::env::var(k).ok()
@@ -73,7 +76,17 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::PendingOpens::default())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main" {
+                startup_trace::mark(match payload.event() {
+                    tauri::webview::PageLoadEvent::Started => "page-load-started",
+                    tauri::webview::PageLoadEvent::Finished => "page-load-finished",
+                });
+            }
+        })
         .setup(|app| {
+            // Tauri builds the windows from tauri.conf.json just before this.
+            startup_trace::mark("window-built");
             // Before any window reads them: 0.8.0 resets settings once.
             fresh_start::run(app.handle());
             #[cfg(target_os = "linux")]
@@ -88,12 +101,13 @@ fn main() {
             let cwd = std::env::current_dir().unwrap_or_default();
             app.state::<launch::PendingOpens>()
                 .push(launch::extract_open_paths(&argv, &cwd));
+            startup_trace::mark("setup-end");
             Ok(())
         });
     // The Mac menu bar; Windows and Linux keep their windows menu-free.
     #[cfg(target_os = "macos")]
     let builder = builder.menu(mac::menu).on_menu_event(mac::on_menu_event);
-    builder
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             commands::open_file_dialog,
             commands::open_image_dialog,
@@ -119,14 +133,19 @@ fn main() {
             default_app::make_default_app,
             shell::reveal_in_folder,
             desktop_env::desktop_env,
+            startup_trace::startup_trace,
         ])
         .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|app, event| {
-            // Files opened from Finder. Nothing to do anywhere else.
-            #[cfg(target_os = "macos")]
-            mac::on_run_event(app, event);
-            #[cfg(not(target_os = "macos"))]
-            let _ = (app, event);
-        });
+        .expect("error while running tauri application");
+    startup_trace::mark("tauri-built");
+    app.run(|app, event| {
+        if matches!(event, tauri::RunEvent::Ready) {
+            startup_trace::mark("run-ready");
+        }
+        // Files opened from Finder. Nothing to do anywhere else.
+        #[cfg(target_os = "macos")]
+        mac::on_run_event(app, event);
+        #[cfg(not(target_os = "macos"))]
+        let _ = (app, event);
+    });
 }

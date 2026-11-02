@@ -3,6 +3,7 @@
   import { settings } from '../stores/settings';
   import { readerMode } from '../stores/reader-mode';
   import { diagramThemeFor } from '../lib/reader-themes';
+  import { startupMark } from '../lib/startup-trace';
   import {
     applyDiagramSizing,
     buildDiagramError,
@@ -69,6 +70,7 @@
       // frame mid theme switch).
       paint(el, outcome, key);
     }
+    if (misses.length > 0) startupMark('mermaid-pass-done', `${misses.length} diagrams`);
   }
 
   $effect(() => {

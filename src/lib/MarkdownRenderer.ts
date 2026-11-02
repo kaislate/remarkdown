@@ -10,6 +10,7 @@ import { frontMatterPlugin } from './markdown-it-frontmatter';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './editor/code-block-languages';
 import { isMermaidFence } from './mermaid-fence';
 import { resolveImageSrc } from './image-paths';
+import { startupMark } from './startup-trace';
 
 export interface RenderResult {
   html: string;
@@ -57,10 +58,12 @@ const fenceRe = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g
 let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
+    startupMark('shiki-start');
     highlighterPromise = getSingletonHighlighter({
       themes: ['github-dark', 'github-light'],
       langs: [...SUPPORTED_LANGUAGES],
     });
+    void highlighterPromise.then(() => startupMark('shiki-ready'), () => {});
   }
   return highlighterPromise;
 }

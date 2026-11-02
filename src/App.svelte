@@ -51,6 +51,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { welcomeDocPath } from './stores/welcome';
   import { ensureWelcomeDoc, onOpenRequested } from './lib/tauri-api';
+  import { finishStartupTrace, startupMark } from './lib/startup-trace';
   import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
   import { addToast } from './stores/toasts';
   import { undoAnnot, redoAnnot } from './stores/annots';
@@ -271,7 +272,9 @@
   onMount(async () => {
     // Load persisted settings before anything else so subsequent subscribers
     // (theme, watermark, etc.) see the user's preferences instead of defaults.
+    startupMark('app-init-start');
     try { await refreshSettings(); } catch { /* fall back to defaults */ }
+    startupMark('settings-loaded');
     disposeSettings = installSettingsAutosave();
 
     // Apply settings that take effect once at startup. Article width is set
@@ -296,9 +299,12 @@
     disposeArticleWidth = unsubWidth;
 
     try { await refreshRecent(); } catch { /* ignore on first launch */ }
+    startupMark('recent-loaded');
     try { await refreshReadingProgress(); } catch { /* ignore */ }
+    startupMark('progress-loaded');
     disposeSave = installSaveWatcher();
     disposeDrop = await installFileDropHandler();
+    startupMark('drop-handler-ready');
     window.addEventListener('keydown', onZoomKey);
     window.addEventListener('keydown', onAnnotUndoKey);
     window.addEventListener('keydown', onToolShortcut);
@@ -310,6 +316,7 @@
     // as 'open-requested'. Listen before the first drain below so nothing
     // queued in between can be missed.
     disposeOpenRequested = await onOpenRequested(() => { void drainPendingOpens(); });
+    startupMark('open-listener-ready');
 
     // Flush the active tab's pending saves before the window goes away.
     try {
@@ -337,6 +344,7 @@
     } catch {
       // non-Tauri host
     }
+    startupMark('close-listener-ready');
     // A Mac can quit without asking any window first (Dock, logout), so
     // there each window also saves whenever it loses focus.
     try {
@@ -356,10 +364,18 @@
     //      recent file.
     //   4. Otherwise, leave the empty state visible.
     const presetPath = (window as unknown as { __RMD_OPEN__?: string }).__RMD_OPEN__;
+    startupMark('app-init-ready');
     if (presetPath) {
       await openPaths([presetPath]);
     } else {
-      if (s.openMode === 'tabs' && s.reopenTabsOnLaunch) await restoreSavedTabs();
+      if (s.openMode === 'tabs' && s.reopenTabsOnLaunch) {
+        startupMark('session-restore-start');
+        await restoreSavedTabs();
+        startupMark('session-restore-end');
+        // Every saved tab is fully loaded by the time restore returns.
+        startupMark('all-tabs-restored');
+      }
+      startupMark('drain-start');
       const launched = await drainPendingOpens();
       if (launched === 0) {
         if (!s.dontShowWelcomeOnLaunch) {
@@ -390,6 +406,9 @@
       minimapShown.set(true);
       openModal({ kind: 'onboarding' });
     }
+
+    startupMark('startup-opens-done');
+    finishStartupTrace();
 
     // Remember open tabs for next launch (main window, tabs mode). Installed
     // after the startup opens so restoring doesn't trigger a rewrite storm.

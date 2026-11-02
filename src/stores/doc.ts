@@ -11,6 +11,7 @@ import { getProgressFor } from './reading-progress';
 import { viewerScroll } from './viewport';
 import { settings } from './settings';
 import { activeProxy, activeSession, type DocSession } from './sessions';
+import { isLaunchedPath, startupMark, startupMarkWhenShown, startupTimed } from '../lib/startup-trace';
 
 export type { DocState } from './doc-types';
 
@@ -56,7 +57,7 @@ export async function loadIntoSession(
 ): Promise<boolean> {
   let r;
   try {
-    r = await readDocument(path);
+    r = await startupTimed('read', () => readDocument(path));
   } catch (err) {
     if (err && typeof err === 'object' && 'NotUtf8' in err) {
       addToast({ kind: 'error', message: 'This file is not UTF-8 — remarkdown only supports UTF-8 markdown files.' });
@@ -82,10 +83,13 @@ export async function loadIntoSession(
   // state so the file watcher doesn't yank the UI from under the user.
   const isNewDocOpen = !current || current.path !== r.path;
 
-  const { html, plaintext, blocks } = await render(r.markdown, {
+  const launched = isLaunchedPath(path);
+  if (launched) startupMark('launched-doc-read', `${r.bytes} bytes`);
+  const { html, plaintext, blocks } = await startupTimed('render', () => render(r.markdown, {
     baseDir: r.dir,
     toAssetUrl,
-  });
+  }));
+  if (launched) startupMark('launched-doc-rendered');
 
   let parsedAnnotations: Annotation[] = [];
   if (r.sidecarRaw) {
@@ -123,6 +127,12 @@ export async function loadIntoSession(
     sidecarRaw: r.sidecarRaw,
     loadId: ++loadCounter,
   });
+  if (launched) {
+    startupMark('launched-doc-set');
+    const loadId = loadCounter;
+    startupMarkWhenShown('launched-doc-paint', () =>
+      get(activeSession) === session && get(session.doc)?.loadId === loadId && !!document.querySelector('article.viewer'));
+  }
   const isActive = session === get(activeSession);
   if (isActive) docEpoch.update((e) => e + 1);
 
@@ -147,7 +157,7 @@ export async function loadIntoSession(
     session.disposeWatcher = null;
   }
   if (!session.watcherPaused && !session.closed) {
-    const dispose = await installFileWatcher(path, () => onFileChanged(session));
+    const dispose = await startupTimed('watcher', () => installFileWatcher(path, () => onFileChanged(session)));
     // The tab may have been closed while the watcher was being set up.
     if (session.closed) await dispose();
     else session.disposeWatcher = dispose;
