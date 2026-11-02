@@ -60,7 +60,17 @@
       if (hit) paint(el, hit, key);
       else misses.push(el);
     }
-    for (const el of misses) {
+    const total = misses.length;
+    while (misses.length > 0) {
+      // Each diagram is drawn in its own task, so the page can paint and
+      // take input in between; the next one is whichever is now nearest to
+      // what's on screen (the reading position is restored meanwhile, and
+      // the user may scroll).
+      if (misses.length < total) {
+        await new Promise((r) => setTimeout(r, 0));
+        if (pass !== passSeq) return;
+      }
+      const el = misses.splice(nearestToScreen(misses), 1)[0];
       const outcome = await renderMermaid(el.dataset.mermaid ?? '', ctx);
       // A newer pass (theme switched again, new document) owns the
       // blocks now; a detached block belongs to a document that's gone.
@@ -70,7 +80,24 @@
       // frame mid theme switch).
       paint(el, outcome, key);
     }
-    if (misses.length > 0) startupMark('mermaid-pass-done', `${misses.length} diagrams`);
+    if (total > 0) startupMark('mermaid-pass-done', `${total} diagrams`);
+  }
+
+  // Index of the block closest to the visible part of the window (0 for
+  // one on screen); the first such block in document order on a tie.
+  function nearestToScreen(blocks: HTMLElement[]): number {
+    const height = window.innerHeight;
+    let best = 0;
+    let bestDistance = Infinity;
+    blocks.forEach((el, i) => {
+      const r = el.getBoundingClientRect();
+      const distance = r.bottom < 0 ? -r.bottom : r.top > height ? r.top - height : 0;
+      if (distance < bestDistance) {
+        best = i;
+        bestDistance = distance;
+      }
+    });
+    return best;
   }
 
   $effect(() => {
