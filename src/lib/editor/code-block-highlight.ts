@@ -34,22 +34,45 @@ export const codeBlockHighlightKey = new PluginKey<HighlightState>(
   'codeBlockHighlight',
 );
 
-// Tokens per (language, text), so an edit only tokenizes the block it
-// changed — the others come from here. Bounded, the least recently used
-// going first. An editor keeps room for every code block of its document
-// plus TOKEN_CACHE_LIMIT more (cacheCapFor), in every pass, full or after an
-// edit: a full colouring visits the blocks in document order, so a cap
-// below that evicts exactly the block it needs next, all the way down,
-// and each edit leaves the block's old text behind until it ages out.
-type Tokens = ReturnType<Highlighter['codeToTokensWithThemes']>;
-const tokenCache = new WeakMap<Highlighter, Map<string, Tokens>>();
+// Each code block's colouring per (language, text), so an edit only
+// tokenizes the block it changed — the others come from here. Bounded, the
+// least recently used going first. An editor keeps room for every code
+// block of its document plus TOKEN_CACHE_LIMIT more (cacheCapFor), in every
+// pass, full or after an edit: a full colouring visits the blocks in
+// document order, so a cap below that evicts exactly the block it needs
+// next, all the way down, and each edit leaves the block's old text behind
+// until it ages out.
+//
+// What's kept is only what the spans are drawn from (Colouring), not
+// Shiki's token objects: for a 20-line block of dense TypeScript those
+// take about 90 KB, its Colouring 3 KB.
+const tokenCache = new WeakMap<Highlighter, Map<string, Colouring>>();
 const TOKEN_CACHE_LIMIT = 300;
+
+// A block's colouring as runs over its text: pairs of (length, style),
+// where style 0 is a run left uncoloured (a newline, or a token without a
+// dark colour) and style n is STYLES[n - 1].
+type Colouring = Uint32Array;
+
+// Every span style seen, each kept once: a theme has few colours.
+const STYLES: string[] = [];
+const STYLE_IDS = new Map<string, number>();
+
+function styleId(style: string): number {
+  let id = STYLE_IDS.get(style);
+  if (id === undefined) {
+    STYLES.push(style);
+    id = STYLES.length;
+    STYLE_IDS.set(style, id);
+  }
+  return id;
+}
 
 function cacheCapFor(codeBlocks: number): number {
   return codeBlocks + TOKEN_CACHE_LIMIT;
 }
 
-function tokensFor(hl: Highlighter, lang: string, text: string, cap = TOKEN_CACHE_LIMIT): Tokens {
+function colouringFor(hl: Highlighter, lang: string, text: string, cap = TOKEN_CACHE_LIMIT): Colouring {
   let cache = tokenCache.get(hl);
   if (!cache) tokenCache.set(hl, (cache = new Map()));
   const key = `${lang}\u0000${text}`;
@@ -67,9 +90,38 @@ function tokensFor(hl: Highlighter, lang: string, text: string, cap = TOKEN_CACH
     lang,
     themes: { dark: 'github-dark', light: 'github-light' },
   });
-  cache.set(key, tokens);
+  const colouring = compact(tokens);
+  cache.set(key, colouring);
   while (cache.size > cap) cache.delete(cache.keys().next().value!);
-  return tokens;
+  return colouring;
+}
+
+// Note: we sum tok.content.length manually rather than reading tok.offset.
+// Shiki's TokenBase.offset is documented as "relative to the input code"
+// but the per-line semantics are ambiguous in practice; the manual sum is
+// verified correct by the position-math test in code-blocks.test.ts.
+// A future contributor with more Shiki context can revisit.
+function compact(tokens: ReturnType<Highlighter['codeToTokensWithThemes']>): Colouring {
+  const runs: number[] = [];
+  // Uncoloured runs next to each other become one.
+  const plain = (len: number) => {
+    const n = runs.length;
+    if (n > 0 && runs[n - 1] === 0) runs[n - 2] += len;
+    else runs.push(len, 0);
+  };
+  for (let lineIdx = 0; lineIdx < tokens.length; lineIdx++) {
+    for (const tok of tokens[lineIdx]) {
+      const len = tok.content.length;
+      if (len === 0) continue;
+      const dark = tok.variants.dark?.color;
+      const light = tok.variants.light?.color;
+      if (dark) runs.push(len, styleId(`color: ${dark}${light ? `; --shiki-light: ${light}` : ''}`));
+      else plain(len);
+    }
+    // Newline between lines (Shiki splits on \n; the \n is a position too).
+    if (lineIdx < tokens.length - 1) plain(1);
+  }
+  return Uint32Array.from(runs);
 }
 
 // A diagram's source is never shown (the editor draws the diagram, and
@@ -78,19 +130,14 @@ function isColouredCode(node: Node): boolean {
   return node.type.name === 'code_block' && !isMermaidFence(String(node.attrs.language || ''));
 }
 
-// Note: we sum tok.content.length manually rather than reading tok.offset.
-// Shiki's TokenBase.offset is documented as "relative to the input code"
-// but the per-line semantics are ambiguous in practice; the manual sum is
-// verified correct by the position-math test in code-blocks.test.ts.
-// A future contributor with more Shiki context can revisit.
 function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheCap?: number): Decoration[] {
   const decs: Decoration[] = [];
   const lang = resolveLanguage(String(node.attrs.language || ''));
   const text = node.textContent;
   if (!text) return decs;
-  let tokens;
+  let runs: Colouring;
   try {
-    tokens = tokensFor(hl, lang, text, cacheCap);
+    runs = colouringFor(hl, lang, text, cacheCap);
   } catch (err) {
     if (import.meta.env.DEV) {
       console.warn('codeBlockHighlight: tokenize failed', { lang, err });
@@ -100,28 +147,14 @@ function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheCap?: n
   // PM positions: pos is BEFORE the code_block; pos + 1 is the
   // start of its first text node. Each character (including \n)
   // counts as one position.
-  let offset = 0;
-  for (let lineIdx = 0; lineIdx < tokens.length; lineIdx++) {
-    const line = tokens[lineIdx];
-    for (const tok of line) {
-      const len = tok.content.length;
-      if (len === 0) continue;
-      const start = pos + 1 + offset;
-      const end = start + len;
-      const dark = tok.variants.dark?.color;
-      const light = tok.variants.light?.color;
-      if (dark) {
-        decs.push(
-          Decoration.inline(start, end, {
-            class: 'shiki-tok',
-            style: `color: ${dark}${light ? `; --shiki-light: ${light}` : ''}`,
-          }),
-        );
-      }
-      offset += len;
+  let start = pos + 1;
+  for (let i = 0; i < runs.length; i += 2) {
+    const end = start + runs[i];
+    const style = runs[i + 1];
+    if (style !== 0) {
+      decs.push(Decoration.inline(start, end, { class: 'shiki-tok', style: STYLES[style - 1] }));
     }
-    // Newline between lines (Shiki splits on \n; the \n is a position too).
-    if (lineIdx < tokens.length - 1) offset += 1;
+    start = end;
   }
   return decs;
 }
