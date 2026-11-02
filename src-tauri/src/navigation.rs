@@ -36,17 +36,26 @@ fn is_app_page(url: &Url, dev_url: Option<&Url>, windows: bool) -> bool {
     // The app is one page. Any other path or a query is a relative link
     // from a document (`other.md`, `?a`), and Tauri answers a path it doesn't
     // know with index.html: the app would reload, losing edits and undo.
-    // The fragment is the page's own business.
-    origin && url.port().is_none() && url.query().is_none() && matches!(url.path(), "" | "/" | "/index.html")
+    // The fragment is the page's own business. A user name or password
+    // (http://x@tauri.localhost/) is the same origin and would reload it too.
+    origin
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && matches!(url.path(), "" | "/" | "/index.html")
 }
 
-/// The dev server's URL in a debug build; a release build never trusts it.
+/// The dev server's URL while the app is loaded from it (`tauri dev`). Any
+/// other build serves the app from its own protocol and never trusts it: a
+/// release, and a debug build too (`cargo run`, `tauri build --debug`), as
+/// Tauri decides with is_dev() and asset_protocol's app_origin does.
 pub fn dev_url<R: Runtime, M: Manager<R>>(manager: &M) -> Option<Url> {
-    if cfg!(debug_assertions) {
-        manager.config().build.dev_url.clone()
-    } else {
-        None
-    }
+    only_while_developing(manager.config().build.dev_url.clone())
+}
+
+fn only_while_developing(dev_url: Option<Url>) -> Option<Url> {
+    dev_url.filter(|_| tauri::is_dev())
 }
 
 /// `builder`, refusing any top-level navigation away from the app and any
@@ -115,6 +124,13 @@ mod tests {
                 let s = format!("{origin}{rest}");
                 assert!(!is_app_page(&url(&s), None, windows), "{s}");
             }
+        }
+        // A user name or password is another way to the same origin.
+        for s in ["http://user@tauri.localhost/", "http://:pw@tauri.localhost/index.html", "https://u:p@tauri.localhost"] {
+            assert!(!is_app_page(&url(s), None, true), "{s}");
+        }
+        for s in ["tauri://user@localhost/", "tauri://:pw@localhost/index.html"] {
+            assert!(!is_app_page(&url(s), None, false), "{s}");
         }
     }
 
@@ -186,6 +202,16 @@ mod tests {
             assert!(!is_app_page(&url("https://localhost:1566/"), Some(&dev), windows));
             assert!(!is_app_page(&url("https://example.com/"), Some(&dev), windows));
         }
+    }
+
+    // `cargo run` and `tauri build --debug` keep the custom-protocol feature
+    // and load the app from its own protocol, so nothing on the dev server
+    // is the app then, whatever the build profile.
+    #[test]
+    fn the_dev_server_is_trusted_only_while_the_app_is_loaded_from_it() {
+        let dev = Some(url("http://localhost:1566"));
+        assert_eq!(only_while_developing(dev.clone()), dev.filter(|_| tauri::is_dev()));
+        assert_eq!(only_while_developing(None), None);
     }
 
     // The windows from tauri.conf.json are built in setup, through
