@@ -10,6 +10,8 @@ const MD = [
   '',
   '![asset](http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cpixel.png)',
   '',
+  '![other host](http://asset.attacker.example/%5C%5Cattacker.example%5Cs%5Cpixel.png)',
+  '',
   '![share](//attacker.example/s/x.png)',
   '',
   '![drive](\\\\\\\\attacker.example\\s\\x.png)',
@@ -30,16 +32,16 @@ test('neither the reader nor the editor asks for an unsafe picture', async ({ pa
   await page.getByRole('heading', { level: 1 }).waitFor();
 
   const reader = page.locator('.viewer img');
-  await expect(reader).toHaveCount(4);
-  for (const alt of ['asset', 'share', 'drive']) {
+  await expect(reader).toHaveCount(5);
+  for (const alt of ['asset', 'other host', 'share', 'drive']) {
     await expect(page.locator(`.viewer img[alt="${alt}"]`)).toHaveAttribute('src', '');
   }
   await expect(page.locator('.viewer img[alt="fine"]')).toHaveAttribute('src', 'asset://localhost//e2e/docs/pics/fine.png');
 
   await page.locator('.edit-mode-toggle').click();
   const editor = page.locator('.editor-surface .editor-image img');
-  await expect(editor).toHaveCount(4);
-  for (const alt of ['asset', 'share', 'drive']) {
+  await expect(editor).toHaveCount(5);
+  for (const alt of ['asset', 'other host', 'share', 'drive']) {
     await expect(page.locator(`.editor-surface .editor-image img[alt="${alt}"]`)).toHaveAttribute('src', '');
   }
   await expect(page.locator('.editor-surface .editor-image img[alt="fine"]')).toHaveAttribute('src', 'asset://localhost//e2e/docs/pics/fine.png');

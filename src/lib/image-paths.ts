@@ -28,10 +28,14 @@ function unsafeReading(s: string): boolean {
   const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(s)?.[1].toLowerCase();
   if (scheme === 'asset' || scheme === 'file' || scheme === 'ipc' || scheme === 'tauri') return true;
   if (scheme !== 'http' && scheme !== 'https') return false;
-  // The app's own protocols are served from *.localhost; the parser
-  // undoes the tricks (http:host, %2E, user@, a trailing dot).
+  // The app's own protocols are served from *.localhost, and WebView2 hands
+  // every http(s)://asset.<anything> (ipc., tauri. too) to the app's own
+  // handlers whatever host follows, so those are refused on every OS: a
+  // document reads the same everywhere. The parser undoes the tricks
+  // (http:host, %2E, user@, a trailing dot).
   try {
-    return new URL(s).hostname.replace(/\.+$/, '').endsWith('.localhost');
+    const host = new URL(s).hostname;
+    return /^(asset|ipc|tauri)\./i.test(host) || host.replace(/\.+$/, '').endsWith('.localhost');
   } catch {
     return true;
   }

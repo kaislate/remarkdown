@@ -79,6 +79,16 @@ const unsafe = [
   'asset://localhost/%5C%5Chost%5Cs%5Cx.png',
   'ASSET://localhost/x.png',
   'asset:x.png',
+  // WebView2 hands every http(s)://asset.<any host> (and ipc., tauri.) to
+  // the app's own handlers, whatever comes after the first dot
+  'http://asset.evil.example/%5C%5Cattacker%5Cs%5Cx.png',
+  'http://asset.localhost.evil.example/x.png',
+  'http://asset./x.png',
+  'http:asset.evil/x.png',
+  'HTTPS://Asset.Evil.Example/x.png',
+  'http://ipc.evil.example/x',
+  'http://tauri.evil.example/x.png',
+  '//asset.evil.example/x.png',
   // protocol-relative: the window reads it as http://asset.localhost/…
   '//asset.localhost/%5C%5Cattacker.example%5Cs%5Cx.png',
   '%2F%2Fasset.localhost%2Fx.png',
@@ -172,6 +182,8 @@ describe('ordinary pictures still load', () => {
       'http://localhost:8080/a.png',
       'data:image/png;base64,AAAA',
       'blob:http://tauri.localhost/1234',
+      'https://assets.example.com/a.png',
+      'https://cdn.example.com/asset.png',
     ]) {
       expect(resolveImageSrc(src, 'C:/docs', toAsset)).toBe(src);
       expect(isUnsafeImageSrc(src)).toBe(false);
