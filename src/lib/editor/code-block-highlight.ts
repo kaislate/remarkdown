@@ -7,13 +7,9 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node } from 'prosemirror-model';
-import {
-  getSingletonHighlighter,
-  type Highlighter,
-  type BundledLanguage,
-  type SpecialLanguage,
-} from 'shiki';
+import type { HighlighterCore as Highlighter } from 'shiki/core';
 import { SUPPORTED_LANGUAGES, resolveLanguage } from './code-block-languages';
+import { ensureLanguages } from '../shiki-highlighter';
 
 interface HighlightState {
   decorations: DecorationSet;
@@ -26,10 +22,9 @@ export const codeBlockHighlightKey = new PluginKey<HighlightState>(
 let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
-    highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: [...SUPPORTED_LANGUAGES],
-    });
+    // The reader's highlighter, with every supported grammar: any code
+    // block can be switched to any language while editing.
+    highlighterPromise = ensureLanguages(SUPPORTED_LANGUAGES);
   }
   return highlighterPromise;
 }
@@ -55,7 +50,7 @@ function tokensFor(hl: Highlighter, lang: string, text: string): Tokens {
   // colourings, as in the reader: dark by default, the light one
   // (--shiki-light) swapped in by article.css on light pages.
   const tokens = hl.codeToTokensWithThemes(text, {
-    lang: lang as BundledLanguage | SpecialLanguage,
+    lang,
     themes: { dark: 'github-dark', light: 'github-light' },
   });
   cache.set(key, tokens);
