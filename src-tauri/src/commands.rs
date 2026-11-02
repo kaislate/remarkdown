@@ -186,14 +186,23 @@ fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandErr
 
     let sc_path = sidecar_path_for(&md_path);
     let mut sidecar_unreadable = false;
-    let sidecar_raw = if sc_path.exists() {
+    // Looked at without following it. The sidecar is read with no click,
+    // and a cloned repo keeps its links: following one to a share would
+    // sign in to that host (and wait on it), and one into /net would mount
+    // it. Such a link is never followed and will never load.
+    let sidecar_raw = if fs::symlink_metadata(&sc_path).is_err() {
+        None
+    } else if crate::asset_protocol::links_off_this_machine(&sc_path) {
+        sidecar_unreadable = true;
+        None
+    } else {
         // A sidecar that will never load (too large, not an ordinary file,
         // not text) doesn't keep the document from opening; the frontend
         // offers to back it up. Any other error may pass (a file another
         // program has open, a cloud file not downloaded yet), and backing
         // the sidecar up would hide its annotations from the user, so the
         // document fails to open with the error, as it always has. Only a
-        // sidecar that has gone since exists() looked counts as none. One
+        // sidecar that has gone since it was looked at counts as none. One
         // that links to a file that isn't a sidecar (check_readable) is
         // never read, and will never load either.
         let read = match why_unreadable(&sc_path, is_sidecar_name) {
@@ -216,8 +225,6 @@ fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandErr
             Err(ReadRefused::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(ReadRefused::Io(e)) => return Err(e.into()),
         }
-    } else {
-        None
     };
 
     let dir = md_path
@@ -636,6 +643,37 @@ mod tests {
         let mut text = String::new();
         open_to_read(&f).unwrap().read_to_string(&mut text).unwrap();
         assert_eq!(text, "hello");
+    }
+
+    // A sidecar is read with no click, and a cloned repo keeps its links:
+    // one to a share would sign in to that host the moment it was followed.
+    #[cfg(windows)]
+    #[test]
+    fn read_document_does_not_follow_a_sidecar_linked_to_a_share() {
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("notes.md");
+        fs::write(&md, b"# Hello\n").unwrap();
+        // .invalid never resolves, so a test that did follow it stays offline.
+        let share = Path::new(r"\\attacker.invalid\s\x.md.remarkdown.json");
+        if std::os::windows::fs::symlink_file(share, dir.path().join("notes.md.remarkdown.json")).is_err() {
+            return; // no right to make links here (Windows without Developer Mode)
+        }
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.sidecar_raw, None);
+        assert!(result.sidecar_unreadable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_document_does_not_follow_a_sidecar_linked_into_net() {
+        let dir = tempdir().unwrap();
+        let md = dir.path().join("notes.md");
+        fs::write(&md, b"# Hello\n").unwrap();
+        let mount = "/net/attacker.invalid/x.md.remarkdown.json";
+        std::os::unix::fs::symlink(mount, dir.path().join("notes.md.remarkdown.json")).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(result.sidecar_raw, None);
+        assert!(result.sidecar_unreadable);
     }
 
     #[cfg(unix)]

@@ -253,6 +253,21 @@ fn links_to_network(path: &Path, look: &impl Fn(&Path) -> Entry) -> bool {
     false
 }
 
+/// Whether the file at `path` is a link that leads to a network share or
+/// into an automounted folder, checked as a picture's path is and before
+/// anything follows it. For a file the app opens by itself, with no click:
+/// the sidecar next to a document. A file that isn't a link is left alone
+/// wherever it is, as the document beside it was read from there already;
+/// a link beside a document opened from /net is refused, as a picture
+/// there is.
+pub(crate) fn links_off_this_machine(path: &Path) -> bool {
+    is_link_off_this_machine(path, &on_disk)
+}
+
+fn is_link_off_this_machine(path: &Path, look: &impl Fn(&Path) -> Entry) -> bool {
+    matches!(look(path), Entry::Link(_)) && links_to_network(path, look)
+}
+
 // A path's parts, last first, with `.` dropped.
 fn steps(path: &Path) -> Vec<PathBuf> {
     path.components()
@@ -853,6 +868,48 @@ mod tests {
                 !is_automount_path(&at.to_string_lossy()),
                 "looked at {at:?}"
             );
+        }
+    }
+
+    #[test]
+    fn only_a_link_off_this_machine_counts_for_a_file_opened_unasked() {
+        let disk = fake_disk(&[
+            ("/doc", None),
+            ("/doc/plain.md.remarkdown.json", None),
+            ("/doc/local.md.remarkdown.json", Some("shared.md.remarkdown.json")),
+            ("/doc/shared.md.remarkdown.json", None),
+            (
+                "/doc/share.md.remarkdown.json",
+                Some("//attacker.invalid/s/x.md.remarkdown.json"),
+            ),
+            (
+                "/doc/mount.md.remarkdown.json",
+                Some("/net/attacker.invalid/x.md.remarkdown.json"),
+            ),
+            // A document opened from /net itself keeps its own sidecar.
+            ("/net", None),
+            ("/net/home", None),
+            ("/net/home/a.md.remarkdown.json", None),
+        ]);
+        let looked = std::cell::RefCell::new(Vec::new());
+        let look = |at: &Path| {
+            looked.borrow_mut().push(at.to_path_buf());
+            disk(at)
+        };
+        for p in [
+            "/doc/plain.md.remarkdown.json",
+            "/doc/local.md.remarkdown.json",
+            "/doc/missing.md.remarkdown.json",
+            "/net/home/a.md.remarkdown.json",
+        ] {
+            assert!(!is_link_off_this_machine(Path::new(p), &look), "{p}");
+        }
+        for p in ["/doc/share.md.remarkdown.json", "/doc/mount.md.remarkdown.json"] {
+            assert!(is_link_off_this_machine(Path::new(p), &look), "{p}");
+        }
+        for at in looked.borrow().iter() {
+            let at = at.to_string_lossy();
+            assert!(!at.contains("attacker"), "looked at {at:?}");
         }
     }
 
