@@ -2,7 +2,8 @@
 // target, edit through the popover, and check that the saved markdown
 // changes only the intended lines and the diagram still renders.
 // Helpers copied from mermaid-audit.spec.ts.
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import type { Page, Locator } from '@playwright/test';
+import { test, expect } from './support/test';
 import { clickMiddle } from './support/webkit';
 
 const PIE = ['pie', '    %% keep me', '    title Pets adopted', '    "Dogs" : 386', '    "Cats" : 85', '    "Rats" : 15'].join('\n');

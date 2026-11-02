@@ -486,7 +486,11 @@ function readInlineLink(text: string, pos: number, limit: number) {
   if (!m) return null;
   const family = m[2];
   const textStart = pos + m[0].length;
-  const closer = family === '--' ? /(--+)([->xo])/g : family === '==' ? /(==+)([=>xo])/g : /(\.+)-([>xo]?)/g;
+  // A dotted closer is tried only where a run of dots starts (the text
+  // after `-.` never starts with a dot): from inside the run it can
+  // only fail as the run's start did, but /(\.+)-/ ran to the run's end
+  // from every dot in it, quadratic on a long run.
+  const closer = family === '--' ? /(--+)([->xo])/g : family === '==' ? /(==+)([=>xo])/g : /(?<!\.)(\.+)-([>xo]?)/g;
   closer.lastIndex = textStart;
   let c: RegExpExecArray | null;
   let textEnd = -1;
@@ -627,15 +631,20 @@ function splitStatements(text: string, from: number): Span[] {
     // `accDescr { … }`) may run over several lines; an unbalanced `(` or
     // `[` must not swallow the lines after it.
     const stack: string[] = [];
+    // How many `{` the stack holds, so a newline needn't search it.
+    let braces = 0;
     while (p < n) {
       const c = text[p];
       if (c === '"') {
         p = readQuoted(text, p, n);
         continue;
       }
-      if (c === '[' || c === '(' || c === '{') stack.push(c);
-      else if ((c === ']' || c === ')' || c === '}') && stack.length) stack.pop();
-      else if (c === '\n' && stack.length && !stack.includes('{')) stack.length = 0;
+      if (c === '[' || c === '(' || c === '{') {
+        stack.push(c);
+        if (c === '{') braces++;
+      } else if ((c === ']' || c === ')' || c === '}') && stack.length) {
+        if (stack.pop() === '{') braces--;
+      } else if (c === '\n' && stack.length && !braces) stack.length = 0;
       if (!stack.length && (c === '\n' || c === ';')) break;
       if (!stack.length && c === '%' && text[p + 1] === '%') break;
       p++;
@@ -693,8 +702,17 @@ function parseOrThrow(source: string): SourceParseResult {
   const userEdgeIds = new Set<string>();
   const styleStmts: StyleStatement[] = [];
   const linkStyleStmts: LinkStyleStatement[] = [];
+  // The statements inside each id-less subgraph still open, by its
+  // placeholder id, so closing it renames only those (not every
+  // statement read so far, which made many such subgraphs quadratic).
+  const pendingMembers = new Map<string, FlowStatement[]>();
+  let tracked = 0;
 
   for (const span of splitStatements(source, header.end)) {
+    for (; tracked < statements.length; tracked++) {
+      const st = statements[tracked];
+      if (st.group !== null) pendingMembers.get(st.group)?.push(st);
+    }
     const text = source.slice(span.start, span.end);
     const group = open.length ? open[open.length - 1].id : null;
     const kw = /^([A-Za-z]+)\b/.exec(text)?.[1] ?? '';
@@ -739,8 +757,13 @@ function parseOrThrow(source: string): SourceParseResult {
         if (/["[\]]/.test(title)) fail(`unreadable subgraph: ${text}`);
       }
       // An id-less subgraph gets its id when it closes (see `end`);
-      // until then a placeholder no real id can collide with stands in.
-      if (idGenerated) id = `#pending${stmtIndex}`;
+      // until then a placeholder stands in. It holds a space, which no
+      // real id can (a bare title with one gets a generated id), so a
+      // subgraph the user named `#pending3` stays apart from it.
+      if (idGenerated) {
+        id = `#pending ${stmtIndex}`;
+        pendingMembers.set(id, []);
+      }
       statements.push({ kind: 'subgraph', span, group, id, headSpan: { start: headStart, end: span.end }, idGenerated, titleSpan, titleForm, end: span });
       if (!idGenerated) mention(id);
       open.push({ stmt: stmtIndex, id, mentions: [] });
@@ -762,9 +785,15 @@ function parseOrThrow(source: string): SourceParseResult {
         sg.id = id;
         block.id = id;
         graph.subgraphs.set(id, { ...entry, id });
-        // Children recorded the placeholder as their parent.
-        for (const [k, s] of graph.subgraphs) if (s.parent === tmpKey) graph.subgraphs.set(k, { ...s, parent: id });
-        for (const st of statements) if (st.group === tmpKey) st.group = id;
+        // Its statements, and the subgraphs among them (which recorded
+        // the placeholder as their parent), take the real id.
+        for (const st of pendingMembers.get(tmpKey)!) {
+          st.group = id;
+          if (st.kind !== 'subgraph') continue;
+          const child = graph.subgraphs.get(st.id);
+          if (child?.parent === tmpKey) graph.subgraphs.set(st.id, { ...child, parent: id });
+        }
+        pendingMembers.delete(tmpKey);
         open[open.length - 1]?.mentions.push(id);
       }
       closed.push({ id: block.id, mentions: block.mentions });

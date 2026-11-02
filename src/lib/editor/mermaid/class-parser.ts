@@ -18,6 +18,7 @@
 import { lexClass, type Tok } from './class-lexer';
 import { decodePlaceholders, encodePlaceholders, prepareSource, type PreparedSource } from './entity-text';
 import { splitLines } from './source-text';
+import { LINE_BREAK } from './line-ahead';
 import { decodeMermaidEntities } from '../mermaid-parser';
 
 // ── Model ────────────────────────────────────────────────────────────
@@ -278,14 +279,18 @@ function processSet(input: string): string {
     input = input.substring(1);
     startingTilde = true;
   }
+  // mermaid turns the first and last `~` left into `<` and `>` until
+  // one or none is left, finding them from scratch each time (quadratic
+  // in a long run of `~`). That pairs the k-th `~` from the front with
+  // the k-th from the back, which one pass can do.
   const chars = [...input];
-  let first = chars.indexOf('~');
-  let last = chars.lastIndexOf('~');
-  while (first !== -1 && last !== -1 && first !== last) {
-    chars[first] = '<';
-    chars[last] = '>';
-    first = chars.indexOf('~');
-    last = chars.lastIndexOf('~');
+  const at: number[] = [];
+  chars.forEach((c, i) => {
+    if (c === '~') at.push(i);
+  });
+  for (let k = 0; k < at.length >> 1; k++) {
+    chars[at[k]] = '<';
+    chars[at[at.length - 1 - k]] = '>';
   }
   if (startingTilde) chars.unshift('~');
   return chars.join('');
@@ -311,8 +316,40 @@ export const CLASSIFIER_CHAR: Record<ClassClassifier, string> = { static: '$', a
 // Placeholder / entity-code text → what mermaid displays.
 const show = (raw: string) => decodeMermaidEntities(decodePlaceholders(raw));
 
-// ClassMember.parseMember's method pattern.
-const METHOD_RE = /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/;
+// ClassMember.parseMember's method pattern,
+// /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/, without running it: it
+// isn't anchored, so on a member with no `(` before a `)` it ran `.+`
+// to the end and back from every start, and `(.*)` from every `(`
+// (cubic: 1.5 KB took seconds). A `.` stops at a line break, so the
+// match is in the first line piece that has a `(` past its first
+// character with a `)` after it: it starts there, `.+` and `(.*)` run
+// to the last such `(` and the piece's last `)`, and the rest follows
+// as greedily. The groups are the regex's, but for the last (always
+// undefined: `(.*)` leaves no `$` or `*` for it).
+export function matchMethod(s: string): [string, string | undefined, string, string, string | undefined, string] | null {
+  const lineEnd = (from: number) => {
+    LINE_BREAK.lastIndex = from;
+    return LINE_BREAK.exec(s)?.index ?? s.length;
+  };
+  for (let a = 0; a < s.length; ) {
+    const b = lineEnd(a);
+    // Searched in the piece alone: from `b` back through `s`, a piece
+    // with no `)` was searched to the start of `s`, once per piece.
+    const piece = s.slice(a, b);
+    const close = a + piece.lastIndexOf(')');
+    const open = close > a ? a + piece.lastIndexOf('(', close - a - 1) : -1;
+    if (open > a) {
+      const vis = /[#+~-]/.test(s[a]) && open > a + 1 ? s[a] : undefined;
+      const id = s.slice(vis ? a + 1 : a, open);
+      const mark = close + 1 < s.length && /[\s$*]/.test(s[close + 1]) ? s[close + 1] : undefined;
+      const from = close + 1 + (mark ? 1 : 0);
+      const end = lineEnd(from);
+      return [s.slice(a, end), vis, id, s.slice(open + 1, close), mark, s.slice(from, end)];
+    }
+    a = b + 1;
+  }
+  return null;
+}
 
 // A member string the way mermaid's ClassMember parses it. `raw` is
 // source text (entity codes still encoded); returns null for what
@@ -322,7 +359,7 @@ export function parseMemberText(raw: string): ClassMember | null {
   const input = encodePlaceholders(raw.trim());
   if (!input) return null;
   if (input.indexOf(')') > 0) {
-    const m = METHOD_RE.exec(input);
+    const m = matchMethod(input);
     let visibility = '';
     let id = '';
     let params = '';
@@ -390,7 +427,10 @@ export function fieldStyle(id: string): 'typeFirst' | 'colon' | 'nameOnly' {
 function splitField(id: string): { name: string; type: string } {
   const style = fieldStyle(id);
   if (style === 'colon') {
-    const m = /^([^\s:]+)\s*:\s*(.*)$/.exec(id)!;
+    // `[\s\S]*`, not `.*`: a line separator in the type stopped the `.`,
+    // and the match then failed (and threw here) only after retrying
+    // every split of the spaces before it.
+    const m = /^([^\s:]+)\s*:\s*([\s\S]*)$/.exec(id)!;
     return { name: blankToEmpty(show(m[1])), type: show(parseGenericTypes(m[2].trim())) };
   }
   if (style === 'typeFirst') {
@@ -608,7 +648,7 @@ class ClassParser {
       return;
     }
     // A "method" (has a `)`) its regex can't read makes mermaid throw.
-    if (trimmed.indexOf(')') > 0 && !METHOD_RE.test(encodePlaceholders(trimmed))) throw new ParseError(`unreadable member: ${trimmed}`);
+    if (trimmed.indexOf(')') > 0 && !matchMethod(encodePlaceholders(trimmed))) throw new ParseError(`unreadable member: ${trimmed}`);
     const m = parseMemberText(trimmed);
     if (!m) return;
     c.members.push(m);

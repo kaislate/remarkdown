@@ -1,5 +1,6 @@
 // Ctrl+Z / Ctrl+Y undo and redo annotation changes in the reader.
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const PATH = '/e2e/docs/undo.md';
 

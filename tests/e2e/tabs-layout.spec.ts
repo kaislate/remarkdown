@@ -1,5 +1,6 @@
 import { chooseSetting } from './support/settings';
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // Tabs layout, measured in a real browser: tabs on the window's own
 // background (no title band), the left sidebar (pinned / collapsed / hover),

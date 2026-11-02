@@ -71,6 +71,34 @@ describe('in the reader', () => {
       { key: 'draft', value: 'true' },
     ]);
   });
+
+  // `key:\s*(.*)$` retried every split of a run of spaces when a line
+  // separator stopped the `.`: 40 KB took seconds, on every render.
+  it('reads a value with a long run of spaces in linear time', () => {
+    const LS = String.fromCharCode(0x2028);
+    const t0 = performance.now();
+    const fields = frontMatterFields(`title:${' '.repeat(40_000)}x${LS}y\nnext: ${' '.repeat(40_000)}z\n`);
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(fields).toEqual([{ key: 'next', value: 'z' }]);
+  });
+
+  it('reads key lines the way the old pattern did', () => {
+    const LS = String.fromCharCode(0x2028);
+    let seed = 3;
+    const rand = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
+    const alphabet = ['a', 'b', ' ', '\t', ':', '-', '.', '"', "'", '\r', LS, '_'];
+    for (let i = 0; i < 20_000; i++) {
+      let line = '';
+      const len = rand(12);
+      for (let k = 0; k < len; k++) line += alphabet[rand(alphabet.length)];
+      const m = /^([A-Za-z0-9_][\w .-]*):\s*(.*)$/.exec(line);
+      const expected = m ? [{ key: m[1].trim(), value: m[2].trim().replace(/^(["'])(.*)\1$/, '$2') }] : [];
+      expect(frontMatterFields(line), JSON.stringify(line)).toEqual(expected);
+    }
+  });
 });
 
 describe('in the editor', () => {

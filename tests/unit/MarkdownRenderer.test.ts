@@ -123,6 +123,31 @@ describe('MarkdownRenderer.render (image src rewriting)', () => {
     const { html } = await render('![x](./p.png)');
     expect(html).toContain('src="./p.png"');
   });
+
+  it('empties an asset url or network share written in the markdown, with or without a folder', async () => {
+    const md = [
+      '![a](http://asset.localhost/%5C%5Cattacker.example%5Cs%5Cpixel.png)',
+      '![b](asset://localhost/%2F%2Fattacker.example%2Fs%2Fx.png)',
+      '![c](//attacker.example/s/x.png)',
+      // In markdown a backslash escapes a backslash, so this is \\attacker.example\s\x.png.
+      '![d](\\\\\\\\attacker.example\\s\\x.png)',
+    ].join('\n\n');
+    for (const opts of [{}, { baseDir: 'C:/docs', toAssetUrl: () => 'NEVER' }]) {
+      const { html } = await render(md, opts);
+      expect(html).not.toContain('NEVER');
+      expect(html).not.toContain('attacker');
+      expect(html).not.toContain('localhost');
+      expect(html.match(/src=""/g)).toHaveLength(4);
+    }
+  });
+
+  it("shows a picture pasted before the check, which names the reader's asset url for a file", async () => {
+    const { html } = await render('![a](http://asset.localhost/C%3A%2FUsers%2Fme%2Fa.png)', {
+      baseDir: 'C:/docs',
+      toAssetUrl: (p: string) => `built:${p}`,
+    });
+    expect(html).toContain('src="built:C:/Users/me/a.png"');
+  });
 });
 
 describe('MarkdownRenderer.render (mermaid)', () => {

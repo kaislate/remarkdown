@@ -4,12 +4,22 @@ import App from './App.svelte';
 import { flushSave } from './lib/save';
 import { installE2EBridge } from './lib/e2e-debug-bridge';
 import { initPlatform } from './lib/platform';
+import { installLinkGuard } from './lib/link-guard';
+import { openExternal } from './lib/tauri-api';
+import { addToast } from './stores/toasts';
 
 // Settle which OS we're on before the first paint, so shortcuts and chrome
 // are right from the start.
 await initPlatform();
 
 const app = mount(App, { target: document.getElementById('app')! });
+
+// No link anywhere in the app takes the window with it (lib/link-guard.ts).
+installLinkGuard(window, (url) => {
+  openExternal(url).catch((err) => {
+    addToast({ kind: 'error', message: `Could not open the link: ${String(err)}` });
+  });
+});
 
 // Flush on window close; Tauri 2.x emits beforeunload through the webview.
 // Skip in e2e mode — the handler races with Playwright's page.reload() and

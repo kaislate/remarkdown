@@ -7,13 +7,9 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node } from 'prosemirror-model';
-import {
-  getSingletonHighlighter,
-  type Highlighter,
-  type BundledLanguage,
-  type SpecialLanguage,
-} from 'shiki';
-import { SUPPORTED_LANGUAGES, resolveLanguage } from './code-block-languages';
+import type { Highlighter, BundledLanguage, SpecialLanguage } from 'shiki';
+import { resolveLanguage } from './code-block-languages';
+import { getHighlighter } from '../shiki-highlighter';
 
 interface HighlightState {
   decorations: DecorationSet;
@@ -22,17 +18,6 @@ interface HighlightState {
 export const codeBlockHighlightKey = new PluginKey<HighlightState>(
   'codeBlockHighlight',
 );
-
-let highlighterPromise: Promise<Highlighter> | null = null;
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    highlighterPromise = getSingletonHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: [...SUPPORTED_LANGUAGES],
-    });
-  }
-  return highlighterPromise;
-}
 
 // Tokens per (language, text), so an edit only tokenizes the block it
 // changed — the others come from here. Bounded: the oldest go first.
@@ -156,13 +141,14 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       // window between awaiting getHighlighter() and dispatching, where the
       // editor could be torn down (e.g. component unmount during HMR).
       function scheduleHighlight(view: EditorView): void {
-        void getHighlighter().then((hl) => {
+        // If no highlighter can start, the code just stays uncoloured.
+        getHighlighter().then((hl) => {
           if (view.isDestroyed) return;
           const decs = buildDecorations(view.state.doc, hl);
           view.dispatch(
             view.state.tr.setMeta(codeBlockHighlightKey, { decorations: decs }),
           );
-        });
+        }, () => {});
       }
 
       // Initial highlight on mount (in case the doc opens with code blocks).

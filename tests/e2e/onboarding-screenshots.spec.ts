@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 

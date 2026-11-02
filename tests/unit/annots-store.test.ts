@@ -212,6 +212,18 @@ describe('drawing orphan detection', () => {
     expect(get(orphanedAnnots)[0].id).toBe('01D3');
   });
 
+  it('circle drawing whose anchor.text is found keeps its range, for drawing it', () => {
+    const root = document.createElement('article');
+    root.innerHTML = '<p data-block-id="p:1">the circled words are here</p>';
+    document.body.appendChild(root);
+    currentViewerRoot.set(root);
+
+    replaceAll([makeDrawingCircle({ id: '01D5', text: 'circled words', blockHint: 'p:1' })]);
+
+    expect(get(resolvedAnnots)).toHaveLength(1);
+    expect(get(resolvedAnnots)[0].range.toString()).toBe('circled words');
+  });
+
   it('freehand-legacy drawing whose anchorBlock is missing → orphanedAnnots', () => {
     const root = document.createElement('article');
     root.innerHTML = '<p data-block-id="p:1">content</p>';

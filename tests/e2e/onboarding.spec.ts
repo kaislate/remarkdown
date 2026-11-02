@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 test('a fresh install asks how you want to use remarkdown, once', async ({ page }) => {
   await page.addInitScript(() => { (window as any).__E2E_FRESH_INSTALL__ = true; });

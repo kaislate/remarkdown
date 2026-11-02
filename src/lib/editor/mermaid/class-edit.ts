@@ -27,6 +27,7 @@
 // are trimmed (mermaid trims every label). Generics typed in a member
 // type (`List<int>`) are written mermaid's way (`List~int~`).
 import {
+  matchMethod,
   parseClassSource,
   parseGenericTypes,
   parseMemberText,
@@ -227,14 +228,14 @@ function rawMember(raw: string, model: ClassMember): RawMember {
   const p = encodePlaceholders(raw.trim());
   const back = (s: string) => decodePlaceholders(s);
   if (model.kind === 'method') {
-    const m = /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/.exec(p);
+    const m = matchMethod(p);
     if (!m) return { kind: 'method', style: 'typeFirst', parts: {}, values: {} };
-    let ret = (m[5] ?? '').trim();
+    let ret = m[5].trim();
     if (!(m[4] ?? '').trim() && /[$*]$/.test(ret)) ret = ret.slice(0, -1);
     return {
       kind: 'method',
       style: 'typeFirst',
-      parts: { name: back(m[2].trim()), parameters: back((m[3] ?? '').trim()), type: back(ret) },
+      parts: { name: back(m[2].trim()), parameters: back(m[3].trim()), type: back(ret) },
       values: { name: model.name, parameters: model.parameters, type: model.type },
     };
   }
@@ -242,7 +243,9 @@ function rawMember(raw: string, model: ClassMember): RawMember {
   if (/^[#+~-]/.test(body)) body = body.slice(1);
   if (/[$*]$/.test(body)) body = body.slice(0, -1);
   body = body.trim();
-  const colon = /^([^\s:]+)\s*:\s*(.*)$/.exec(body);
+  // `[\s\S]*` as in class-parser.ts's splitField: a `.*` stopped by a
+  // line separator retried every split of the spaces before it.
+  const colon = /^([^\s:]+)\s*:\s*([\s\S]*)$/.exec(body);
   if (colon && /^[^\s:]+\s*:\s*\S/.test(body)) {
     return { kind: 'field', style: 'colon', parts: { name: back(colon[1]), type: back(colon[2]) }, values: { name: model.name, type: model.type } };
   }

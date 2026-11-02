@@ -20,6 +20,8 @@
 import { get } from 'svelte/store';
 import { settings } from '../stores/settings';
 import { formatShortcut } from './shortcuts';
+import { detectDiagramType, type MermaidDiagramType } from './editor/mermaid-detect';
+import { isUnsafeImageSrc } from './image-paths';
 
 type Mermaid = typeof import('mermaid').default;
 
@@ -186,6 +188,585 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+// Before it lexes anything, mermaid's encodeEntities runs
+// /style.*:\S*#.*;/g and the same with classDef over the source. Where
+// it can't match, that regex tries every keyword × `:` × `#` on the
+// line: one crafted 2 KB line held the UI thread for seconds, and no
+// timeout stops synchronous work. This bounds, in one pass per line,
+// the steps it would take (measured: a million or more per ms), so a
+// render that would hang is turned away before mermaid sees it. Lines
+// people write come out far below the limit. The lines are summed, as
+// mermaid runs the regex over all of them: a hundred lines each under
+// the limit took seconds together.
+const STYLE_WORK_LIMIT = 1e8;
+
+export function styleRegexWork(source: string): number {
+  let work = 0;
+  for (const line of source.split(/[\n\r\u2028\u2029]/)) {
+    const len = line.length;
+    for (const keyword of ['style', 'classDef']) {
+      const first = line.indexOf(keyword);
+      if (first < 0) continue;
+      const semi = line.lastIndexOf(';');
+      let starts = 0;
+      let startsAfterSemi = 0;
+      for (let i = first; i >= 0; i = line.indexOf(keyword, i + 1)) {
+        starts++;
+        if (i > semi) startsAfterSemi++;
+      }
+      // From the end of the line, as the regex backtracks: each `:`
+      // costs its run of non-spaces, plus a scan to the end of the line
+      // for each `#` in that run, until one whose run holds a `#`
+      // before the last `;` (where the match succeeds). That one still
+      // tries the `#`s after the `;` first, each scanning to the end.
+      let perStart = len;
+      let tail = 0;
+      let runEnd = len;
+      let hashes = 0;
+      let hashesAfterSemi = 0;
+      let firstHash = Infinity;
+      let matched = false;
+      for (let p = len - 1; p >= first + keyword.length; p--) {
+        const c = line[p];
+        if (p === semi) tail = perStart - len;
+        if (c === ':') {
+          if (firstHash < semi) {
+            perStart += runEnd - p + hashesAfterSemi * len;
+            matched = true;
+            break;
+          }
+          perStart += runEnd - p + hashes * len;
+        }
+        if (/\s/.test(c)) {
+          runEnd = p;
+          hashes = 0;
+          hashesAfterSemi = 0;
+          firstHash = Infinity;
+        } else if (c === '#') {
+          hashes++;
+          if (p > semi) hashesAfterSemi++;
+          firstHash = p;
+        }
+      }
+      if (semi < first + keyword.length) tail = perStart - len;
+      // A match ends at the last `;`; every keyword after it fails
+      // against what follows. Without a match every keyword fails.
+      work += matched ? perStart + startsAfterSemi * tail : starts * perStart;
+    }
+  }
+  return work;
+}
+
+// Two more of mermaid's passes run on every source, before its size
+// limit, and can be made just as slow (measured: 40 KB took 5 to 30 s):
+//   - cleanupText's /<(\w+)([^>]*)>/g splits a `<word` that has no `>`
+//     anywhere after it between `\w+` and `[^>]*` every way, each split
+//     scanning to the end (a `<word` before some `>` matches at once);
+//   - cleanupComments' /^\s*%%(?!{)[^\n]+\n?/gm, from every line start
+//     in a run of blank lines that doesn't end in a comment, scans to
+//     the end of the run and back.
+// The limits are set from the slowest rates measured (about ten
+// thousand steps per ms for indented blank lines), so neither pass runs
+// much past half a second; a diagram needs a thousand blank lines in a
+// row, or a `<word` thousands of characters long, to come near them.
+const TAG_WORK_LIMIT = 5e7;
+const COMMENT_WORK_LIMIT = 5e6;
+
+export function tagRegexWork(source: string): number {
+  let work = 0;
+  const word = /<(\w+)/g;
+  word.lastIndex = source.lastIndexOf('>') + 1;
+  for (let m = word.exec(source); m; m = word.exec(source)) work += m[1].length * (source.length - m.index);
+  return work;
+}
+
+export function commentRegexWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\s+/g)) {
+    const start = run.index!;
+    const end = start + run[0].length;
+    // Line starts inside the run: its start (at the top of the source),
+    // and the character after each line break in it.
+    if (start === 0) work += 2 * end;
+    for (let i = start; i < end; i++) {
+      if ('\n\r\u2028\u2029'.includes(source[i])) work += 2 * (end - i - 1);
+    }
+  }
+  return work;
+}
+
+// And two more in class diagrams, once mermaid reads the members:
+//   - each member holding a `)` goes through
+//     /([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?/, which isn't anchored:
+//     where it can't match, it runs `.+` to the end of the line and back
+//     from every start, and `(.*)` from every `(` (2 KB took seconds);
+//   - parseGenericTypes turns `~` pairs into `<…>`, looking for the
+//     first and last `~` from scratch for each pair (it also runs on ER
+//     entity names; 40 KB of `~` took seconds).
+// Both are weighed per line, as if the whole line were one member (no
+// member is longer, and none costs more), and summed. A line piece with
+// a `(` after its first character and before its last `)` matches from
+// its first start, after `.+` backs up past the `(`s that follow that
+// `)` (twice: with and without the leading visibility mark), so it costs
+// that much and not the full failure: long notes with parentheses in
+// them are drawn as fast as any other text. Rates
+// measured: about 150,000 steps per ms for the first, 500,000 for the
+// second, so neither runs past about a third of a second.
+const METHOD_WORK_LIMIT = 5e7;
+const GENERIC_WORK_LIMIT = 1e8;
+
+export function methodRegexWork(source: string): number {
+  if (detectDiagramType(source) !== 'class') return 0;
+  let work = 0;
+  for (const line of source.split('\n')) {
+    if (!line.includes(')')) continue;
+    for (const piece of line.split(/[\r\u2028\u2029]/)) {
+      const len = piece.length;
+      const close = piece.lastIndexOf(')');
+      const open = piece.indexOf('(', 1);
+      if (open >= 0 && open < close) {
+        let tries = len;
+        for (let p = piece.indexOf('(', close); p >= 0; p = piece.indexOf('(', p + 1)) tries += len - p;
+        work += 2 * tries;
+        continue;
+      }
+      work += (len * (len + 1)) / 2;
+      for (let p = piece.indexOf('('); p >= 0; p = piece.indexOf('(', p + 1)) work += p * (len - p);
+    }
+  }
+  return work;
+}
+
+// And one in mermaid's lexers: the flowchart one, and the
+// /\s*%%.*\n/gm detectType runs for every diagram, read a run of
+// whitespace again from each character in it (measured: 8,000 spaces in
+// a row took the flowchart parser 2 s, about 30,000 steps per ms). The
+// limit lets through runs of a few thousand, far more than any
+// indentation or blank space a diagram has.
+const WHITESPACE_WORK_LIMIT = 1e7;
+
+export function whitespaceWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\s+/g)) work += run[0].length ** 2;
+  return work;
+}
+
+export function genericTypesWork(source: string): number {
+  let work = 0;
+  for (const line of source.split('\n')) {
+    const tildes = line.split('~').length - 1;
+    if (tildes > 1) work += tildes * line.length;
+  }
+  return work;
+}
+
+// The passes above, except the tag one, run on the source after
+// mermaid's preprocessDiagram has turned CRLF into LF, cut off the
+// frontmatter and dropped every `%%{…}%%` directive. A directive can
+// hold a newline, so dropping it joins the lines around it: short style
+// lines split by directives reached the style regex as one 1.8 KB line
+// (2.3 s). So they are weighed on that text, made with mermaid's own
+// regexes (mermaid 11.14, src/diagram-api/regexes.ts). Its last step,
+// dropping `%%` comment lines, takes out whole lines and joins none, so
+// it is left out: a comment line is only weighed as if it stayed.
+//
+// The frontmatter regex is slow itself where `---` is followed by many
+// line breaks and no closing `---`: it reads the rest of the source once
+// for each of them (measured: about three million steps per ms). mermaid
+// runs it on every source, before its size limit, so such a source is
+// turned away before either of us runs it.
+const FRONT_MATTER_WORK_LIMIT = 1e9;
+
+export function frontMatterWork(source: string): number {
+  if (!source.startsWith('---')) return 0;
+  let breaks = 0;
+  for (let i = 3; i < source.length && /\s/.test(source[i]); i++) {
+    if (source[i] === '\n' || source[i] === '\r') breaks++;
+  }
+  return breaks * source.length;
+}
+
+const frontMatterRegex = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s;
+const directiveRegex = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+export function textMermaidSees(source: string): string {
+  return source.replace(/\r\n?/g, '\n').replace(frontMatterRegex, '').replace(directiveRegex, '');
+}
+
+// Before the directives are dropped (and before the size limit),
+// mermaid's detectDirective strips `%%` comments with a regex whose
+// lookahead reads a directive's body from each `%%{word`: on to the
+// next `}%%`, or to the end of the source when there is none (measured:
+// 80 KB of unclosed `%%{a` took 4.5 s, about 150,000 steps per ms).
+// Closed directives, the only kind people write, cost their own length.
+const DIRECTIVE_WORK_LIMIT = 5e7;
+
+export function directiveWork(source: string): number {
+  let work = 0;
+  let close = -1;
+  for (const m of source.matchAll(/%%\{\s*\w/g)) {
+    if (close !== Infinity && close < m.index!) {
+      const next = source.indexOf('}%%', m.index!);
+      close = next < 0 ? Infinity : next;
+    }
+    work += Math.min(close, source.length) - m.index!;
+  }
+  return work;
+}
+
+// mermaid's lexers and parsers have more slow spots than the regexes
+// weighed above, too many to weigh one by one, so the shape of the text
+// is weighed too, three ways (rates measured on mermaid 11.14):
+//   - each run of non-spaces, squared: the flowchart lexer, among
+//     others, reads the rest of the run again for each token in it
+//     (20,000 `#` took 5.8 s; the slowest rate, about 40,000 steps per
+//     ms, was a block diagram's);
+//   - each line's tokens times its length, in the diagrams whose lexers
+//     read the rest of the line again for each token (16 KB of `a ` in
+//     a block diagram took 5 s; about 40,000 per ms);
+//   - all the tokens times all the lines, in the diagrams whose parsers
+//     copy their whole stack at each step, a stack one or two entries
+//     deeper for each line not yet reduced (8,000 lines of `a` took a
+//     class diagram 16 s; about 10,000 per ms near the limit), and in
+//     the two (kanban, mindmap) that, linear or not, spend a third of a
+//     millisecond on each line (10,000 items took 3 s).
+// A quoted string counts as one token, as the lexers read it. Every
+// diagram type is weighed the last two ways, except the ones measured
+// linear there, at 6 and 24 KB: a sequence diagram's message is read as
+// one token, however many words it has, and its parser takes 5,000
+// flat messages in under a second. A diagram near any limit is far
+// bigger than people write: hundreds of classes, or a word thousands of
+// characters long. Each limit holds mermaid's parse to well under a
+// second.
+const RUN_WORK_LIMIT = 2e7;
+const LINE_TOKEN_WORK_LIMIT = 2e7;
+const STACK_WORK_LIMIT = 8e6;
+// An xychart's lexer is linear too; its lists are weighed by listWork.
+const LINE_TOKEN_LINEAR = new Set<MermaidDiagramType>(['sequence', 'gantt', 'mindmap', 'timeline', 'kanban', 'journey', 'quadrant', 'gitgraph', 'requirement', 'sankey', 'xychart']);
+// A flowchart's and a sequence diagram's blocks are weighed by blockWork.
+const STACK_LINEAR = new Set<MermaidDiagramType>(['flowchart', 'sequence', 'er', 'gantt', 'timeline', 'journey', 'quadrant', 'xychart']);
+
+export function runWork(source: string): number {
+  let work = 0;
+  for (const run of source.matchAll(/\S+/g)) work += run[0].length ** 2;
+  return work;
+}
+
+// Tokens per line, and each line's length.
+function lineTokens(source: string): Array<[number, number]> {
+  const lines: Array<[number, number]> = [];
+  let tokens = 0;
+  let start = 0;
+  for (const m of source.matchAll(/"[^"\n]*"|\w+|[^\w\s]|\n/g)) {
+    tokens++;
+    if (m[0] === '\n') {
+      lines.push([tokens, m.index! - start]);
+      tokens = 0;
+      start = m.index! + 1;
+    }
+  }
+  lines.push([tokens, source.length - start]);
+  return lines;
+}
+
+export function lineTokenWork(source: string): number {
+  if (LINE_TOKEN_LINEAR.has(detectDiagramType(source))) return 0;
+  let work = 0;
+  for (const [tokens, len] of lineTokens(source)) work += tokens * len;
+  return work;
+}
+
+export function stackWork(source: string): number {
+  if (STACK_LINEAR.has(detectDiagramType(source))) return 0;
+  const lines = lineTokens(source);
+  let tokens = 0;
+  for (const [t] of lines) tokens += t;
+  return tokens * lines.length;
+}
+
+// An xychart's parser copies its list so far for each item it adds to an
+// axis or a data series, so each list's items are weighed squared:
+// 1,800 x-axis labels took 0.7 s, 16,000 took 35 s (about 5,000 per ms).
+// A data series (`line`, `bar`), which holds only numbers, is read about
+// four times as fast, and weighs an eighth: 3,000 numbers took 0.2 s,
+// 5,200 0.7 s. Five series of a year's daily readings, with a label for
+// each day, weigh 220,000.
+//
+// A list ends at its `]`, or at a line break the lexer reads as one: a
+// line that ends in a space or a tab runs on into the next, as the space
+// and the line break are read as one gap. What the lexer reads as one
+// piece of text is skipped whole, as it is: a string, a comment, a title
+// or description, and one stray rule of the lexer's that matches a
+// fixed run of text with a `"` in it. A `]`, a `"` or a line break there
+// closes or opens nothing.
+const LIST_WORK_LIMIT = 1.5e6;
+const XYCHART_PIECES = new RegExp(
+  [
+    String.raw`[^}]%%[^\n]*`,
+    String.raw`%%[^\n]*`,
+    String.raw`\x60\) {36}\{ this\.pushState\(md_string\); \}\n<md_string>\(\?:\(\?!\x60"\)\.\)\+ {18}\{ return MD_STR; \}\n<md_string>\(\?:\x60`,
+    String.raw`"[^"]*"?`,
+    String.raw`(?<![a-z])acc(?:Title|Descr)\s*:\s*[^\n]*`,
+    String.raw`(?<![a-z])accDescr\s*\{[^}]*\}?`,
+    String.raw`(?<![a-z])(?:x-axis|y-axis|line|bar)\b`,
+    String.raw`\s+`,
+    String.raw`[[\],]`,
+  ].join('|'),
+  'gi',
+);
+
+export function listWork(source: string): number {
+  if (detectDiagramType(source) !== 'xychart') return 0;
+  let work = 0;
+  let data = false;
+  // The list being read: its items so far, and whether it is a data
+  // series all the way.
+  let items = -1;
+  let numbers = false;
+  const close = () => {
+    if (items > 0) work += numbers ? items ** 2 / 8 : items ** 2;
+    items = -1;
+  };
+  for (const [piece] of source.matchAll(XYCHART_PIECES)) {
+    if (piece === '[') {
+      if (items < 0) {
+        items = 0;
+        numbers = data;
+      }
+    } else if (piece === ']') close();
+    else if (piece === ',') {
+      if (items >= 0) items++;
+    } else if (/^(?:x-axis|y-axis|line|bar)$/i.test(piece)) {
+      data = /^(?:line|bar)$/i.test(piece);
+      if (!data) numbers = false;
+    } else if (piece[0] === '\n' || piece[0] === '\r') close();
+  }
+  close();
+  return work;
+}
+
+// Every statement a sequence diagram's parser reads inside an open block
+// (loop, alt, opt, par, critical, break, rect, box), and after each of
+// its branches (else, and, option), is read with a stack that much
+// deeper, and the parser copies its stack at each step: 3,000 nested
+// loops took 4 s, 3,000 `else` branches of one `alt` 4.8 s (about 2,500
+// steps per ms). So each statement weighs the blocks and branches open
+// around it. `;` ends a statement as a line break does.
+//
+// An opening statement counts wherever one could be. An `end` counts
+// only at the start of a line (and after another `end` there), and not
+// in what mermaid reads as one piece of text whatever lines it holds: an
+// actor's data (`@{ … }`), a description (`accDescr { … }`), or a title
+// or description whose text starts on the next line (`title`, then a
+// line break). An `end` there closes nothing, and blocks it seemed to
+// close would weigh nothing. What follows an `end` on its line is read
+// as a new statement: `end loop a` closes one block and opens another.
+const BLOCK_WORK_LIMIT = 1.5e6;
+const SEQUENCE_OPENS = /^(?:loop|rect|opt|alt|par|par_over|critical|break|box)\b/i;
+const SEQUENCE_BRANCHES = /^(?:else|and|option)\b/i;
+const SEQUENCE_SPANS = /@\{[^}]*(?:\}|$)|accDescr\s*\{[^}]*(?:\}|$)|acc(?:Title|Descr)\s*:\s*[^\n]*|title:?\s[^#\n;]+/gi;
+const SEQUENCE_END = /^\s*end\b\s*/i;
+
+function sequenceBlockWork(source: string): number {
+  // The spans are blanked with a character that is neither a space nor
+  // part of a word, so each line keeps its length.
+  const outside = source.replace(SEQUENCE_SPANS, (span) => span.replace(/[^\n]/g, '\0')).split('\n');
+  const open: number[] = [];
+  let branches = 0;
+  let work = 0;
+  source.split('\n').forEach((line, i) => {
+    let rest = line;
+    let seen = outside[i];
+    for (let end = SEQUENCE_END.exec(seen); end; end = SEQUENCE_END.exec(seen)) {
+      work += open.length + branches;
+      if (open.length) branches -= open.pop()!;
+      rest = rest.slice(end[0].length);
+      seen = seen.slice(end[0].length);
+    }
+    for (const piece of rest.split(';')) {
+      const statement = piece.trim();
+      if (!statement) continue;
+      if (SEQUENCE_OPENS.test(statement)) open.push(0);
+      else if (SEQUENCE_BRANCHES.test(statement)) {
+        branches++;
+        if (open.length) open[open.length - 1]++;
+      }
+      work += open.length + branches;
+    }
+  });
+  return work;
+}
+
+// A flowchart's subgraphs nest the same way (2,400 nested took 3.9 s),
+// and there each token is read deeper (about 3,000 per ms). But a
+// flowchart's `end` can be text: a label or a string can hold a line
+// break, and the lexer reads them several ways that can't be told apart
+// here. So no `end` is counted, and each token weighs every subgraph
+// opened before it: a flowchart of 100 subgraphs, each with ten edges,
+// weighs 330,000.
+function subgraphWork(source: string): number {
+  const tokens = lineTokens(source);
+  let open = 0;
+  let work = 0;
+  source.split('\n').forEach((line, i) => {
+    open += line.match(/\bsubgraph\b/g)?.length ?? 0;
+    work += tokens[i][0] * open;
+  });
+  return work;
+}
+
+export function blockWork(source: string): number {
+  const type = detectDiagramType(source);
+  if (type === 'sequence') return sequenceBlockWork(source);
+  if (type === 'flowchart') return subgraphWork(source);
+  return 0;
+}
+
+// mermaid draws its own "too big" notice instead of any text longer
+// than this (it can't be raised from inside a diagram), once comments
+// are dropped too, so what it would do with such text isn't weighed.
+const MAX_TEXT_SIZE = 50_000;
+// And a source many times that size is turned away outright: every pass
+// mermaid makes before that limit reads all of it.
+const MAX_SOURCE_SIZE = 200_000;
+
+// mermaid's cleanupComments, safe to run once commentRegexWork passed.
+function cleanupComments(seen: string): string {
+  return seen.replace(/^\s*%%(?!{)[^\n]+\n?/gm, '').trimStart();
+}
+
+// Whether mermaid draws its "too big" notice in place of `source`. Safe
+// to ask only of a source tooSlowToRead let through.
+function drawnAsTooBig(source: string): boolean {
+  return cleanupComments(textMermaidSees(source)).length > MAX_TEXT_SIZE;
+}
+
+// Why mermaid would hang on `source`, if it would.
+function tooSlowToRead(source: string): string | null {
+  const tangled = 'This diagram is too long and tangled to read.';
+  if (source.length > MAX_SOURCE_SIZE) return 'This diagram is too long to read.';
+  if (frontMatterWork(source) > FRONT_MATTER_WORK_LIMIT) return tangled;
+  const directives = source.replace(/\r\n?/g, '\n').replace(frontMatterRegex, '');
+  if (directiveWork(directives) > DIRECTIVE_WORK_LIMIT) return tangled;
+  const seen = textMermaidSees(source);
+  if (styleRegexWork(seen) > STYLE_WORK_LIMIT) return 'A style line in this diagram is too long and tangled to read.';
+  if (
+    tagRegexWork(source) > TAG_WORK_LIMIT ||
+    commentRegexWork(seen) > COMMENT_WORK_LIMIT ||
+    whitespaceWork(seen) > WHITESPACE_WORK_LIMIT ||
+    methodRegexWork(seen) > METHOD_WORK_LIMIT ||
+    genericTypesWork(seen) > GENERIC_WORK_LIMIT
+  ) return tangled;
+  const code = cleanupComments(seen);
+  if (code.length > MAX_TEXT_SIZE) return null;
+  return runWork(code) > RUN_WORK_LIMIT ||
+    lineTokenWork(code) > LINE_TOKEN_WORK_LIMIT ||
+    stackWork(code) > STACK_WORK_LIMIT ||
+    listWork(code) > LIST_WORK_LIMIT ||
+    blockWork(code) > BLOCK_WORK_LIMIT
+    ? tangled
+    : null;
+}
+
+interface MermaidDb {
+  getVertices?: () => unknown;
+  getActors?: () => unknown;
+}
+
+interface MermaidApi {
+  render?: Mermaid['render'];
+  getDiagramFromText?: (text: string) => Promise<{ db?: MermaidDb }>;
+}
+
+// mermaid's own list, which `secure` replaces rather than adds to.
+const MERMAID_SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges'];
+
+// A label can hold HTML, and strict mode only takes the script out of it:
+// an <img> in a label is put in this page while mermaid measures it, and
+// stays in the svg. mermaid cleans every label with DOMPurify and this
+// config, which takes out everything that loads a picture. The words and
+// their formatting stay. (FORBID_TAGS style is mermaid's own default.)
+// DOMPurify's defaults already drop iframe, object and embed, and must go
+// on doing so: a frame showing an asset url could call the app's commands
+// (see asset_protocol.rs). Its defaults keep forms, though: a label's
+// button would send the window to the form's action, so the form controls
+// go too. So do a label's link targets: WebKit (macOS and Linux) follows
+// a click on any MathML element with an href, and a link in a diagram has
+// nowhere to go (see disarmDiagramLinks). Mermaid's own links and icons
+// aren't labels and never pass through here.
+const LABEL_PURIFY = {
+  FORBID_TAGS: ['style', 'image', 'feimage', 'form', 'button', 'input', 'select', 'textarea'],
+  FORBID_ATTR: ['src', 'srcset', 'poster', 'background', 'href', 'xlink:href'],
+};
+
+const UNSAFE_PICTURE = "This diagram has a picture that can't be shown here.";
+
+function valuesOf(collection: unknown): unknown[] {
+  if (!collection || typeof collection !== 'object') return [];
+  return collection instanceof Map ? [...collection.values()] : Object.values(collection);
+}
+
+// mermaid reads `#92;` as `\` (and `#name;` as `&name;`) only in the svg it
+// writes: it parses with each code swapped for a marker of its own
+// (`ﬂ°°92¶ß`) and turns the markers into HTML codes at the very end. So a
+// picture is checked the way the svg will name it. A textarea's content
+// is only ever text, so nothing in it loads.
+function asDrawn(src: string): string {
+  if (typeof document === 'undefined') return src;
+  const text = document.createElement('textarea');
+  text.innerHTML = src
+    .replace(/#(\w+);/g, (_m, code: string) => (/^\+?\d+$/.test(code) ? `ﬂ°°${code}¶ß` : `ﬂ°${code}¶ß`))
+    .replace(/&/g, '&amp;')
+    .replace(/ﬂ°°/g, '&#')
+    .replace(/ﬂ°/g, '&')
+    .replace(/¶ß/g, ';');
+  return text.value;
+}
+
+const isUnsafeDrawnPicture = (src: unknown) => typeof src === 'string' && (isUnsafeImageSrc(src) || isUnsafeImageSrc(asDrawn(src)));
+
+// A flowchart node can be a picture (`A@{ img: "…" }`), and mermaid loads
+// it in this window while it lays the diagram out. A sequence diagram's
+// actor can have an icon (`properties` or `details`), which mermaid puts
+// in this page while it draws. Each gets the check a markdown picture
+// gets, read from the parsed diagram (the value may be written with
+// escapes), and a diagram that names an unsafe one isn't drawn at all.
+// Only those three can name a picture this way. A diagram mermaid draws
+// its "too big" notice for shows none of them, and isn't parsed here:
+// its shape wasn't weighed, and its parse could take seconds.
+async function namesUnsafePicture(api: MermaidApi | undefined, source: string): Promise<boolean> {
+  if (!/@\{|properties|details/i.test(source) || !api?.getDiagramFromText || drawnAsTooBig(source)) return false;
+  const { db } = await api.getDiagramFromText(source);
+  const nodes = valuesOf(db?.getVertices?.()).map((n) => (n as { img?: unknown } | null)?.img);
+  const icons = valuesOf(db?.getActors?.()).map((a) => (a as { properties?: { icon?: unknown } } | null)?.properties?.icon);
+  return [...nodes, ...icons].some(isUnsafeDrawnPicture);
+}
+
+// Every attribute that loads a picture, on any element, and the svg
+// elements that load the file their href names.
+const PICTURE_ATTRS = ['src', 'srcset', 'poster', 'background'];
+const LINKED_PICTURES = ['image', 'feimage', 'use'];
+
+// The check after drawing, on the svg mermaid hands back and the app puts
+// in the page: whatever a diagram's source spelled, this is what loads.
+// A template's content is inert, so reading it loads nothing.
+export function drawsUnsafePicture(svg: string): boolean {
+  if (typeof document === 'undefined') return false;
+  const box = document.createElement('template');
+  box.innerHTML = svg;
+  for (const el of box.content.querySelectorAll('*')) {
+    const linked = LINKED_PICTURES.includes(el.localName.toLowerCase());
+    for (const { name, value } of el.attributes) {
+      const attr = name.toLowerCase();
+      if (!PICTURE_ATTRS.includes(attr) && !(linked && (attr === 'href' || attr === 'xlink:href'))) continue;
+      // A srcset lists several pictures, each followed by its size.
+      const srcs = attr === 'srcset' ? [value, ...value.split(',').map((c) => c.trim().split(/\s+/)[0])] : [value];
+      if (srcs.some(isUnsafeImageSrc)) return true;
+    }
+  }
+  return false;
+}
+
 async function renderNow(
   source: string,
   ctx: MermaidRenderContext,
@@ -194,6 +775,13 @@ async function renderNow(
   // A job queued behind an identical one finds the result already here.
   const cached = cache.get(key);
   if (cached) return rekey(cached);
+
+  const tooSlow = tooSlowToRead(source);
+  if (tooSlow) {
+    const entry: CacheEntry = { outcome: { ok: false, error: tooSlow }, id: nextId() };
+    remember(key, entry);
+    return entry.outcome;
+  }
 
   let m: Mermaid;
   try {
@@ -209,21 +797,31 @@ async function renderNow(
   // every later render would hang too, timeout or not. Renders are
   // already serialized here, so go to mermaidAPI.render directly (the
   // same function mermaid.render queues).
-  const api = (m as unknown as { mermaidAPI?: { render?: Mermaid['render'] } }).mermaidAPI;
+  const api = (m as unknown as { mermaidAPI?: MermaidApi }).mermaidAPI;
   const render: Mermaid['render'] = api?.render ? api.render.bind(api) : m.render.bind(m);
   try {
     m.initialize({
       startOnLoad: false,
       theme: mermaidThemeFor(ctx.theme),
       fontFamily: ctx.fontFamily,
-      // Opening a .md file must never run its diagram's HTML or click
-      // handlers — strict disables HTML labels and click bindings.
+      // Opening a .md file must never run its diagram's script or click
+      // handlers — strict takes script out of HTML labels and disables
+      // click bindings. It leaves pictures in them: see LABEL_PURIFY.
       securityLevel: 'strict',
+      dompurifyConfig: LABEL_PURIFY,
       // Throw instead of drawing mermaid's own error svg; we show a
       // friendly message (buildDiagramError) in the diagram's place.
       suppressErrorRendering: true,
+      // A diagram's own %%{init}%% can't put the pictures back. It keeps
+      // its fonts and CSS: a url() there reaches only the web, the app's
+      // own pages or the asset protocol, whose handler refuses a share.
+      secure: [...MERMAID_SECURE_KEYS, 'dompurifyConfig'],
     });
+    // Parsing can lazy-load the diagram's module, so it gets the timeout
+    // too: one that never settles would block every later render.
+    if (await withTimeout(namesUnsafePicture(api, source), renderTimeoutMs)) throw new Error(UNSAFE_PICTURE);
     const { svg } = await withTimeout(render(id, source), renderTimeoutMs);
+    if (drawsUnsafePicture(svg)) throw new Error(UNSAFE_PICTURE);
     entry = { outcome: { ok: true, svg }, id };
   } catch (err) {
     // Not cached (`finally` still cleans up): a timeout says nothing
@@ -299,6 +897,32 @@ export function applyDiagramSizing(svg: SVGSVGElement): void {
   if (!natural) return;
   svg.style.minWidth = `${Math.round(natural * MIN_DIAGRAM_SCALE)}px`;
   if (!svg.style.maxWidth) svg.style.maxWidth = `${Math.round(natural * 1000) / 1000}px`;
+}
+
+// A diagram may declare links (`click A href "…"`, gantt and class
+// diagram links); mermaid keeps them under strict security, wrapping the
+// node in an svg <a>. Clicked, one would take the whole window to the
+// page it names, and in the editor a click on a node only means "select
+// it". So every diagram link loses its target once the svg is in place;
+// the node and its look stay. A form in an HTML label would do the same
+// through its button; mermaid's sanitizer is told to drop them
+// (renderMermaid), and any that get past it go here, keeping their words.
+// Not only an <a> is a link: WebKit follows a click on any MathML element
+// with an href, and an HTML label may hold an image map's <area>. So
+// everything loses its target but the svg elements whose href is a
+// picture (mermaid's icons, already vetted by drawsUnsafePicture).
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
+export function disarmDiagramLinks(root: ParentNode): void {
+  for (const el of root.querySelectorAll('*')) {
+    if (el.namespaceURI === SVG_NS && LINKED_PICTURES.includes(el.localName.toLowerCase())) continue;
+    el.removeAttributeNS(XLINK_NS, 'href');
+    el.removeAttribute('xlink:href');
+    el.removeAttribute('href');
+    if (el.localName === 'a') el.removeAttribute('target');
+  }
+  for (const el of root.querySelectorAll('form, button')) el.replaceWith(...el.childNodes);
+  for (const el of root.querySelectorAll('input, select, textarea')) el.remove();
 }
 
 // What a reader sees in place of a diagram mermaid can't draw: plain

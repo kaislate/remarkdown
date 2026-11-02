@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // A highlight dragged across two paragraphs must come back after the
 // document is closed and reopened (it used to be orphaned).

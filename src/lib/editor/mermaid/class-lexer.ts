@@ -3,6 +3,7 @@
 // rules, same order — jison takes the FIRST rule that matches, not the
 // longest, and so does this. Tokens carry offsets into the lexer text
 // (see entity-text.ts) so the parser can map them back to the source.
+import { aheadOnLine } from './line-ahead';
 
 export interface Tok {
   type: string;
@@ -166,11 +167,17 @@ const STATES: Record<string, number[]> = {
   INITIAL: withCommon([0, 1, 2, 3, 4, 5, 6, 8, 10, 13, 14, 15, 16, 17, 18, 27, 28, 29, 38, 82, 83, 84, 85, 96]),
 };
 
+// The `.*direction` rules, by index, and what must follow on the line
+// for them to match (see line-ahead.ts).
+const DIRECTION_RULES: Record<number, string> = { 0: 'direction\\s+TB', 1: 'direction\\s+BT', 2: 'direction\\s+RL', 3: 'direction\\s+LR' };
+
 // Lex `text` from `start`. Returns the tokens (ending with EOF) or the
 // offset where no rule matched.
 export function lexClass(text: string, start: number): { ok: true; tokens: Tok[] } | { ok: false; at: number } {
   const lx = new Lexer();
   const tokens: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(DIRECTION_RULES)) ahead[+idx] = aheadOnLine(text, pattern);
   let pos = start;
   let guard = 0;
   for (;;) {
@@ -178,10 +185,12 @@ export function lexClass(text: string, start: number): { ok: true; tokens: Tok[]
     let matched = false;
     const rest = text.slice(pos);
     for (const idx of STATES[lx.state]) {
+      if (ahead[idx] && !ahead[idx](pos)) continue;
       const rule = RULES[idx];
       const m = rule.re.exec(rest);
       if (!m) continue;
       const before = lx.states.length;
+      const stateBefore = lx.state;
       const type = rule.act(lx, m[0]);
       const t = { type: type ?? '', text: m[0], start: pos, end: pos + m[0].length };
       pos += m[0].length;
@@ -189,6 +198,11 @@ export function lexClass(text: string, start: number): { ok: true; tokens: Tok[]
       if (type) {
         tokens.push(t);
         if (type === 'EOF') return { ok: true, tokens };
+        // An empty token that leaves the state as it was (the rest of
+        // an unclosed generic, body or accDescr block, at the end) would
+        // come back forever: give now the error the guard gave a
+        // million tokens (most of a second) later.
+        if (m[0].length === 0 && lx.states.length === before && lx.state === stateBefore) return { ok: false, at: pos };
       } else if (m[0].length === 0 && lx.states.length === before) {
         // A zero-length skip that changes nothing would loop forever.
         return { ok: false, at: pos };

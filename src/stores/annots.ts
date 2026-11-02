@@ -1,11 +1,13 @@
 import { writable, derived, get } from 'svelte/store';
-import { resolveAnchor } from '../lib/anchoring';
+import { blockById, resolveAnchor, resolvingPass } from '../lib/anchoring';
 import type { Annotation, Drawing } from '../lib/schema';
 import { activeProxy, activeSession, type DocSession } from './sessions';
 
 export interface ResolvedAnnotation {
   annotation: Annotation;
-  range: Range; // for highlights/notes. For drawings this is a placeholder; DrawLayer uses anchorBlock directly.
+  // For highlights, notes and drawings anchored to text. For drawings
+  // anchored to a block it's a placeholder; DrawLayer uses the block directly.
+  range: Range;
 }
 
 // The active tab's annotations (proxy onto the active session's store).
@@ -141,26 +143,29 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
     if (a.type === 'drawing') {
       const d = a as Drawing;
       let resolves: boolean;
+      let range: Range | null = null;
       switch (d.shape.kind) {
         case 'circle':
         case 'rectangle':
         case 'underline':
         case 'strikethrough':
-          // TextAnchor shapes — resolve the same way highlights/notes do.
-          resolves = resolveAnchor(d.shape.anchor, $root) !== null;
+          // TextAnchor shapes — resolve the same way highlights/notes do,
+          // and keep the range, so drawing them doesn't search again.
+          range = resolveAnchor(d.shape.anchor, $root);
+          resolves = range !== null;
           break;
         case 'circle-empty':
         case 'margin-bar':
         case 'freehand':
           // BlockAnchor / BlockEmAnchor shapes — the referenced block must exist.
-          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchor.blockId)}"]`);
+          resolves = !!blockById($root, d.shape.anchor.blockId);
           break;
         case 'freehand-legacy':
           // Pre-refactor shape: top-level anchorBlock field.
-          resolves = !!$root.querySelector(`[data-block-id="${CSS.escape(d.shape.anchorBlock)}"]`);
+          resolves = !!blockById($root, d.shape.anchorBlock);
           break;
       }
-      if (resolves) resolved.push({ annotation: d, range: null as unknown as Range });
+      if (resolves) resolved.push({ annotation: d, range: range as Range });
       else orphanedIds.add(d.id);
       continue;
     }
@@ -171,15 +176,17 @@ function partition($annots: Annotation[], $root: HTMLElement | null): {
   return { resolved, orphanedIds };
 }
 
-export const resolvedAnnots = derived(
-  [annots, currentViewerRoot, docEpoch],
-  ([$annots, $root]) => partition($annots, $root).resolved,
-);
-
-export const orphanedAnnots = derived(
+// Resolving is the expensive part with many annotations (every anchor is
+// searched for in the article), so it runs once per change, in one pass that
+// builds the article's text once, and both lists below share the result.
+const partitioned = derived(
   [annots, currentViewerRoot, docEpoch],
   ([$annots, $root]) => {
-    const { orphanedIds } = partition($annots, $root);
-    return $annots.filter((a) => orphanedIds.has(a.id));
+    const { resolved, orphanedIds } = resolvingPass(() => partition($annots, $root));
+    return { resolved, orphaned: $annots.filter((a) => orphanedIds.has(a.id)) };
   },
 );
+
+export const resolvedAnnots = derived(partitioned, ($p) => $p.resolved);
+
+export const orphanedAnnots = derived(partitioned, ($p) => $p.orphaned);

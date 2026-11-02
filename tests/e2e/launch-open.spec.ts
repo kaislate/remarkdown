@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // GitHub #24: double-clicking a .md file opened remarkdown on the welcome
 // doc (or nothing) instead of the file. Rust queues the launch paths; the

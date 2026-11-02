@@ -28,6 +28,8 @@
 // drives the source-preserving edits in state-edit.ts.
 import { decodeMermaidEntities } from '../mermaid-parser';
 import { findPreamble, type Span } from './source-text';
+import { styleSemicolons, swapTagQuotes } from './entity-text';
+import { aheadOnLine } from './line-ahead';
 
 export type StateDirection = 'TB' | 'BT' | 'LR' | 'RL';
 export type StateKind = 'normal' | 'fork' | 'join' | 'choice';
@@ -245,27 +247,95 @@ function matchRanges(text: string, re: RegExp): Array<[number, number]> {
   return out;
 }
 
+// What mermaid's cleanupComments removes, /^\s*%%(?!{)[^\n]+\n?/gm,
+// found by hand: from a line start, the blank lines and spaces after it
+// and then a `%%` line. The regex tried again from every line start in
+// a run of blank lines that doesn't end in a comment, each time
+// scanning to the end of the run (quadratic); they all fail alike, so
+// this goes on after the run.
+export function commentRanges(text: string): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const space = /\s*/y;
+  const lineBreak = /[\n\r\u2028\u2029]/g;
+  // Always a line start: 0, or just after a line break.
+  let p = 0;
+  while (p < text.length) {
+    space.lastIndex = p;
+    const q = p + space.exec(text)![0].length;
+    if (text.startsWith('%%', q) && q + 2 < text.length && text[q + 2] !== '{' && text[q + 2] !== '\n') {
+      const nl = text.indexOf('\n', q + 2);
+      const end = nl < 0 ? text.length : nl + 1;
+      out.push([p, end]);
+      p = end;
+      continue;
+    }
+    lineBreak.lastIndex = q;
+    const next = lineBreak.exec(text);
+    if (!next) break;
+    p = next.index + 1;
+  }
+  return out;
+}
+
+const isBreak = (c: string | undefined) => c === '\n' || c === '\r';
+
+// The end of a frontmatter close at `c` (a line break, `---`, then
+// whitespace holding a line break: up to the last of those), or 0.
+function closeEnd(text: string, c: number): number {
+  if (!isBreak(text[c]) || !text.startsWith('---', c + 1)) return 0;
+  let end = 0;
+  for (let k = c + 4; k < text.length && /\s/.test(text[k]); k++) if (isBreak(text[k])) end = k + 1;
+  return end;
+}
+
+// How much of `text` mermaid's frontmatter regex,
+// /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s, matches (0: none), found
+// by hand. The regex tries each line break in the whitespace after the
+// opening `---` as the one that ends that line, the last one first, and
+// from each reads on to the first close: with many breaks and no close
+// it read the rest of the source once per break. Every close after the
+// last break is after the others too, so only the first of those is
+// looked for; the one close an earlier break also reaches is the one
+// starting at the last break itself, when that ends the whitespace.
+export function frontMatterLength(text: string): number {
+  if (!text.startsWith('---')) return 0;
+  let runEnd = 3;
+  let last = -1;
+  let previous = -1;
+  for (; runEnd < text.length && /\s/.test(text[runEnd]); runEnd++) {
+    if (isBreak(text[runEnd])) [previous, last] = [last, runEnd];
+  }
+  if (last < 0) return 0;
+  const close = /[\n\r]---/g;
+  close.lastIndex = last + 1;
+  for (let m = close.exec(text); m; m = close.exec(text)) {
+    const end = closeEnd(text, m.index);
+    if (end) return end;
+  }
+  return previous >= 0 && last === runEnd - 1 ? closeEnd(text, last) : 0;
+}
+
 // mermaid's preprocessDiagram + Diagram.fromText, in the same order.
 function preprocess(source: string): Mapped {
   let m: Mapped = { text: source, map: Array.from({ length: source.length + 1 }, (_, i) => i) };
   // cleanupText: CRLF / CR → LF; `<tag a="x">` attribute quotes → '.
   m = dropRanges(m, matchRanges(m.text, /\r(?=\n)/g));
   let t = m.text.replace(/\r/g, '\n');
-  t = t.replace(/<(\w+)([^>]*)>/g, (_s, tag: string, attrs: string) => '<' + tag + attrs.replace(/="([^"]*)"/g, "='$1'") + '>');
+  t = swapTagQuotes(t);
   m = { text: t, map: m.map };
   // Frontmatter.
-  const fm = /^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+/s.exec(m.text);
-  if (fm) m = dropRanges(m, [[0, fm[0].length]]);
+  const fm = frontMatterLength(m.text);
+  if (fm) m = dropRanges(m, [[0, fm]]);
   // %%{…}%% directives (anywhere).
   m = dropRanges(m, matchRanges(m.text, /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi));
   // %% comment lines, then leading whitespace.
-  m = dropRanges(m, matchRanges(m.text, /^\s*%%(?!{)[^\n]+\n?/gm));
+  m = dropRanges(m, commentRanges(m.text));
   const lead = /^\s*/.exec(m.text)![0].length;
   if (lead) m = dropRanges(m, [[0, lead]]);
   // encodeEntities: a style / classDef line holding `#…;` loses its
   // last `;` (so `#f00;` isn't read as an entity) …
-  for (const re of [/style.*:\S*#.*;/g, /classDef.*:\S*#.*;/g]) {
-    m = dropRanges(m, matchRanges(m.text, re).map(([, e]) => [e - 1, e] as [number, number]));
+  for (const keyword of ['style', 'classDef'] as const) {
+    m = dropRanges(m, styleSemicolons(m.text, keyword).map((e) => [e, e + 1] as [number, number]));
   }
   // … and every `#name;` / `#123;` becomes a placeholder the lexer
   // can't see into (mermaid turns it back into an entity in the SVG).
@@ -355,8 +425,19 @@ interface Tok {
 
 const DIRS: StateDirection[] = ['TB', 'BT', 'RL', 'LR'];
 
+// The rules that start with `.*`, by index, and what must follow on the
+// line for them to match (see line-ahead.ts).
+const LINE_RULES: Record<number, string> = {
+  4: 'direction\\s+TB', 5: 'direction\\s+BT', 6: 'direction\\s+RL', 7: 'direction\\s+LR',
+  39: '<<fork>>', 40: '<<join>>', 41: '<<choice>>',
+  42: '\\[\\[fork\\]\\]', 43: '\\[\\[join\\]\\]', 44: '\\[\\[choice\\]\\]',
+  45: 'direction\\s+TB', 46: 'direction\\s+BT', 47: 'direction\\s+RL', 48: 'direction\\s+LR',
+};
+
 function lex(text: string): Tok[] | string {
   const toks: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(LINE_RULES)) ahead[+idx] = aheadOnLine(text, pattern, 'i');
   const stack = ['INITIAL'];
   const push = (s: string) => stack.push(s);
   const pop = () => {
@@ -372,6 +453,7 @@ function lex(text: string): Tok[] | string {
     let idx = -1;
     let raw = '';
     for (const r of rules) {
+      if (ahead[r] && !ahead[r](pos)) continue;
       const re = RULES[r];
       re.lastIndex = pos;
       const mm = re.exec(text);

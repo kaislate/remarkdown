@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { createAnchor, resolveAnchor, type Anchor } from '../../src/lib/anchoring';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createAnchor, resolveAnchor, resolvingPass, type Anchor } from '../../src/lib/anchoring';
 
 // Small helper: build a viewer root from HTML for testing.
 function buildRoot(html: string): HTMLElement {
@@ -287,5 +287,421 @@ describe('cross-block anchors over a diagram', () => {
     expect(resolveAnchor(a, root)).not.toBeNull();
     root.querySelector('.mermaid-block')!.innerHTML = svg('mermaid-7');
     expect(resolveAnchor(a, root)).not.toBeNull();
+  });
+});
+
+// A crafted sidecar can hold thousands of one-letter anchors. Scoring every
+// place a letter occurs in a long article, for each of them, froze the app
+// for minutes; the work per anchor has to stay small however common its text.
+describe('anchors whose text is everywhere', () => {
+  const words = ['the', 'reader', 'sees', 'every', 'line', 'here', 'before', 'we', 'edit'];
+  // About 330 KB of text, with tens of thousands of each common letter.
+  const longText = (): string => {
+    const out: string[] = [];
+    for (let i = 0; out.join(' ').length < 1000; i++) out.push(words[i % words.length]);
+    const chunk = out.join(' ') + ' ';
+    return chunk.repeat(330);
+  };
+
+  it('resolve quickly, even thousands of them over a long article', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">${longText()}</p><p data-block-id="p:2">${longText()}</p>`,
+    );
+    const anchor: Anchor = { text: 'e', prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:2' };
+    const start = performance.now();
+    // As the annotation store resolves them: in one pass over the article.
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(anchor, root);
+    });
+    // Scoring every "e" took about 15 ms per anchor; this is 2,000 of them.
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('stay quick on the per-block path too', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${longText()}</p>`);
+    const anchor: Anchor = { text: 'e', prefix: 'x', suffix: 'y', blockHint: 'gone' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(anchor, root);
+    });
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('still resolve when their whole context is found in exactly one place', () => {
+    const root = buildRoot(
+      `<p data-block-id="p:1">${longText()}</p><p data-block-id="p:2">a unique marker sentence. ${longText()}</p>`,
+    );
+    const anchor: Anchor = { text: 'e', prefix: 'a uniqu', suffix: ' marker', blockHint: 'gone' };
+    const range = resolveAnchor(anchor, root);
+    expect(range?.toString()).toBe('e');
+    const block = (range!.startContainer.parentElement as HTMLElement).dataset.blockId;
+    expect(block).toBe('p:2');
+    expect(range!.startOffset).toBe('a uniqu'.length);
+  });
+
+  // Turning a found offset back into a place in the page walked every text
+  // node of the article, twice per anchor: about 70 ms an anchor on a long
+  // article in Chromium, minutes for a sidecar of cross-paragraph anchors.
+  // Inside a pass each scope is walked once, however many anchors land in it.
+  it('walk the article once per pass, not once per anchor', () => {
+    const paras = Array.from({ length: 60 }, (_, i) => `<p data-block-id="p:${i}">Paragraph ${i} says its piece.</p>`);
+    const root = buildRoot(paras.join(''));
+    const across = document.createRange();
+    across.setStart(root.querySelector('[data-block-id="p:40"]')!.firstChild!, 13);
+    across.setEnd(root.querySelector('[data-block-id="p:41"]')!.firstChild!, 9);
+    const crossing = createAnchor(across, root)!;
+    const within = createAnchor(rangeOf(root, 'p:50', 'its piece'), root)!;
+    const expected = [across.toString(), 'its piece'];
+
+    const walkers = vi.spyOn(document, 'createTreeWalker');
+    try {
+      const found = resolvingPass(() => {
+        const out: Array<string | undefined> = [];
+        for (let i = 0; i < 100; i++) {
+          out.push(resolveAnchor(crossing, root)?.toString(), resolveAnchor(within, root)?.toString());
+        }
+        return out;
+      });
+      expect(found).toEqual(Array.from({ length: 100 }, () => expected).flat());
+      // One walk of the article (its text and where each node starts) and one
+      // of the paragraph, instead of two for every anchor.
+      expect(walkers.mock.calls.length).toBeLessThanOrEqual(2);
+    } finally {
+      walkers.mockRestore();
+    }
+  });
+
+  it('find an offset at the edge between two text nodes the same way inside a pass', () => {
+    const root = buildRoot(
+      '<p data-block-id="p:1">one <b>two</b><i></i> three</p><p data-block-id="p:2">four <em>five</em> six</p>',
+    );
+    const across = document.createRange();
+    across.setStart(root.querySelector('b')!.firstChild!, 3);
+    across.setEnd(root.querySelector('em')!.firstChild!, 0);
+    const anchor = createAnchor(across, root)!;
+    const outside = resolveAnchor(anchor, root)!;
+    const inside = resolvingPass(() => resolveAnchor(anchor, root))!;
+    expect(inside.startContainer).toBe(outside.startContainer);
+    expect(inside.startOffset).toBe(outside.startOffset);
+    expect(inside.endContainer).toBe(outside.endContainer);
+    expect(inside.endOffset).toBe(outside.endOffset);
+  });
+
+  it('give the same answer inside a pass as outside one', () => {
+    const root = buildRoot(
+      '<p data-block-id="p:1">One fish, two fish.</p><p data-block-id="p:2">Red fish, blue fish.</p>',
+    );
+    const anchor = createAnchor(rangeOf(root, 'p:2', 'blue'), root)!;
+    const outside = resolveAnchor(anchor, root)?.toString();
+    const inside = resolvingPass(() => resolveAnchor(anchor, root)?.toString());
+    expect(inside).toBe('blue');
+    expect(inside).toBe(outside);
+  });
+
+  it('are orphaned when their context is found nowhere, or in several places', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${longText()}</p>`);
+    expect(resolveAnchor({ text: 'e', prefix: 'zzz', suffix: 'qqq', blockHint: 'p:1' }, root)).toBeNull();
+    expect(resolveAnchor({ text: 'e', prefix: 'th', suffix: ' reader', blockHint: 'p:1' }, root)).toBeNull();
+  });
+});
+
+// Each anchor searches the article up to three times, so a sidecar of
+// 20,000 anchors (the most one may hold) over a long article took minutes,
+// however few places each was scored at. What one pass may search is capped.
+describe('a pass over many anchors', () => {
+  it('stays quick when every anchor searches the whole article and is found nowhere', () => {
+    // The text's first letters match everywhere, the slowest case for a search.
+    const root = buildRoot(`<p data-block-id="p:1">${'x'.repeat(330_000)}</p><p data-block-id="p:2">the end</p>`);
+    const nowhere: Anchor = { text: 'xxQ', prefix: '', suffix: '', blockHint: 'gone' };
+    const hinted: Anchor = { ...nowhere, blockHint: 'p:1' };
+    const findable: Anchor = { text: 'the end', prefix: '', suffix: '', blockHint: 'p:2' };
+    const start = performance.now();
+    const found = resolvingPass(() => {
+      const out: Array<Range | null> = [];
+      for (let i = 0; i < 10_000; i++) out.push(resolveAnchor(nowhere, root), resolveAnchor(hinted, root));
+      // Past the cap the rest of the pass's anchors are left unplaced; the
+      // annotations aren't changed, and the next pass tries them again.
+      out.push(resolveAnchor(findable, root));
+      return out;
+    });
+    // About a second and a half here; uncapped, about a hundred.
+    expect(performance.now() - start).toBeLessThan(5_000);
+    expect(found.every((r) => r === null)).toBe(true);
+    expect(resolvingPass(() => resolveAnchor(findable, root))?.toString()).toBe('the end');
+  });
+
+  it('stops inside one anchor whose search alone would run past the cap', () => {
+    // Text that's half the paragraph is found at every place in the first
+    // half, and each find reads all of it: four seconds for this one anchor.
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(8_000_000)}</p>`);
+    const half: Anchor = { text: 'a'.repeat(4_000_000), prefix: '', suffix: '', blockHint: 'p:1' };
+    const start = performance.now();
+    const found = resolvingPass(() => resolveAnchor(half, root));
+    // About half a second here.
+    expect(performance.now() - start).toBeLessThan(1_500);
+    expect(found).toBeNull();
+  });
+
+  // A browser's search can cost far more than the characters it passes over.
+  // Chromium's compares up to the whole of a long text at each place when
+  // the text's last 250 characters are all found there and what's before
+  // them isn't: 80 ns a character with 250 of them, 2 µs with 5,000.
+  it('stays quick when every anchor is a text that is slow to search for', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(300_000)}</p>`);
+    const slow: Anchor = { text: `${'a'.repeat(10)}b${'a'.repeat(250)}`, prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:1' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(slow, root);
+    });
+    // Thirty seconds before.
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('stays quick when one search alone would take seconds', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(300_000)}</p>`);
+    const slow: Anchor = { text: `${'a'.repeat(10)}b${'a'.repeat(20_000)}`, prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:1' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 20; i++) resolveAnchor(slow, root);
+    });
+    // Two seconds a search before, and nothing counted them as more than one
+    // pass over the paragraph.
+    expect(performance.now() - start).toBeLessThan(1_500);
+  });
+
+  it('still finds a long text whose opening words also occur earlier', () => {
+    const passage = 'The reader sees every line here before we edit any of it, and then reads on. '.repeat(4);
+    const opening = passage.slice(0, 120);
+    const root = buildRoot(
+      `<p data-block-id="p:1">${opening} but then it goes elsewhere.</p>` +
+        `<p data-block-id="p:2">Before it. ${passage} After it.</p>`,
+    );
+    const within: Anchor = { text: passage, prefix: 'Before it. ', suffix: ' After it.', blockHint: 'gone' };
+    const across: Anchor = { ...within, endBlockHint: 'p:2' };
+    for (const anchor of [across, within]) {
+      const range = resolvingPass(() => resolveAnchor(anchor, root));
+      expect(range?.toString()).toBe(passage);
+      expect((range!.startContainer.parentElement as HTMLElement).dataset.blockId).toBe('p:2');
+    }
+  });
+
+  it('stops at a time limit whatever the searches cost, and the next pass tries again', () => {
+    const root = buildRoot('<p data-block-id="p:1">One fish, two fish.</p>');
+    const anchor: Anchor = { text: 'two', prefix: 'One fish, ', suffix: ' fish.', blockHint: 'p:1' };
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      const found = resolvingPass(() => {
+        const first = resolveAnchor(anchor, root)?.toString();
+        now += 60_000;
+        return [first, resolveAnchor(anchor, root)?.toString()];
+      });
+      expect(found).toEqual(['two', undefined]);
+      expect(resolvingPass(() => resolveAnchor(anchor, root))?.toString()).toBe('two');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('still places hundreds of annotations in a long article whose paragraphs all moved', () => {
+    // A paragraph added at the top renumbers every block after it, so no
+    // anchor is in the block it remembers and each searches the whole article.
+    const filler = 'the reader sees every line here before we edit it. '.repeat(23);
+    const para = (i: number) => `<p data-block-id="p:${i}">Paragraph ${i} opens. ${filler}Paragraph ${i} closes.</p>`;
+    const count = 250;
+    const before = buildRoot(Array.from({ length: count }, (_, i) => para(i)).join(''));
+    expect(before.textContent!.length).toBeGreaterThan(300_000);
+    const anchors = Array.from({ length: count }, (_, i) => [
+      createAnchor(rangeOf(before, `p:${i}`, `Paragraph ${i} opens`), before)!,
+      createAnchor(rangeOf(before, `p:${i}`, `Paragraph ${i} closes`), before)!,
+    ]).flat();
+    before.remove();
+
+    const moved = buildRoot(
+      '<p data-block-id="p:0">A new first paragraph.</p>' +
+        Array.from({ length: count }, (_, i) => para(i)).join('').replace(/data-block-id="p:(\d+)"/g, (_, n) => `data-block-id="p:${Number(n) + 1}"`),
+    );
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+});
+
+describe('anchors in repetitive text', () => {
+  // Every match of an anchor's text is compared in full, so a long
+  // anchor over text that repeats it everywhere (a crafted file and
+  // sidecar) took seconds for each annotation. Past a bound it is
+  // ambiguous: nothing to pick between that many places.
+  it('gives up on a long anchor that matches nearly everywhere, quickly', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(100_000)}</p>`);
+    const anchor: Anchor = { text: 'a'.repeat(50_000), prefix: '', suffix: '', blockHint: 'p:1' };
+    const t0 = performance.now();
+    expect(resolveAnchor(anchor, root)).toBeNull();
+    expect(resolveAnchor({ ...anchor, blockHint: 'p:9' }, root)).toBeNull();
+    expect(resolveAnchor({ ...anchor, endBlockHint: 'p:1' }, root)).toBeNull();
+    // About 0.2 s here, and up to 2.5 s on a CI runner; the code before
+    // took 2 s here for each of the three.
+    expect(performance.now() - t0).toBeLessThan(5_000);
+  });
+
+  it('still finds a short word among thousands of its copies', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'x the '.repeat(20_000)}unique the end</p>`);
+    const range = resolveAnchor({ text: 'the', prefix: 'x the unique ', suffix: ' end', blockHint: 'p:1' }, root);
+    expect(range?.toString()).toBe('the');
+    expect(range?.startOffset).toBe(20_000 * 6 + 7);
+  });
+});
+
+// Block ids are positions, so a paragraph added at the top renumbers every
+// block after it, and no highlight is in the block it remembers. Searching
+// the whole article for each of a heavy reader's thousand highlights is more
+// than a pass may search: most of them were shown as orphaned.
+describe('highlights in an article whose paragraphs moved', () => {
+  // A heavy reader's article: `count` paragraphs of about `size` characters,
+  // with `perPara` highlights in each, saved in the order they were made
+  // (not the article's), then a paragraph added at the top.
+  function heavyReader(count: number, size: number, perPara: 1 | 2) {
+    const sentence = 'the reader sees every line here before we edit it. ';
+    const filler = sentence.repeat(Math.max(1, Math.round((size - 40) / sentence.length)));
+    const body = (i: number) => `Paragraph ${i} opens. ${filler}Paragraph ${i} closes.`;
+    // What createAnchor saves for a selection in a paragraph of plain text
+    // (made here directly, as two thousand of them take seconds in jsdom).
+    const anchors: Anchor[] = Array.from({ length: count }, (_, i) =>
+      [`Paragraph ${i} opens`, `Paragraph ${i} closes`].slice(0, perPara).map((text) => {
+        const full = body(i);
+        const at = full.indexOf(text);
+        return { text, prefix: full.slice(Math.max(0, at - 32), at), suffix: full.slice(at + text.length, at + text.length + 32), blockHint: `p:${i + 1}` };
+      }),
+    ).flat();
+    // Made in no particular order: a fixed shuffle.
+    let seed = 7;
+    for (let i = anchors.length - 1; i > 0; i--) {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      const j = seed % (i + 1);
+      [anchors[i], anchors[j]] = [anchors[j], anchors[i]];
+    }
+    const paras = ['A new first paragraph.', ...Array.from({ length: count }, (_, i) => body(i))];
+    const moved = buildRoot(paras.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    return { anchors, moved };
+  }
+
+  it('places a thousand highlights in a 600 KB article after a paragraph is added at the top, quickly', () => {
+    const { anchors, moved } = heavyReader(1_000, 600, 1);
+    expect(moved.textContent!.length).toBeGreaterThan(580_000);
+    const start = performance.now();
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    // Within the time a pass may take, or the rest would be left unplaced.
+    expect(performance.now() - start).toBeLessThan(1_000);
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places two thousand highlights in a 650 KB article after a paragraph is added at the top', () => {
+    const { anchors, moved } = heavyReader(1_000, 650, 2);
+    expect(moved.textContent!.length).toBeGreaterThan(630_000);
+    const start = performance.now();
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    // Within the time a pass may take, or the rest would be left unplaced.
+    expect(performance.now() - start).toBeLessThan(1_000);
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places them all in a 1.2 MB article too', () => {
+    const { anchors, moved } = heavyReader(1_000, 1_150, 1);
+    expect(moved.textContent!.length).toBeGreaterThan(1_100_000);
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('places them all when paragraphs were added in several places', () => {
+    // Every hundredth paragraph has a new one before it, so how far each
+    // highlight's paragraph moved differs through the article.
+    const { anchors, moved: once } = heavyReader(1_000, 600, 1);
+    once.remove();
+    const paras = Array.from(once.children).flatMap((p, i) => (i > 0 && i % 100 === 0 ? [`An added paragraph ${i}.`, p.textContent!] : [p.textContent!]));
+    const moved = buildRoot(paras.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const found = resolvingPass(() => anchors.map((a) => resolveAnchor(a, moved)?.toString()));
+    expect(found).toEqual(anchors.map((a) => a.text));
+  });
+
+  it('puts a highlight in the paragraph it came from when another moved paragraph reads the same', () => {
+    // Two paragraphs with the same words: the hint is what tells them apart.
+    const root0 = buildRoot('<p data-block-id="p:1">Same words here.</p><p data-block-id="p:2">Other.</p><p data-block-id="p:3">Same words here.</p>');
+    const second = createAnchor(rangeOf(root0, 'p:3', 'words'), root0)!;
+    const other = createAnchor(rangeOf(root0, 'p:2', 'Other'), root0)!;
+    root0.remove();
+    const moved = buildRoot(
+      '<p data-block-id="p:1">New.</p><p data-block-id="p:2">Same words here.</p><p data-block-id="p:3">Other.</p><p data-block-id="p:4">Same words here.</p>',
+    );
+    const range = resolvingPass(() => {
+      resolveAnchor(other, moved);
+      return resolveAnchor(second, moved);
+    });
+    expect((range!.startContainer.parentElement as HTMLElement).dataset.blockId).toBe('p:4');
+  });
+
+  // A song: its title, then four verses, each followed by the same chorus.
+  // A line added under the title moves every block down by one, so the
+  // chorus a highlight was in is one place below where it was, and the one
+  // before it is one place above.
+  describe('in a song whose chorus repeats, after a line is added at the top', () => {
+    const chorus = 'And we sing along, we sing along, the night is young and so are we, so sing along with me tonight.';
+    const verses = [
+      'Walking down the road in the morning light.',
+      'Rain on the windows, coffee on the stove.',
+      'Friends at the table, stories to be told.',
+      'Lights in the harbour, boats coming home.',
+    ];
+    const song = (top: string[]) =>
+      buildRoot([...top, ...verses.flatMap((v) => [v, chorus])].map((b, i) => `<p data-block-id="p:${i + 1}">${b}</p>`).join(''));
+    const blockOf = (r: Range | null) => (r ? (r.startContainer.parentElement as HTMLElement).dataset.blockId : null);
+    // Title p:1, then verse and chorus pairs: choruses at p:3, 5, 7 and 9.
+    function highlights(ids: string[], text: string) {
+      const before = song(['My Song']);
+      const anchors = ids.map((id) => createAnchor(rangeOf(before, id, text), before)!);
+      before.remove();
+      return { anchors, after: song(['My Song', 'by Someone']) };
+    }
+
+    it('never moves a highlight in the second chorus to the first', () => {
+      const { anchors, after } = highlights(['p:5'], 'the night is young');
+      const got = resolvingPass(() => blockOf(resolveAnchor(anchors[0], after)));
+      // Its own chorus, or unplaced (shown in Orphaned Annotations).
+      expect([null, 'p:6']).toContain(got);
+    });
+
+    it('never moves highlights in several choruses to the chorus before', () => {
+      const { anchors, after } = highlights(['p:5', 'p:7', 'p:9'], 'the night is young');
+      const got = resolvingPass(() => anchors.map((a) => blockOf(resolveAnchor(a, after))));
+      got.forEach((id, k) => expect([null, ['p:6', 'p:8', 'p:10'][k]]).toContain(id));
+    });
+
+    it('puts a chorus highlight in its own chorus once a verse beside it showed how far it moved', () => {
+      const before = song(['My Song']);
+      const verse = createAnchor(rangeOf(before, 'p:4', 'coffee'), before)!;
+      const chorusHighlight = createAnchor(rangeOf(before, 'p:5', 'the night is young'), before)!;
+      before.remove();
+      const after = song(['My Song', 'by Someone']);
+      const got = resolvingPass(() => [verse, chorusHighlight].map((a) => blockOf(resolveAnchor(a, after))));
+      expect(got).toEqual(['p:5', 'p:6']);
+    });
+  });
+
+  it('never puts a highlight on a copy of its paragraph near where paragraphs further on moved to', () => {
+    // A paragraph added at the top moved the start of the article by one,
+    // and four more further on moved the rest by five. Paragraph 10 (one
+    // place down now) reads the same as paragraph 17 (eight places down from
+    // where 10 was, a guess of five places plus three).
+    const para = (i: number) => (i === 9 || i === 16 ? 'Same words here, again and again.' : `Paragraph ${i} says its own thing ${i}.`);
+    const old = Array.from({ length: 300 }, (_, i) => para(i));
+    const root0 = buildRoot(old.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const far = createAnchor(rangeOf(root0, 'p:200', 'Paragraph 199 says'), root0)!;
+    const same = createAnchor(rangeOf(root0, 'p:10', 'words here'), root0)!;
+    root0.remove();
+    const added = ['New first.', ...old.slice(0, 150), 'Added a.', 'Added b.', 'Added c.', 'Added d.', ...old.slice(150)];
+    const moved = buildRoot(added.map((p, i) => `<p data-block-id="p:${i + 1}">${p}</p>`).join(''));
+    const blockOf = (r: Range | null) => (r ? (r.startContainer.parentElement as HTMLElement).dataset.blockId : null);
+    const got = resolvingPass(() => [far, same].map((a) => blockOf(resolveAnchor(a, moved))));
+    expect(got[0]).toBe('p:205');
+    // Its own paragraph, or unplaced; never the copy.
+    expect([null, 'p:11']).toContain(got[1]);
   });
 });

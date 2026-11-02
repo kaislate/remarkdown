@@ -5,12 +5,59 @@
 //    (spaces, brackets…) percent-encoded; a picture on another drive
 //    keeps its full path (POSIX has one root, so there it's always relative).
 //  - resolveImageSrc: what's in the markdown → a URL the window can load
-//    (web and data URLs as they are; files through the asset protocol).
+//    (web and data URLs as they are; files through the asset protocol;
+//    nothing at all for the unsafe ones below).
 
 import { platform } from './platform';
 
 export function isWebUrl(src: string): boolean {
-  return /^(https?:|asset:|data:|blob:|file:)/i.test(src) || /^https?:\/\/asset\.localhost/i.test(src);
+  return /^(https?:|data:|blob:)/i.test(src);
+}
+
+// Only ASCII escapes: every character that matters below is ASCII, and
+// this never fails on a stray % the way decodeURIComponent does.
+const decodeAscii = (s: string) => s.replace(/%([0-7][0-9A-Fa-f])/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)));
+
+// The src as the window's URL parser reads it: tabs and newlines dropped,
+// spaces and control characters trimmed, backslashes as slashes.
+const asParsed = (s: string) => s.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/\\/g, '/');
+
+function unsafeReading(s: string): boolean {
+  // \\host\share, \\?\…, \\.\…, //host (any slashes) and NT's \??\ prefix.
+  if (s.startsWith('//') || s.startsWith('/??/')) return true;
+  const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(s)?.[1].toLowerCase();
+  if (scheme === 'asset' || scheme === 'file' || scheme === 'ipc' || scheme === 'tauri') return true;
+  if (scheme !== 'http' && scheme !== 'https') return false;
+  // The app's own protocols are served from asset., ipc. and
+  // tauri.localhost, and WebView2 hands every http://asset.<anything>
+  // (ipc., tauri. too) to the app's own handlers whatever host follows, so
+  // those are refused on every OS: a document reads the same everywhere.
+  // The app isn't served over https, so an https:// one is a web address,
+  // as is any other *.localhost (a server on this machine). The parser
+  // undoes the tricks (http:host, %2E, user@, a trailing dot).
+  try {
+    const url = new URL(s);
+    const host = url.hostname;
+    return /^(asset|ipc|tauri)\.localhost$/i.test(host.replace(/\.+$/, '')) || (url.protocol === 'http:' && /^(asset|ipc|tauri)\./i.test(host));
+  } catch {
+    return true;
+  }
+}
+
+// A src a markdown file must never make the app load: the asset protocol
+// or another of the app's own URLs, a file: URL, or a network share or
+// device path. On Windows merely looking a share up signs in to it with
+// the user's password hash, so this is checked on the src as written and
+// on every percent-decoded form of it, before anything touches it.
+export function isUnsafeImageSrc(src: string): boolean {
+  let s = src;
+  for (let round = 0; round < 4; round++) {
+    if (unsafeReading(asParsed(s))) return true;
+    const next = decodeAscii(s);
+    if (next === s) return false;
+    s = next;
+  }
+  return true;
 }
 
 const isDrivePath = (p: string) => /^[A-Za-z]:[\\/]/.test(p);
@@ -49,6 +96,21 @@ export function imageSrcFor(docDir: string, picked: string): string {
   return [...up, ...to.slice(i).map(encodePart)].join('/');
 }
 
+// macOS mounts /net/<host> (and /Network/…) from that host the first time
+// anything looks there, and Linux's autofs often does the same for /net:
+// a picture there would reach out to whatever host the document names.
+// That costs a document opened from /net itself its pictures too: the
+// asset protocol refuses /net as well, and can't tell the document's own
+// host from another. macOS has had /net off by default since 10.15.
+// macOS also reaches them through /System/Volumes/Data, its data volume's
+// own path.
+const isAutomounted = (path: string) => /^\/(system\/volumes\/data\/)?(net|network)(\/|$)/i.test(joinPath('', path));
+
+// A file the window loads through the asset protocol.
+function fileUrl(path: string, toAssetUrl: (path: string) => string): string {
+  return platform() !== 'windows' && isAutomounted(path) ? '' : toAssetUrl(path);
+}
+
 function decode(src: string): string {
   try {
     return decodeURIComponent(src);
@@ -57,12 +119,33 @@ function decode(src: string): string {
   }
 }
 
+// The file an asset url the app made names, written as a markdown src (a
+// full path, encoded as imageSrcFor encodes one), or null for any other
+// src, or one naming a path that isn't a plain file path. A picture copied
+// from the reader carries such a url.
+export function fileSrcFromAssetUrl(src: string): string | null {
+  const m = /^(?:https?:\/\/asset\.localhost|asset:\/\/localhost)\/([^?#]+)$/i.exec(src);
+  if (!m) return null;
+  const path = decode(m[1]);
+  if (isUnsafeImageSrc(path)) return null;
+  const parts = splitPath(path).map(encodePart);
+  if (isDrivePath(path)) return [path.slice(0, 2), ...parts.slice(1)].join('/');
+  return path.startsWith('/') ? `/${parts.join('/')}` : null;
+}
+
 export function resolveImageSrc(src: string, baseDir: string | undefined, toAssetUrl: ((path: string) => string) | undefined): string {
-  if (!src || isWebUrl(src) || !toAssetUrl) return src;
+  if (!src) return src;
+  // Pasting from the reader used to save the reader's asset url in the
+  // markdown. One naming a plain file is read as that file, so it shows
+  // again and gets every check a path gets; any other is unsafe below.
+  src = fileSrcFromAssetUrl(src) ?? src;
+  // An empty src is a picture that asks for nothing.
+  if (isUnsafeImageSrc(src)) return '';
+  if (isWebUrl(src) || !toAssetUrl) return src;
   const path = decode(src);
   if (isDrivePath(path)) return toAssetUrl(slashes(path));
   // A leading slash is a full file path on macOS and Linux; Windows leaves it be.
-  if (path.startsWith('/') && platform() !== 'windows') return toAssetUrl(path);
+  if (path.startsWith('/') && platform() !== 'windows') return fileUrl(path, toAssetUrl);
   if (path.startsWith('/') || !baseDir) return src;
-  return toAssetUrl(joinPath(baseDir, path));
+  return fileUrl(joinPath(baseDir, path), toAssetUrl);
 }

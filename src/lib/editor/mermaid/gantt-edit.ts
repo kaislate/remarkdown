@@ -103,6 +103,9 @@ export interface GanttEditResult {
 
 // ── Writing text ─────────────────────────────────────────────────────
 
+// What `.` doesn't match.
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
 // Starts the lexer would read as a statement rather than a task name.
 const TASK_KEYWORD = /^(?:gantt\b|dateFormat\s|inclusiveEndDates\b|topAxis\b|axisFormat\s|tickInterval\s|includes\s|excludes\s|todayMarker\s|weekday\s|weekend\s|title\s|accTitle|accDescr|section\s|click\s|href\s|call\s|\d\d\d\d-\d\d-\d\d\b)/i;
 
@@ -449,6 +452,11 @@ class GanttDoc {
     throw new Failed('references did not settle');
   }
 
+  // The `after …` / `until …` and `click …` patterns below take the rest
+  // of the line as `[\s\S]*` and then turn down a line break in it, the
+  // lines `(.*)$` couldn't match: as `(.*)$`, a break after a long id
+  // list made the regex retry every shorter list, each time scanning to
+  // the break again.
   private findStaleReference(renderOf: Map<TaskEntry, string>): { target: TaskEntry; rewrite: (id: string) => void } | null {
     const stale = (id: string): TaskEntry | null => {
       if (this.created.has(id)) return null;
@@ -461,8 +469,8 @@ class GanttDoc {
     for (const e of this.tasks()) {
       for (const role of ['start', 'end'] as const) {
         const text = e.t.get(role);
-        const m = text && new RegExp(`^(${role === 'start' ? 'after' : 'until'}\\s+)([\\d\\w\\- ]+)(.*)$`).exec(text);
-        if (!m) continue;
+        const m = text && new RegExp(`^(${role === 'start' ? 'after' : 'until'}\\s+)([\\d\\w\\- ]+)([\\s\\S]*)$`).exec(text);
+        if (!m || LINE_BREAK.test(m[3])) continue;
         const ids = m[2].split(' ').filter(Boolean);
         for (const id of ids) {
           const target = stale(id);
@@ -474,8 +482,8 @@ class GanttDoc {
       const k = this.entries.findIndex((e) => e.kind === 'line' && e.orig === c.line);
       if (k < 0) continue;
       const entry = this.entries[k] as LineEntry;
-      const m = /^(\s*click\s+)(\S+)(.*)$/i.exec(entry.text);
-      if (!m) continue;
+      const m = /^(\s*click\s+)(\S+)([\s\S]*)$/i.exec(entry.text);
+      if (!m || LINE_BREAK.test(m[3])) continue;
       const ids = m[2].split(',');
       for (const id of ids) {
         const target = stale(id);

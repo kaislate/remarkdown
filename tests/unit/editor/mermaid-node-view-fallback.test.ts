@@ -103,6 +103,17 @@ describe("MermaidNodeView: diagrams that can't be edited visually", () => {
     view.destroy();
   });
 
+  // mermaid only draws a "too big" notice past its size limit; the
+  // editor doesn't read such a diagram either (its parsers run on the
+  // UI thread on every render).
+  it('offers the text for a diagram past mermaid’s size limit', async () => {
+    const { view, parent } = makeView(`\`\`\`mermaid\nflowchart TD\n${'A --> B\n'.repeat(7_000)}\`\`\`\n`);
+    await flush();
+    expect(parent.querySelector('.mermaid-block-editor')!.classList.contains('mermaid-fallback')).toBe(true);
+    expect(note(parent)!.hidden).toBe(false);
+    view.destroy();
+  });
+
   it('shows no such note for editable diagrams', async () => {
     const { view, parent } = makeView('```mermaid\nflowchart TD\nA[a]\n```\n');
     await flush();

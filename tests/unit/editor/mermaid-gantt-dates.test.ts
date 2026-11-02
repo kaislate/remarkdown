@@ -63,6 +63,21 @@ describe('gantt dates', () => {
     }
   });
 
+  // dayjs takes as many digits as a token allows and never gives any
+  // back, so `930` is not 9:30 in Hmm (H takes 93). Reading it the same
+  // way also keeps a crafted format from backtracking for minutes.
+  it('reads adjacent one-or-two-digit tokens greedily, like dayjs', () => {
+    const inputs = ['930', '0930', '1230', '123', '20261231', '2026131', '202611', '11'];
+    for (const format of ['Hmm', 'HHmm', 'Hm', 'YYYYMD', 'YYYYMMD', 'MD']) {
+      for (const text of inputs) {
+        const ours = parseGanttDate(text, format);
+        const theirs = dayjs(text, format, true);
+        expect(ours !== null, `${text} as ${format}`).toBe(theirs.isValid());
+        if (ours && theirs.isValid()) expect(ours.getTime(), `${text} as ${format}`).toBe(theirs.toDate().getTime());
+      }
+    }
+  });
+
   it('round-trips model date strings', () => {
     expect(toGanttDate(new Date(2026, 0, 31))).toBe('2026-01-31');
     expect(toGanttDate(new Date(2026, 0, 31, 14, 30))).toBe('2026-01-31T14:30');

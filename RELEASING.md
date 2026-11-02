@@ -21,6 +21,38 @@ Add two repository secrets (Settings > Secrets and variables > Actions):
 If the first secret is empty the release fails in its first step with a
 message saying so, before any build time is spent.
 
+### Limiting who can sign a release
+
+Repository secrets can be read by any workflow run in the repository, on
+any branch or tag. So anyone with write access, or a token with the
+`workflow` scope, can push a `v*` tag on any commit, or run Release by hand
+from any branch with Pre-release unticked, and get that commit's updater
+files signed with the production key. Once its draft is published, every
+installed copy accepts it. Two settings close this:
+
+1. **A tag ruleset for `v*`** (Settings > Rules > Rulesets > New ruleset >
+   New tag ruleset). Enforcement: Active. Target tags: include by pattern
+   `v*`. Rules: Restrict creations, Restrict updates and Restrict
+   deletions. Bypass list: Repository admin (you) only. Everyone else's
+   push of a release tag is then refused. Publishing a draft creates its
+   tag, so it too needs someone on the bypass list.
+2. **Optionally, a `release` environment** (Settings > Environments > New
+   environment), which also covers runs started by hand from a branch.
+   Under Deployment branches and tags choose Selected branches and tags,
+   and add the branch `main` and the tag pattern `v*`. The `main` entry only
+   helps if `main` itself is protected (a branch ruleset that requires a pull
+   request), so add yourself as a required reviewer too, with "Prevent
+   self-review" off: then every signed build waits for your click. Pre-releases
+   must then also be started from `main` or a `v*` tag. Add the
+   two signing secrets as environment secrets there, and add
+   `environment: release` to the `release` job in
+   `.github/workflows/release.yml`, without which the job cannot see them.
+   Then **delete the repository copies**, or any workflow can still read
+   them.
+
+The workflow does not name the environment yet, because it would fail
+until the environment above exists.
+
 ### Versions have no `-`
 
 The rpm refuses a `-` in a version, so there are no `0.9.0-beta` versions:

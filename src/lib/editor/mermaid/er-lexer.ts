@@ -2,6 +2,7 @@
 // (src/diagrams/er/parser/erDiagram.jison): same states, same rules,
 // same order, case-insensitive like the original. See class-lexer.ts.
 import type { Tok } from './class-lexer';
+import { aheadOnLine, firstFrom, LINE_BREAK, offsets } from './line-ahead';
 
 type Action = (lx: Lexer, text: string) => string | null;
 
@@ -118,9 +119,31 @@ const STATES: Record<string, number[]> = {
   INITIAL: [0, 2, 4, ...range(7, 22), 31, 32, 33, 39, ...range(40, 73), 76, 77, 78],
 };
 
+// The `.*direction` rules, by index, and what must follow on the line
+// for them to match (see line-ahead.ts).
+const DIRECTION_RULES: Record<number, string> = { 7: 'direction\\s+TB', 8: 'direction\\s+BT', 9: 'direction\\s+RL', 10: 'direction\\s+LR' };
+
+// Rule 25, `([^\s]*)[~].*[~]([^\s]*)` (a `type~T~` attribute word), can
+// only match where the run of non-spaces ahead holds a `~` and another
+// `~` follows it on the line. Tried as a regex at every token in an
+// entity block it scanned the rest of that run each time, and a run of
+// punctuation is read one character at a time (quadratic).
+export function tildeWordAhead(text: string): (pos: number) => boolean {
+  const tildes = offsets(text, /~/g);
+  const spaces = offsets(text, /\s/g);
+  const breaks = offsets(text, LINE_BREAK);
+  return (pos) => {
+    const t = firstFrom(tildes, pos);
+    return t < firstFrom(spaces, pos) && firstFrom(tildes, t + 1) < firstFrom(breaks, t);
+  };
+}
+
 export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } | { ok: false; at: number } {
   const lx = new Lexer();
   const tokens: Tok[] = [];
+  const ahead: Record<number, (pos: number) => boolean> = {};
+  for (const [idx, pattern] of Object.entries(DIRECTION_RULES)) ahead[+idx] = aheadOnLine(text, pattern, 'i');
+  ahead[25] = tildeWordAhead(text);
   let pos = start;
   let guard = 0;
   for (;;) {
@@ -128,10 +151,12 @@ export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } 
     const rest = text.slice(pos);
     let matched = false;
     for (const idx of STATES[lx.state]) {
+      if (ahead[idx] && !ahead[idx](pos)) continue;
       const rule = RULES[idx];
       const m = rule.re.exec(rest);
       if (!m) continue;
       const before = lx.states.length;
+      const stateBefore = lx.state;
       const type = rule.act(lx, m[0]);
       const t = { type: type ?? '', text: m[0], start: pos, end: pos + m[0].length };
       pos += m[0].length;
@@ -139,6 +164,9 @@ export function lexEr(text: string, start: number): { ok: true; tokens: Tok[] } 
       if (type) {
         tokens.push(t);
         if (type === 'EOF') return { ok: true, tokens };
+        // An empty token that leaves the state as it was would come
+        // back forever (see class-lexer.ts).
+        if (m[0].length === 0 && lx.states.length === before && lx.state === stateBefore) return { ok: false, at: pos };
       } else if (m[0].length === 0 && lx.states.length === before) {
         return { ok: false, at: pos };
       }

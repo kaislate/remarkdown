@@ -4,8 +4,10 @@ import { flushSync } from 'svelte';
 import { get } from 'svelte/store';
 import userEvent from '@testing-library/user-event';
 import DrawLayer from '../../src/components/DrawLayer.svelte';
-import { annots, currentViewerRoot, docEpoch } from '../../src/stores/annots';
+import { annots, currentViewerRoot, docEpoch, resolvedAnnots } from '../../src/stores/annots';
+import { createAnchor } from '../../src/lib/anchoring';
 import { setMode } from '../../src/stores/tool';
+import { settings } from '../../src/stores/settings';
 
 function mountViewer(html: string): HTMLElement {
   const article = document.createElement('article');
@@ -275,5 +277,70 @@ describe('DrawLayer — eraser tool', () => {
     });
     fakePin.dispatchEvent(evt);
     expect(get(annots).filter((a) => a.type === 'drawing')).toHaveLength(1);
+  });
+});
+
+// A crafted sidecar can hold thousands of underlines and circles anchored to
+// text across paragraphs. The store finds each one once a change; drawing,
+// labelling and erasing them used to find each one again, a walk of the
+// whole article per drawing, on every redraw and every eraser click.
+describe('DrawLayer — drawings anchored to text', () => {
+  const N = 40;
+  // jsdom lays nothing out, and has no Range.getBoundingClientRect.
+  beforeEach(() => {
+    (Range.prototype as any).getBoundingClientRect = () => new DOMRect(10, 10, 100, 16);
+  });
+  afterEach(() => {
+    delete (Range.prototype as any).getBoundingClientRect;
+  });
+
+  function manyUnderlines(): void {
+    const paras = Array.from({ length: N + 1 }, (_, i) => `<p data-block-id="p:${i}">Line ${i} of the page.</p>`);
+    const root = mountViewer(paras.join(''));
+    const list = Array.from({ length: N }, (_, i) => {
+      // From "page." at the end of one line to the next line's number.
+      const across = document.createRange();
+      across.setStart(root.querySelector(`[data-block-id="p:${i}"]`)!.firstChild!, `Line ${i} of the `.length);
+      across.setEnd(root.querySelector(`[data-block-id="p:${i + 1}"]`)!.firstChild!, `Line ${i + 1}`.length);
+      return {
+        id: `01U${i}`, type: 'drawing', recognitionConfidence: 0.9,
+        shape: { kind: 'underline', color: '#d6336c', width: 2, anchor: createAnchor(across, root)! },
+        createdAt: 'now', updatedAt: 'now',
+      };
+    });
+    flushSync(() => annots.set(list as any));
+    expect(get(resolvedAnnots)).toHaveLength(N);
+  }
+
+  it('reuses what the store found to draw them, without walking the article again', () => {
+    render(DrawLayer);
+    const walkers = vi.spyOn(document, 'createTreeWalker');
+    try {
+      flushSync(() => settings.update((s) => ({ ...s, showDrawingRecognitionConfidence: true })));
+      manyUnderlines();
+      const fromStore = walkers.mock.calls.length;
+      vi.advanceTimersToNextFrame();
+      expect(document.querySelectorAll('svg.draw-overlay path').length).toBeGreaterThanOrEqual(N);
+      expect(document.querySelectorAll('svg.draw-overlay .confidence-overlay')).toHaveLength(N);
+      expect(walkers.mock.calls.length - fromStore).toBe(0);
+    } finally {
+      walkers.mockRestore();
+      flushSync(() => settings.update((s) => ({ ...s, showDrawingRecognitionConfidence: false })));
+    }
+  });
+
+  it('reuses it to find the one under the eraser', () => {
+    render(DrawLayer);
+    manyUnderlines();
+    flushSync(() => setMode('eraser'));
+    const walkers = vi.spyOn(document, 'createTreeWalker');
+    try {
+      document.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 5000, clientY: 5000, button: 0 }));
+      document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5000, clientY: 5000 }));
+      expect(walkers).not.toHaveBeenCalled();
+      expect(get(annots)).toHaveLength(N);
+    } finally {
+      walkers.mockRestore();
+    }
   });
 });

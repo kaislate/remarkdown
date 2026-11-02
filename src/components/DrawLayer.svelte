@@ -1,14 +1,18 @@
 <script lang="ts">
   import { ulid } from 'ulid';
   import rough from 'roughjs';
+  import { get } from 'svelte/store';
   import { tool } from '../stores/tool';
   import { settings } from '../stores/settings';
+  import { addToast } from '../stores/toasts';
   import {
+    annots,
     addAnnotation,
     removeAnnotation,
     resolvedAnnots,
     currentViewerRoot,
   } from '../stores/annots';
+  import { withinLoadLimits } from '../lib/sidecar';
   import { recognize, recognizeAsFreehand, arrowFromStrokes } from '../lib/drawing-recognize';
   import { renderDrawing } from '../lib/drawing-render';
   import { resolveAnchor } from '../lib/anchoring';
@@ -74,6 +78,7 @@
       });
     }
 
+    let full = false;
     for (const { stroke, result } of jobs) {
 
       let shape: Drawing['shape'];
@@ -117,16 +122,25 @@
         createdAt: now,
         updatedAt: now,
       };
+      // A sidecar with more drawing than this wouldn't load again, and a
+      // refused one hides every highlight and note with it.
+      if (!withinLoadLimits([...get(annots), drawingAnnot])) {
+        full = true;
+        continue;
+      }
       addAnnotation(drawingAnnot);
     }
     pendingStrokes = [];
+    if (full) {
+      addToast({ kind: 'warning', message: 'This document has as much drawing as it can hold. Erase some to draw more.' });
+    }
   }
 
   function eraseStrokeAt(clientX: number, clientY: number): boolean {
     const root = $currentViewerRoot;
     if (!root) return false;
-    for (const d of existingDrawings) {
-      if (hitTestDrawing(d, clientX, clientY, root, $zoomLevel)) {
+    for (const { d, range } of existingDrawings) {
+      if (hitTestDrawing(d, clientX, clientY, root, $zoomLevel, range)) {
         removeAnnotation(d.id);
         return true;
       }
@@ -169,14 +183,16 @@
     startIdle();
   }
 
-  // Existing drawings rendered from resolved annotations.
+  // Existing drawings rendered from resolved annotations, with the range the
+  // store found for those anchored to text (null for the others), so they
+  // aren't searched for again on every redraw and eraser click.
   const existingDrawings = $derived(
     $resolvedAnnots
       .filter((r) => r.annotation.type === 'drawing')
-      .map((r) => r.annotation as Drawing),
+      .map((r) => ({ d: r.annotation as Drawing, range: r.range as Range | null })),
   );
 
-  function labelPositionFor(d: Drawing, root: HTMLElement, svg: SVGSVGElement): { x: number; y: number } | null {
+  function labelPositionFor(d: Drawing, root: HTMLElement, svg: SVGSVGElement, found: Range | null): { x: number; y: number } | null {
     const svg_r = svg.getBoundingClientRect();
     let r: DOMRect | null = null;
     switch (d.shape.kind) {
@@ -184,7 +200,7 @@
       case 'rectangle':
       case 'underline':
       case 'strikethrough': {
-        const range = resolveAnchor(d.shape.anchor, root);
+        const range = found ?? resolveAnchor(d.shape.anchor, root);
         if (range) r = range.getBoundingClientRect();
         break;
       }
@@ -239,13 +255,13 @@
     const id = requestAnimationFrame(() => {
       while (layer.firstChild) layer.removeChild(layer.firstChild);
       const rc = rough.svg(svg);
-      for (const d of existingDrawings) {
+      for (const { d, range } of existingDrawings) {
         try {
-          const els = renderDrawing(rc, d, root, $zoomLevel, svg, $settings.drawingRoughness);
+          const els = renderDrawing(rc, d, root, $zoomLevel, svg, $settings.drawingRoughness, range);
           els.forEach((el) => layer.appendChild(el));
         } catch { /* per-drawing error swallow */ }
         if ($settings.showDrawingRecognitionConfidence && d.recognitionConfidence != null) {
-          const pos = labelPositionFor(d, root, svg);
+          const pos = labelPositionFor(d, root, svg, range);
           if (pos) {
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', String(pos.x));
@@ -303,8 +319,8 @@
     if ($tool.mode !== 'draw' && $tool.mode !== 'eraser') return;
     const root = $currentViewerRoot;
     if (!root) return;
-    for (const d of existingDrawings) {
-      if (hitTestDrawing(d, e.clientX, e.clientY, root, $zoomLevel)) {
+    for (const { d, range } of existingDrawings) {
+      if (hitTestDrawing(d, e.clientX, e.clientY, root, $zoomLevel, range)) {
         e.preventDefault();
         e.stopPropagation();
         menuForId = d.id;

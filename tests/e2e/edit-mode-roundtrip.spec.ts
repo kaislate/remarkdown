@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const FIXTURE_PATH = '/e2e/edit-mode-fixture.md';
 const FIXTURE_MD = `# Hello\n\nFirst paragraph.\n`;

@@ -40,6 +40,15 @@ export interface QuadrantModel {
 }
 
 const HEADER = /^quadrantChart\s*$/;
+// `x-axis low --> high`. The low label is empty or ends in a non-space,
+// so the arrow is only looked for after one: a lazy `(.*?)` tried it
+// from every position in a run of spaces, each try scanning the rest of
+// the run (quadratic). The statement is trimmed, so the label it finds
+// is the same.
+const AXIS = /^([xy])-axis\s+((?:.*?\S)??)(?:\s*-->\s*(.*))?$/;
+// `name: [x, y]`. The name ends at its last non-space before the colon,
+// as with journey tasks.
+const POINT = /^([^:[\]]*[^:[\]\s]|[^:[\]])\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]$/;
 
 export function parseQuadrant(source: string): QuadrantModel | null {
   const st = statements(source, HEADER);
@@ -48,12 +57,12 @@ export function parseQuadrant(source: string): QuadrantModel | null {
   for (const [line, t] of st.items) {
     let m: RegExpExecArray | null;
     if ((m = /^title\s+(.*)$/.exec(t))) model.title = { line, value: m[1].trim() };
-    else if ((m = /^([xy])-axis\s+(.*?)(?:\s*-->\s*(.*))?$/.exec(t))) {
+    else if ((m = AXIS.exec(t))) {
       const axis = { line, low: m[2].trim(), high: (m[3] ?? '').trim() };
       if (m[1] === 'x') model.xAxis = axis;
       else model.yAxis = axis;
     } else if ((m = /^quadrant-([1-4])\s+(.*)$/.exec(t))) model.quadrants[Number(m[1]) - 1] = { line, value: m[2].trim() };
-    else if ((m = /^([^:[\]]+?)\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]$/.exec(t))) {
+    else if ((m = POINT.exec(t))) {
       model.points.push({ line, name: m[1].trim(), x: Number(m[2]), y: Number(m[3]) });
     } else return null;
   }

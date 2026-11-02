@@ -1,5 +1,5 @@
 // tests/e2e/scenarios.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const FIXTURE_PATH = '/e2e/sample.md';
 const FIXTURE_MD = `# Sample\n\nThe **reader** who would truly understand must read slowly, and with care.\n\nAnother paragraph follows.\n`;

@@ -5,6 +5,7 @@
   import { diagramThemeFor } from '../lib/reader-themes';
   import {
     applyDiagramSizing,
+    disarmDiagramLinks,
     buildDiagramError,
     peekMermaidRender,
     renderContextKey,
@@ -31,6 +32,7 @@
       el.innerHTML = outcome.svg;
       const svg = el.querySelector<SVGSVGElement>(':scope > svg');
       if (svg) applyDiagramSizing(svg);
+      disarmDiagramLinks(el);
     } else {
       el.replaceChildren(buildDiagramError(outcome.error));
       // mermaid didn't load / the render timed out: nothing is wrong

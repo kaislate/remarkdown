@@ -1,4 +1,5 @@
-import { test, expect, type Locator } from '@playwright/test';
+import type { Locator } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // Regression for GitHub #23: the hamburger popover opened directly
 // underneath the left-hand round buttons (edit / contents / focus),

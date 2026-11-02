@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // Right-click never shows the browser's own menu; the app's menu fits what
 // was clicked.

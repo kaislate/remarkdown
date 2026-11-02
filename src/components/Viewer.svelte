@@ -28,6 +28,10 @@
   import { installSmoothScroll, GLIDE_SCALES } from '../lib/smooth-scroll';
   import { platform } from '../lib/platform';
   import { activeModal } from '../stores/modals';
+  import { linkAction } from '../lib/link-action';
+  import { openPaths } from '../lib/open-files';
+  import { openExternal } from '../lib/tauri-api';
+  import { jumpToSection } from '../lib/section-jump';
 
   // No cross-fade under reduced motion, nor on the E-ink reader theme
   // (no animation at all there).
@@ -204,6 +208,46 @@
     return () => root.removeEventListener('click', onClick);
   });
 
+  // Delegated handler for every link in the article (lib/link-action.ts
+  // decides what each one does). The window never follows one itself: a
+  // page link would replace the app, and a ctrl/shift/middle click would
+  // ask for a new window. A middle click arrives as auxclick; other
+  // buttons there (the right one) are the context menu's. The article's
+  // data-own-links tells lib/link-guard.ts, which holds every link in the
+  // app, to leave the routing of these to this handler.
+  $effect(() => {
+    const root = articleEl;
+    if (!root) return;
+    const onLink = (e: MouseEvent) => {
+      if (e.type === 'auxclick' && e.button !== 1) return;
+      const a = (e.target as Element | null)?.closest?.('a');
+      if (!a || !root.contains(a)) return;
+      e.preventDefault();
+      // A diagram's own links (mermaid `click X href`) go nowhere.
+      if (a.closest('.mermaid-block')) return;
+      const href = a.getAttribute('href');
+      const action = linkAction(href, get(doc)?.dir);
+      if (action.kind === 'scroll') {
+        // Looked for in the article: getElementById would find the first
+        // element on the whole page with that id, which may be the app's.
+        const target = [...root.querySelectorAll<HTMLElement>('[id]')].find((el) => el.id === action.id);
+        if (target) jumpToSection(target);
+      } else if (action.kind === 'open') {
+        void openPaths([action.path]);
+      } else if (action.kind === 'external') {
+        openExternal(action.url).catch((err) => {
+          addToast({ kind: 'error', message: `Could not open the link: ${String(err)}` });
+        });
+      }
+    };
+    root.addEventListener('click', onLink);
+    root.addEventListener('auxclick', onLink);
+    return () => {
+      root.removeEventListener('click', onLink);
+      root.removeEventListener('auxclick', onLink);
+    };
+  });
+
   let pendingSave: Debounced<[string]> | null = null;
 
   // CSS Custom Highlight API ranges live in a global registry; the
@@ -323,7 +367,7 @@
              acceptable per design. The companion layers DO unmount in
              edit mode: highlights/notes/marginalia don't anchor cleanly
              to a hidden article, and the editor doesn't need them. -->
-        <article class="viewer md-rendered" bind:this={articleEl}>
+        <article class="viewer md-rendered" data-own-links bind:this={articleEl}>
           {@html $doc.html}
         </article>
         {#if !$editMode}

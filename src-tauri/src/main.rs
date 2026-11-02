@@ -1,14 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod appimage;
+mod asset_protocol;
 mod commands;
 mod default_app;
 mod desktop_env;
+mod doc_paths;
 mod fresh_start;
 mod launch;
 mod linux_gpu;
 #[cfg(target_os = "macos")]
 mod mac;
+mod navigation;
 mod reading_progress;
 mod recent;
 mod session_file;
@@ -72,8 +75,23 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Pictures. Registering "asset" takes the place of Tauri's own
+        // handler, which looks a network path up before any check can
+        // refuse it (see asset_protocol.rs).
+        .register_asynchronous_uri_scheme_protocol("asset", asset_protocol::handle)
+        // That makes a page served from it count as one of the app's own,
+        // so no window may open one (and no frame may show one: what that
+        // rests on is in asset_protocol.rs).
+        .plugin(asset_protocol::navigation_guard())
         .manage(launch::PendingOpens::default())
         .setup(|app| {
+            // The first window, from tauri.conf.json ("create": false there),
+            // built here rather than by Tauri so it can't leave the app's
+            // pages either. Built first, where Tauri would have built it.
+            for config in &app.config().app.windows {
+                let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
+                navigation::lock_to_app(builder, navigation::dev_url(app.handle())).build()?;
+            }
             // Before any window reads them: 0.8.0 resets settings once.
             fresh_start::run(app.handle());
             #[cfg(target_os = "linux")]
@@ -118,6 +136,7 @@ fn main() {
             default_app::default_app_status,
             default_app::make_default_app,
             shell::reveal_in_folder,
+            shell::open_external,
             desktop_env::desktop_env,
         ])
         .build(tauri::generate_context!())

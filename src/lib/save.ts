@@ -1,5 +1,5 @@
 import { get, writable, type Writable } from 'svelte/store';
-import { writeSidecar } from './tauri-api';
+import { writeSidecar, backupCorruptSidecar } from './tauri-api';
 import { serializeSidecar } from './sidecar';
 import { doc } from '../stores/doc';
 import { annots } from '../stores/annots';
@@ -34,10 +34,14 @@ let lastSerialized = new WeakMap<DocSession, string>();
 function sidecarFor(session: DocSession): { path: string; json: string } | null {
   const d = get(session.doc);
   if (!d) return null;
+  // Only the file name: sidecars get committed and shared, and the full
+  // path would give away the user's account name and folders. Nothing reads
+  // it back (older sidecars with a full path load the same).
+  const name = d.path.split(/[\\/]/).pop() ?? d.path;
   const sidecar: Sidecar = {
-    _comment: `remarkdown annotations for: ${d.path.split(/[\\/]/).pop() ?? d.path}`,
+    _comment: `remarkdown annotations for: ${name}`,
     $schema: 'remarkdown/v1',
-    document: { path: d.path, sha256: d.sha256, lastSeenBytes: d.bytes },
+    document: { path: name, sha256: d.sha256, lastSeenBytes: d.bytes },
     annotations: get(session.annots),
   };
   return { path: d.path, json: serializeSidecar(sidecar) };
@@ -47,6 +51,26 @@ async function doSave(session: DocSession): Promise<void> {
   const current = sidecarFor(session);
   if (!current) return;
   if (current.json === lastSerialized.get(session)) return;
+
+  // The sidecar on disk wasn't loaded, so the tab's (empty) annotations
+  // aren't what it holds. Loading the document isn't an edit: leave it
+  // alone. Once the user annotates, set it aside before writing, so their
+  // old annotations are never lost without them choosing to.
+  if (session.sidecarRefused) {
+    if (get(session.annots).length === 0) return;
+    try {
+      // null: the file is gone (the user moved it), so there's nothing to protect.
+      const backup = await backupCorruptSidecar(current.path);
+      if (backup) addToast({ kind: 'info', message: `Backed up the annotations file that couldn't be loaded to ${backup.split(/[\\/]/).pop()}` });
+    } catch (err) {
+      // A save running alongside this one may have set it aside already.
+      if (session.sidecarRefused) {
+        persistentSaveError.set(`Could not save annotations: the file that couldn't be loaded wasn't backed up (${String(err)})`);
+        return;
+      }
+    }
+    session.sidecarRefused = false;
+  }
 
   const byteLen = new TextEncoder().encode(current.json).length;
   if (byteLen > SIZE_WARN_BYTES && warnedOnceForThisPath !== current.path) {

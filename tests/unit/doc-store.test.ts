@@ -8,9 +8,11 @@ vi.mock('../../src/lib/tauri-api', () => ({
 }));
 
 import { readDocument } from '../../src/lib/tauri-api';
-import { doc, loadDocument, clearDocument } from '../../src/stores/doc';
-import { loadSidecar, serializeSidecar, emptySidecar } from '../../src/lib/sidecar';
+import { doc, loadDocument, loadIntoSession, clearDocument } from '../../src/stores/doc';
+import { activeSession } from '../../src/stores/sessions';
+import { loadSidecar, serializeSidecar, emptySidecar, MAX_ANNOTATIONS } from '../../src/lib/sidecar';
 import { annots, docEpoch } from '../../src/stores/annots';
+import { activeModal, closeModal } from '../../src/stores/modals';
 
 describe('doc store', () => {
   beforeEach(() => {
@@ -96,6 +98,88 @@ describe('doc store — sidecar annotations', () => {
     await loadDocument('/tmp/a.md');
     expect(get(annots)).toEqual([]);
     expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('offers to back up a sidecar Rust refused to read, and opens the document', async () => {
+    closeModal();
+    vi.mocked(readDocument).mockResolvedValue({
+      path: '/tmp/a.md',
+      dir: '/tmp',
+      markdown: '# Hello\n',
+      sidecarRaw: null,
+      sidecarUnreadable: true,
+      sha256: 'abc',
+      bytes: 8,
+    });
+    expect(await loadDocument('/tmp/a.md')).toBe(true);
+    expect(get(doc)!.path).toBe('/tmp/a.md');
+    expect(get(annots)).toEqual([]);
+    expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'unreadable' });
+  });
+
+  it('offers to back up a sidecar with too many annotations', async () => {
+    closeModal();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sidecar = emptySidecar({ path: 'a.md', sha256: 'abc', lastSeenBytes: 8 });
+    for (let i = 0; i <= MAX_ANNOTATIONS; i++) {
+      (sidecar.annotations as any[]).push({
+        id: `h${i}`, type: 'highlight', color: '#ffd25a',
+        anchor: { text: 'e', prefix: '', suffix: '', blockHint: 'h:1' },
+        createdAt: 'now', updatedAt: 'now',
+      });
+    }
+    vi.mocked(readDocument).mockResolvedValue({
+      path: '/tmp/a.md',
+      dir: '/tmp',
+      markdown: '# Hello\n',
+      sidecarRaw: serializeSidecar(sidecar),
+      sha256: 'abc',
+      bytes: 8,
+    });
+    await loadDocument('/tmp/a.md');
+    expect(get(annots)).toEqual([]);
+    expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path: '/tmp/a.md', reason: 'too-many' });
+    warn.mockRestore();
+  });
+
+  it('a malformed sidecar opens the modal with no reason, as before', async () => {
+    closeModal();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(readDocument).mockResolvedValue({
+      path: '/tmp/a.md',
+      dir: '/tmp',
+      markdown: '# Hello\n',
+      sidecarRaw: '{ not json',
+      sha256: 'abc',
+      bytes: 8,
+    });
+    await loadDocument('/tmp/a.md');
+    expect(get(activeModal)).toEqual({ kind: 'corrupt-sidecar', path: '/tmp/a.md' });
+    warn.mockRestore();
+  });
+
+  it('marks the tab while its sidecar is refused, so it is not saved over', async () => {
+    closeModal();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = (sidecarRaw: string | null, sidecarUnreadable = false) => ({
+      path: '/tmp/a.md', dir: '/tmp', markdown: '# Hello\n', sidecarRaw, sidecarUnreadable, sha256: 'abc', bytes: 8,
+    });
+    vi.mocked(readDocument).mockResolvedValue(result(null, true));
+    await loadIntoSession(get(activeSession), '/tmp/a.md', { force: true });
+    expect(get(activeSession).sidecarRefused).toBe(true);
+
+    vi.mocked(readDocument).mockResolvedValue(result(serializeSidecar(emptySidecar({ path: 'a.md', sha256: 'abc', lastSeenBytes: 8 }))));
+    await loadIntoSession(get(activeSession), '/tmp/a.md', { force: true });
+    expect(get(activeSession).sidecarRefused).toBe(false);
+
+    vi.mocked(readDocument).mockResolvedValue(result('{ not json'));
+    await loadIntoSession(get(activeSession), '/tmp/a.md', { force: true });
+    expect(get(activeSession).sidecarRefused).toBe(true);
+
+    vi.mocked(readDocument).mockResolvedValue(result(null));
+    await loadIntoSession(get(activeSession), '/tmp/a.md', { force: true });
+    expect(get(activeSession).sidecarRefused).toBe(false);
     warn.mockRestore();
   });
 

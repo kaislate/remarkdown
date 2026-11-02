@@ -29,6 +29,33 @@ describe('findSentenceSplits', () => {
     expect(findSentenceSplits(text)).toEqual([8, 13]);
   });
 
+  // A run of terminators with no space after it was tried again from
+  // each of its characters, each try scanning the rest of the run: a
+  // paragraph of 100,000 dots froze the re.marks panel.
+  it('reads a long run of terminators in linear time', () => {
+    const text = 'a ' + '.'.repeat(100_000) + 'b. c';
+    const t0 = performance.now();
+    const splits = findSentenceSplits(text);
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(splits).toEqual([text.length - 1]);
+  });
+
+  it('splits where the old `[.!?]+\\s+` search did', () => {
+    const alphabet = ['.', '!', '?', ' ', '\n', 'a'];
+    let seed = 3;
+    const rand = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
+    for (let i = 0; i < 5_000; i++) {
+      let text = '';
+      const len = rand(14);
+      for (let k = 0; k < len; k++) text += alphabet[rand(alphabet.length)];
+      const expected = [...text.matchAll(/[.!?]+\s+/g)].map((m) => m.index! + m[0].length);
+      expect(findSentenceSplits(text), JSON.stringify(text)).toEqual(expected);
+    }
+  });
+
   it('does not split on a period followed by no whitespace', () => {
     const text = 'See www.example.com today.';
     expect(findSentenceSplits(text)).toEqual([]);

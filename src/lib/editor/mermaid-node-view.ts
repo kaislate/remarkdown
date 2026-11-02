@@ -19,12 +19,13 @@ import { isMermaidFence } from '../mermaid-fence';
 import { MERMAID_EDIT_META } from './mermaid-source-guard';
 import {
   applyDiagramSizing,
+  disarmDiagramLinks,
   buildDiagramError,
   currentRenderContext,
   peekMermaidRender,
   renderMermaid,
 } from '../mermaid-runtime';
-import { createController, type DiagramController, type DiagramHost, type Point } from './mermaid/controller';
+import { createController, MAX_EDITABLE_SOURCE, type DiagramController, type DiagramHost, type Point } from './mermaid/controller';
 import './mermaid/registry';
 import { openTextPanel, type TextPanel } from './mermaid/text-panel';
 
@@ -383,7 +384,7 @@ export class MermaidNodeView implements NodeView {
     const ctx = currentRenderContext(this.view.dom);
     this.renderedTheme = ctx.theme;
     const controller = this.controllerFor(detectDiagramType(source));
-    const editable = controller?.load(source) ?? false;
+    const editable = source.length <= MAX_EDITABLE_SOURCE && (controller?.load(source) ?? false);
     this.dom.classList.toggle('mermaid-fallback', !editable);
     const active = editable ? controller : null;
 
@@ -421,6 +422,7 @@ export class MermaidNodeView implements NodeView {
       this.renderedEl.innerHTML = outcome.svg;
       const svgRoot = this.renderedEl.querySelector<SVGSVGElement>(':scope > svg');
       if (svgRoot) applyDiagramSizing(svgRoot);
+      disarmDiagramLinks(this.renderedEl);
       this.showNote(editable ? null : 'edit');
       if (active) active.rendered();
       else controller?.cleared();

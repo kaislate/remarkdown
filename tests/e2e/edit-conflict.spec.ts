@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // A file changed by another program while the user is editing it must
 // never be silently overwritten.

@@ -2,13 +2,19 @@
   import { activeModal, closeModal } from '../stores/modals';
   import { backupCorruptSidecar } from '../lib/tauri-api';
   import { addToast } from '../stores/toasts';
+  import { MAX_ANNOTATIONS } from '../lib/sidecar';
+  import { findSessionByPath } from '../stores/tabs';
 
   async function backupAndStartFresh() {
     if ($activeModal?.kind !== 'corrupt-sidecar') return;
     const path = $activeModal.path;
     try {
+      // null: the file is already gone, so there was nothing to back up.
       const backup = await backupCorruptSidecar(path);
-      addToast({ kind: 'info', message: `Backed up corrupt sidecar to ${backup.split(/[\\/]/).pop()}` });
+      // Nothing is left to protect: the tab may save its annotations again.
+      const session = findSessionByPath(path);
+      if (session) session.sidecarRefused = false;
+      if (backup) addToast({ kind: 'info', message: `Backed up corrupt sidecar to ${backup.split(/[\\/]/).pop()}` });
       closeModal();
     } catch (err) {
       addToast({ kind: 'error', message: `Backup failed: ${String(err)}` });
@@ -28,7 +34,13 @@
     <div class="modal glass" role="dialog" aria-modal="true" aria-label="Corrupt sidecar" tabindex="-1" onclick={(e) => e.stopPropagation()}>
       <header><h2>Annotations couldn't be loaded</h2></header>
       <p>
-        The annotations file for this document is malformed JSON.
+        {#if $activeModal.reason === 'unreadable'}
+          The annotations file for this document couldn't be read: it's too large, isn't an ordinary file, or isn't text.
+        {:else if $activeModal.reason === 'too-many'}
+          The annotations file for this document holds more than {MAX_ANNOTATIONS.toLocaleString('en-US')} annotations, or more drawing than the app can show.
+        {:else}
+          The annotations file for this document is malformed JSON.
+        {/if}
         Would you like to back it up and start with a fresh empty annotations file?
       </p>
       <div class="actions">
