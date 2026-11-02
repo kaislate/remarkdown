@@ -10,11 +10,16 @@ vi.mock('../../src/lib/tauri-api', () => ({
 
 vi.mock('../../src/stores/recent', () => ({ recordRecent: vi.fn(async () => {}) }));
 
+// How long each path takes to read and render (ms); none by default.
+const loadDelays = vi.hoisted(() => new Map<string, number>());
+
 vi.mock('../../src/stores/doc', async () => {
   const actual = await vi.importActual<typeof import('../../src/stores/doc')>('../../src/stores/doc');
   return {
     ...actual,
     loadIntoSession: vi.fn(async (session: import('../../src/stores/sessions').DocSession, path: string) => {
+      const delay = loadDelays.get(path);
+      if (delay) await new Promise((r) => setTimeout(r, delay));
       if (path.includes('broken')) return false;
       session.doc.set({ path, dir: '/', sha256: path, bytes: 1, markdown: '', html: '', plaintext: '', blocks: [], sidecarRaw: null });
       return true;
@@ -42,6 +47,7 @@ import {
   closeOtherSessions,
   closeSession,
   closeSessionsAfter,
+  cycleSession,
   findSessionByPath,
 } from '../../src/stores/tabs';
 
@@ -227,6 +233,47 @@ describe('restoreSavedTabs', () => {
     vi.mocked(saveSessionJson).mockClear();
     await flushSessionNow();
     expect(JSON.parse(vi.mocked(saveSessionJson).mock.lastCall![0])).toMatchObject({ tabs: ['/a.md', '/b.md', '/c.md'], active: 1 });
+  });
+});
+
+// Reopened tabs are read when first needed, which takes a moment: the
+// keyboard and clicks must still land where the user aimed them.
+describe('switching while reopened tabs are still loading', () => {
+  const docs = ['/d0.md', '/d1.md', '/d2.md', '/d3.md', '/d4.md', '/d5.md'];
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  beforeEach(() => {
+    resetSessionsForTests();
+    resetSettings();
+    vi.mocked(loadIntoSession).mockClear();
+    loadDelays.clear();
+  });
+  afterEach(() => loadDelays.clear());
+
+  it('quick Ctrl+Tab presses each move one tab on, though none has loaded yet', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(docs, 0));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    for (const d of docs.slice(1)) loadDelays.set(d, 30);
+    const presses: Promise<void>[] = [];
+    for (let i = 0; i < 4; i++) {
+      presses.push(cycleSession(1));
+      await pause(5);
+    }
+    await Promise.all(presses);
+    expect(activePath()).toBe('/d4.md');
+  });
+
+  it('Ctrl+Tab then Ctrl+Shift+Tab before the first lands stays on the same tab', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(docs, 2));
+    await restoreSavedTabs();
+    await finishSessionRestore();
+    loadDelays.set('/d3.md', 30);
+    const forward = cycleSession(1);
+    await pause(5);
+    const back = cycleSession(-1);
+    await Promise.all([forward, back]);
+    expect(activePath()).toBe('/d2.md');
   });
 });
 

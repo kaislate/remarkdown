@@ -132,19 +132,37 @@ function setActive(session: DocSession): void {
 // finishes after a newer request was made doesn't apply (rapid clicks must
 // land on the last tab clicked).
 let switchTicket = 0;
+// Where the latest switch is headed while it's still on its way (a
+// reopened tab being read first): Ctrl+Tab steps on from there, so quick
+// presses each move one more tab instead of all aiming at the same one.
+let switchTarget: DocSession | null = null;
 
 export async function activateSession(id: string): Promise<void> {
   const target = get(sessions).find((s) => s.id === id);
-  if (!target || target === get(activeSession)) return;
+  if (!target) return;
+  if (target === get(activeSession)) {
+    // Back to the tab already shown: a switch still on its way elsewhere
+    // no longer applies.
+    if (switchTarget) {
+      ++switchTicket;
+      switchTarget = null;
+    }
+    return;
+  }
   const ticket = ++switchTicket;
-  cancelReattach();
-  // A reopened tab not loaded yet: load it before leaving the current one,
-  // so the switch never shows an empty page.
-  if (target.lazyPath !== null && !(await ensureSessionLoaded(target))) return;
-  if (ticket !== switchTicket) return;
-  await runBeforeSwitch();
-  if (ticket !== switchTicket || target.closed) return;
-  setActive(target);
+  switchTarget = target;
+  try {
+    cancelReattach();
+    // A reopened tab not loaded yet: load it before leaving the current
+    // one, so the switch never shows an empty page.
+    if (target.lazyPath !== null && !(await ensureSessionLoaded(target))) return;
+    if (ticket !== switchTicket) return;
+    await runBeforeSwitch();
+    if (ticket !== switchTicket || target.closed) return;
+    setActive(target);
+  } finally {
+    if (ticket === switchTicket) switchTarget = null;
+  }
   if (target.pendingDiskReload) {
     target.pendingDiskReload = false;
     // Let the incoming tab's page render first: the reload's "N
@@ -200,6 +218,7 @@ export async function closeSession(id: string): Promise<void> {
 
   if (closing === get(activeSession)) {
     const ticket = ++switchTicket;
+    switchTarget = null;
     cancelReattach();
     await runBeforeSwitch();
     if (keepForConflict()) return;
@@ -244,10 +263,13 @@ export async function closeSession(id: string): Promise<void> {
   sessions.update((l) => l.filter((s) => s !== closing));
 }
 
+// Ctrl+Tab / Ctrl+Shift+Tab: one tab on from the one being switched to, if
+// a switch is still on its way, else from the one shown.
 export async function cycleSession(delta: 1 | -1): Promise<void> {
   const list = get(sessions);
   if (list.length < 2) return;
-  const i = list.indexOf(get(activeSession));
+  const from = switchTarget && !switchTarget.closed ? switchTarget : get(activeSession);
+  const i = list.indexOf(from);
   await activateSession(list[(i + delta + list.length) % list.length].id);
 }
 
