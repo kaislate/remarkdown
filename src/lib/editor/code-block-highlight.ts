@@ -29,14 +29,21 @@ export const codeBlockHighlightKey = new PluginKey<HighlightState>(
 );
 
 // Tokens per (language, text), so an edit only tokenizes the block it
-// changed — the others come from here. Bounded: the oldest go first, but a
-// full colouring keeps room for every block of its document (a smaller cap,
-// visited in document order, would evict exactly what the next pass needs).
+// changed — the others come from here. Bounded, the least recently used
+// going first. An editor keeps room for every code block of its document
+// plus TOKEN_CACHE_LIMIT more (cacheCapFor), in every pass, full or after an
+// edit: a full colouring visits the blocks in document order, so a cap
+// below that evicts exactly the block it needs next, all the way down,
+// and each edit leaves the block's old text behind until it ages out.
 type Tokens = ReturnType<Highlighter['codeToTokensWithThemes']>;
 const tokenCache = new WeakMap<Highlighter, Map<string, Tokens>>();
 const TOKEN_CACHE_LIMIT = 300;
 
-function tokensFor(hl: Highlighter, lang: string, text: string, limit = TOKEN_CACHE_LIMIT): Tokens {
+function cacheCapFor(codeBlocks: number): number {
+  return codeBlocks + TOKEN_CACHE_LIMIT;
+}
+
+function tokensFor(hl: Highlighter, lang: string, text: string, cap = TOKEN_CACHE_LIMIT): Tokens {
   let cache = tokenCache.get(hl);
   if (!cache) tokenCache.set(hl, (cache = new Map()));
   const key = `${lang}\u0000${text}`;
@@ -55,7 +62,6 @@ function tokensFor(hl: Highlighter, lang: string, text: string, limit = TOKEN_CA
     themes: { dark: 'github-dark', light: 'github-light' },
   });
   cache.set(key, tokens);
-  const cap = Math.max(limit, TOKEN_CACHE_LIMIT);
   while (cache.size > cap) cache.delete(cache.keys().next().value!);
   return tokens;
 }
@@ -71,14 +77,14 @@ function isColouredCode(node: Node): boolean {
 // but the per-line semantics are ambiguous in practice; the manual sum is
 // verified correct by the position-math test in code-blocks.test.ts.
 // A future contributor with more Shiki context can revisit.
-function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheLimit?: number): Decoration[] {
+function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheCap?: number): Decoration[] {
   const decs: Decoration[] = [];
   const lang = resolveLanguage(String(node.attrs.language || ''));
   const text = node.textContent;
   if (!text) return decs;
   let tokens;
   try {
-    tokens = tokensFor(hl, lang, text, cacheLimit);
+    tokens = tokensFor(hl, lang, text, cacheCap);
   } catch (err) {
     if (import.meta.env.DEV) {
       console.warn('codeBlockHighlight: tokenize failed', { lang, err });
@@ -115,6 +121,11 @@ function blockDecorations(node: Node, pos: number, hl: Highlighter, cacheLimit?:
 }
 
 export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
+  return buildDecorationsCounted(doc, hl).set;
+}
+
+// A full colouring, and how many code blocks it coloured.
+function buildDecorationsCounted(doc: Node, hl: Highlighter): { set: DecorationSet; blocks: number } {
   const blocks: Array<[Node, number]> = [];
   doc.descendants((node, pos) => {
     // Into lists, quotes and callouts (code can sit in them); not into
@@ -124,21 +135,24 @@ export function buildDecorations(doc: Node, hl: Highlighter): DecorationSet {
     return false;
   });
   const decs: Decoration[] = [];
+  const cap = cacheCapFor(blocks.length);
   for (const [node, pos] of blocks) {
-    for (const d of blockDecorations(node, pos, hl, blocks.length)) decs.push(d);
+    for (const d of blockDecorations(node, pos, hl, cap)) decs.push(d);
   }
-  return DecorationSet.create(doc, decs);
+  return { set: DecorationSet.create(doc, decs), blocks: blocks.length };
 }
 
 // Brings `set` (already mapped onto `doc`) up to date where the document
 // changed: every textblock a dirty range touches loses its spans, and the
 // code blocks among them get fresh ones (a block that stopped being code,
 // or became a diagram, keeps none). Spans elsewhere stay as they are.
+// `cacheCap` is the token cache's size for this document (cacheCapFor).
 export function refreshDecorations(
   set: DecorationSet,
   doc: Node,
   dirty: Array<[number, number]>,
   hl: Highlighter,
+  cacheCap?: number,
 ): DecorationSet {
   const size = doc.content.size;
   const touched = new Map<number, Node>();
@@ -162,7 +176,7 @@ export function refreshDecorations(
   for (const [pos, node] of touched) {
     for (const d of set.find(pos, pos + node.nodeSize)) stale.push(d);
     if (isColouredCode(node)) {
-      for (const d of blockDecorations(node, pos, hl)) fresh.push(d);
+      for (const d of blockDecorations(node, pos, hl, cacheCap)) fresh.push(d);
     }
   }
   return set.remove(stale).add(doc, fresh);
@@ -244,6 +258,9 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
       // full one (the first, or a retry if the highlighter failed to
       // start); after that, only what changed is coloured again.
       let coloured = false;
+      // The token cache's size for this document, from its last full
+      // colouring (an edit adds or removes a block or two at most).
+      let cacheCap = TOKEN_CACHE_LIMIT;
 
       // Single async-aware dispatcher: shared between the initial-mount path
       // and the debounced update path. The isDestroyed check guards the
@@ -258,11 +275,13 @@ export function createCodeBlockHighlightPlugin(): Plugin<HighlightState> {
           const current = codeBlockHighlightKey.getState(view.state);
           let decs: DecorationSet;
           if (!coloured || !current) {
-            decs = buildDecorations(view.state.doc, hl);
+            const full = buildDecorationsCounted(view.state.doc, hl);
+            decs = full.set;
+            cacheCap = cacheCapFor(full.blocks);
             coloured = true;
           } else {
             if (current.dirty.length === 0) return;
-            decs = refreshDecorations(current.decorations, view.state.doc, current.dirty, hl);
+            decs = refreshDecorations(current.decorations, view.state.doc, current.dirty, hl, cacheCap);
           }
           view.dispatch(
             view.state.tr.setMeta(codeBlockHighlightKey, { decorations: decs }),

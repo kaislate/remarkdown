@@ -115,6 +115,35 @@ describe('code colouring after an edit', () => {
     buildDecorations(doc, fakeHl);
     expect(tokenizeCalls.length).toBeLessThanOrEqual(400);
   });
+
+  it('after edits in a document with 400 code blocks, opening it again tokenizes nothing', async () => {
+    // Its own text, so nothing another test cached helps it.
+    const md = bigDoc(400, 0).replace(/call\(/g, 'reopen(');
+    const v1 = mount(md);
+    await wait(10);
+    expect(tokenizeCalls.length).toBe(400);
+    // A few separate pauses in typing, in different blocks, each followed
+    // by the debounced colouring of just that block.
+    for (const n of [1, 2, 3, 150, 399]) {
+      tokenizeCalls = [];
+      typeAt(v1, posInText(v1, `reopen(${n})`), 'await ');
+      await wait(250);
+      expect(tokenizeCalls.length).toBe(1);
+    }
+    const doc = v1.state.doc;
+    v1.destroy();
+    // Back to the tab, or Done then Edit: the same document, a new editor.
+    tokenizeCalls = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const v2 = new EditorView(host, {
+      state: EditorState.create({ doc, plugins: [createCodeBlockHighlightPlugin()] }),
+    });
+    await wait(10);
+    expect(tokenizeCalls).toEqual([]);
+    expect(decoList(decorations(v2))).toEqual(decoList(buildDecorations(doc, fakeHl)));
+    v2.destroy();
+  });
 });
 
 describe('code colouring stays exactly what a full rebuild gives', () => {
