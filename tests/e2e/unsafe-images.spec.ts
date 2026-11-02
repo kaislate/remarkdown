@@ -2,7 +2,7 @@
 // serves (the asset protocol). On Windows looking such a picture up signs
 // in to the share with the user's password hash, so neither the reader
 // nor the editor may ask for one; an ordinary picture still shows.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test';
 
 const PATH = '/e2e/docs/pictures.md';
 const MD = [

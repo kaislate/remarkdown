@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './support/test';
 
 // Links in a document never take the window anywhere: a footnote link
 // scrolls the page, a link to a sibling .md opens it in a tab, web and mail
