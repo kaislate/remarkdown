@@ -144,12 +144,28 @@ pub struct ReadDocumentResult {
     pub bytes: u64,
 }
 
-// Commands that read or write a file the frontend names are async, so they
-// run on a worker thread instead of the main one: a file on a network share
-// answers as slowly as the server likes (a sidecar can be a link to one),
-// and the window can't redraw while a main-thread command waits.
-#[tauri::command(async)]
-pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
+// Commands that read or write a file the frontend names run on a thread of
+// their own instead of the main one: a file on a network share answers as
+// slowly as the server likes (a sidecar can be a link to one), and the
+// window can't redraw while a main-thread command waits. Nor on one of the
+// async runtime's workers, where `#[tauri::command(async)]` runs a plain fn:
+// there are only as many of those as the machine has cores, every async
+// command shares them, and a share that has stopped answering (a stalled
+// NFS mount, a link into /net) would hold one for good.
+async fn on_blocking_thread<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, CommandError> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| CommandError::Io(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
+    on_blocking_thread(move || read_document_blocking(path)).await?
+}
+
+fn read_document_blocking(path: String) -> Result<ReadDocumentResult, CommandError> {
     let md_path = PathBuf::from(&path);
     let bytes = match read_capped(&md_path, DOCUMENT_LIMIT) {
         Ok(bytes) => bytes,
@@ -210,8 +226,12 @@ pub fn read_document(path: String) -> Result<ReadDocumentResult, CommandError> {
     })
 }
 
-#[tauri::command(async)]
-pub fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> {
+#[tauri::command]
+pub async fn write_sidecar(md_path: String, json: String) -> Result<(), CommandError> {
+    on_blocking_thread(move || write_sidecar_blocking(md_path, json)).await?
+}
+
+fn write_sidecar_blocking(md_path: String, json: String) -> Result<(), CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);
     crate::sidecar::atomic_write_user_file(&sc, json.as_bytes())?;
@@ -242,8 +262,12 @@ pub fn remove_recent(app: tauri::AppHandle, path: String) -> Result<Vec<String>,
     crate::recent::remove(&app, &path)
 }
 
-#[tauri::command(async)]
-pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
+#[tauri::command]
+pub async fn check_paths_exist(paths: Vec<String>) -> Result<Vec<bool>, CommandError> {
+    on_blocking_thread(move || check_paths_exist_blocking(paths)).await
+}
+
+fn check_paths_exist_blocking(paths: Vec<String>) -> Vec<bool> {
     paths.iter().map(|p| std::path::Path::new(p).is_file()).collect()
 }
 
@@ -286,8 +310,12 @@ pub fn ensure_welcome_doc(app: tauri::AppHandle) -> Result<String, CommandError>
 /// Moves a sidecar that couldn't be loaded aside, and returns where to.
 /// None when there is no sidecar any more (the user moved or deleted it):
 /// there's nothing left to protect, so that isn't an error.
-#[tauri::command(async)]
-pub fn backup_corrupt_sidecar(md_path: String) -> Result<Option<String>, CommandError> {
+#[tauri::command]
+pub async fn backup_corrupt_sidecar(md_path: String) -> Result<Option<String>, CommandError> {
+    on_blocking_thread(move || backup_corrupt_sidecar_blocking(md_path)).await?
+}
+
+fn backup_corrupt_sidecar_blocking(md_path: String) -> Result<Option<String>, CommandError> {
     let md = PathBuf::from(md_path);
     let sc = sidecar_path_for(&md);
     let timestamp = std::time::SystemTime::now()
@@ -313,8 +341,16 @@ pub fn backup_corrupt_sidecar(md_path: String) -> Result<Option<String>, Command
 /// changed since the editor last read or wrote it, so another program's
 /// edits are never silently overwritten. A file that has disappeared is
 /// simply recreated — the user's text is the only copy left.
-#[tauri::command(async)]
-pub fn write_document(
+#[tauri::command]
+pub async fn write_document(
+    path: String,
+    markdown: String,
+    expected_sha256: Option<String>,
+) -> Result<String, CommandError> {
+    on_blocking_thread(move || write_document_blocking(path, markdown, expected_sha256)).await?
+}
+
+fn write_document_blocking(
     path: String,
     markdown: String,
     expected_sha256: Option<String>,
@@ -357,12 +393,38 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn file_commands_leave_the_async_runtime_its_workers() {
+        // One more stuck read than the runtime has workers. Each waits for
+        // all the others to have started, which they only can if none of
+        // them is holding a worker.
+        let stuck = std::thread::available_parallelism().map_or(1, |n| n.get()) + 1;
+        let all_started = std::sync::Arc::new(std::sync::Barrier::new(stuck));
+        let (done, finished) = std::sync::mpsc::channel();
+        for _ in 0..stuck {
+            let all_started = all_started.clone();
+            let done = done.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = on_blocking_thread(move || {
+                    all_started.wait();
+                })
+                .await;
+                let _ = done.send(());
+            });
+        }
+        for _ in 0..stuck {
+            finished
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("a read waited for a worker another read was holding");
+        }
+    }
+
+    #[test]
     fn read_document_returns_markdown_and_sha() {
         let dir = tempdir().unwrap();
         let md = dir.path().join("a.md");
         fs::write(&md, b"# Hello\n").unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.markdown, "# Hello\n");
         assert_eq!(result.bytes, 8);
         assert_eq!(result.sidecar_raw, None);
@@ -377,7 +439,7 @@ mod tests {
         fs::write(&md, b"# Hello\n").unwrap();
         fs::write(&sc, b"{\"x\":1}").unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.sidecar_raw.as_deref(), Some("{\"x\":1}"));
     }
 
@@ -387,7 +449,7 @@ mod tests {
         let md = dir.path().join("a.md");
         fs::write(&md, &[0xff, 0xfe, 0xfd]).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned());
+        let result = read_document_blocking(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::NotUtf8)));
     }
 
@@ -397,7 +459,7 @@ mod tests {
         let folder = dir.path().join("notes.md");
         fs::create_dir(&folder).unwrap();
 
-        let result = read_document(folder.to_string_lossy().into_owned());
+        let result = read_document_blocking(folder.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("ordinary file")));
     }
 
@@ -407,7 +469,7 @@ mod tests {
         let md = dir.path().join("huge.md");
         fs::File::create(&md).unwrap().set_len(DOCUMENT_LIMIT + 1).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned());
+        let result = read_document_blocking(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::Io(ref m)) if m.contains("too large")));
     }
 
@@ -418,7 +480,7 @@ mod tests {
         fs::write(&md, b"# Hello\n").unwrap();
         fs::create_dir(dir.path().join("a.md.remarkdown.json")).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.markdown, "# Hello\n");
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
@@ -432,7 +494,7 @@ mod tests {
         let sc = dir.path().join("a.md.remarkdown.json");
         fs::File::create(&sc).unwrap().set_len(SIDECAR_LIMIT + 1).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
     }
@@ -446,7 +508,7 @@ mod tests {
         fs::write(&md, b"# Hello\n").unwrap();
         fs::write(dir.path().join("a.md.remarkdown.json"), [0xff, 0xfe, 0x00]).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.markdown, "# Hello\n");
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
@@ -469,7 +531,7 @@ mod tests {
             return; // running as root: nothing is unreadable
         }
 
-        let result = read_document(md.to_string_lossy().into_owned());
+        let result = read_document_blocking(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::Io(_))));
     }
 
@@ -485,7 +547,7 @@ mod tests {
         fs::write(&sc, b"{}").unwrap();
         let lock = fs::OpenOptions::new().read(true).share_mode(0).open(&sc).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned());
+        let result = read_document_blocking(md.to_string_lossy().into_owned());
         assert!(matches!(result, Err(CommandError::Io(_))));
         drop(lock);
         assert_eq!(fs::read(&sc).unwrap(), b"{}");
@@ -497,7 +559,7 @@ mod tests {
         let md = dir.path().join("a.md");
         fs::write(&md, b"# Hello\n").unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert!(!result.sidecar_unreadable);
     }
 
@@ -521,7 +583,7 @@ mod tests {
         let status = std::process::Command::new("mkfifo").arg(&sc).status().unwrap();
         assert!(status.success());
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result.sidecar_raw, None);
         assert!(result.sidecar_unreadable);
     }
@@ -565,7 +627,7 @@ mod tests {
         fs::write(&md, b"# Hello\n").unwrap();
         std::os::unix::fs::symlink("/dev/zero", dir.path().join("a.md.remarkdown.json")).unwrap();
 
-        let result = read_document(md.to_string_lossy().into_owned()).unwrap();
+        let result = read_document_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert!(result.sidecar_unreadable);
     }
 
@@ -578,7 +640,7 @@ mod tests {
         assert!(status.success());
 
         let p = path.to_string_lossy().into_owned();
-        let result = write_document(p, "mine".into(), Some(sha_of(b"old")));
+        let result = write_document_blocking(p, "mine".into(), Some(sha_of(b"old")));
         assert!(matches!(result, Err(CommandError::Io(_))));
     }
 
@@ -588,7 +650,7 @@ mod tests {
         let real = dir.path().join("real.md");
         fs::write(&real, b"x").unwrap();
         let fake = dir.path().join("fake.md");
-        let result = check_paths_exist(vec![
+        let result = check_paths_exist_blocking(vec![
             real.to_string_lossy().into_owned(),
             fake.to_string_lossy().into_owned(),
         ]);
@@ -603,7 +665,7 @@ mod tests {
         fs::write(&md, b"# hi\n").unwrap();
         fs::write(&sc, b"{ corrupt").unwrap();
 
-        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap().unwrap();
+        let result = backup_corrupt_sidecar_blocking(md.to_string_lossy().into_owned()).unwrap().unwrap();
         assert!(result.contains(".corrupt-"));
         assert!(!sc.exists());
         assert!(std::path::Path::new(&result).exists());
@@ -617,7 +679,7 @@ mod tests {
         let md = dir.path().join("a.md");
         fs::write(&md, b"# hi\n").unwrap();
 
-        let result = backup_corrupt_sidecar(md.to_string_lossy().into_owned()).unwrap();
+        let result = backup_corrupt_sidecar_blocking(md.to_string_lossy().into_owned()).unwrap();
         assert_eq!(result, None);
     }
 
@@ -626,7 +688,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("note.md");
         let body = "# Hello\n\nWorld.\n";
-        write_document(path.to_string_lossy().into_owned(), body.to_string(), None).unwrap();
+        write_document_blocking(path.to_string_lossy().into_owned(), body.to_string(), None).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
     }
 
@@ -640,7 +702,7 @@ mod tests {
     fn write_document_returns_the_new_sha() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("n.md");
-        let sha = write_document(path.to_string_lossy().into_owned(), "abc".into(), None).unwrap();
+        let sha = write_document_blocking(path.to_string_lossy().into_owned(), "abc".into(), None).unwrap();
         assert_eq!(sha, sha_of(b"abc"));
     }
 
@@ -650,7 +712,7 @@ mod tests {
         let path = dir.path().join("n.md");
         fs::write(&path, b"theirs").unwrap();
         let p = path.to_string_lossy().into_owned();
-        let err = write_document(p, "mine".into(), Some(sha_of(b"what I loaded"))).unwrap_err();
+        let err = write_document_blocking(p, "mine".into(), Some(sha_of(b"what I loaded"))).unwrap_err();
         assert!(matches!(err, CommandError::Conflict(ref disk) if *disk == sha_of(b"theirs")));
         assert_eq!(fs::read_to_string(&path).unwrap(), "theirs");
     }
@@ -661,7 +723,7 @@ mod tests {
         let path = dir.path().join("n.md");
         fs::write(&path, b"v1").unwrap();
         let p = path.to_string_lossy().into_owned();
-        write_document(p, "v2".into(), Some(sha_of(b"v1"))).unwrap();
+        write_document_blocking(p, "v2".into(), Some(sha_of(b"v1"))).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "v2");
     }
 
@@ -670,7 +732,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("gone.md");
         let p = path.to_string_lossy().into_owned();
-        write_document(p, "mine".into(), Some(sha_of(b"old"))).unwrap();
+        write_document_blocking(p, "mine".into(), Some(sha_of(b"old"))).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "mine");
     }
 }
