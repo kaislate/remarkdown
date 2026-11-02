@@ -17,14 +17,15 @@
   }
 
   // Resolved notes only — orphaned notes live in their own panel and
-  // can't be jumped-to anyway.
+  // can't be jumped-to anyway. Their contexts are only shown while the
+  // panel is open (closed, just the count), so only worked out then.
   const notes = $derived(
     $resolvedAnnots
       .filter((r) => r.annotation.type === 'note')
       .map((r) => ({
         note: r.annotation as Note,
         range: r.range,
-        context: contextFor(r.range),
+        context: open ? contextFor(r.range) : '',
       })),
   );
 
