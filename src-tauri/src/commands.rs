@@ -254,6 +254,9 @@ pub fn push_recent(
     path: String,
     max: Option<usize>,
 ) -> Result<Vec<String>, CommandError> {
+    // Recent files are probed and offered again at every launch, so only a
+    // document read_document would open is kept.
+    document_path(&path)?;
     crate::recent::push(&app, path, max.unwrap_or(crate::recent::DEFAULT_MAX_RECENT))
 }
 
