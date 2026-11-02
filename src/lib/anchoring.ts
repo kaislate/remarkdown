@@ -460,9 +460,10 @@ function uniqueInContextOfBlocks(anchor: Anchor, blocks: Blocks): Range | null {
 // learned the same so far, teaching the pass what it did the first time.
 // So a kept place is always the one searching again would find. And what
 // the search cost is counted against the pass again, so a pass stops (see
-// PASS_BUDGET) where it would have.
+// PASS_BUDGET) where it would have. Entries are kept per article: a hidden
+// tab's annotations stay in memory, but its unmounted article (and the
+// ranges into it) goes with nothing else holding it.
 interface Found {
-  root: HTMLElement;
   version: number;
   range: Range | null;
   cost: number;
@@ -472,15 +473,16 @@ interface Found {
   // The move it taught the pass.
   taught: { hintAt: number; move: number } | null;
 }
-const found = new WeakMap<Anchor, Found>();
+const found = new WeakMap<HTMLElement, WeakMap<Anchor, Found>>();
 // What the anchor being placed reads of the pass's moves and teaches it.
 let placing: { read: Found['read']; taught: Found['taught'] } | null = null;
 
 export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | null {
   if (spent()) return null;
   const version = domVersion(viewerRoot);
-  const kept = found.get(anchor);
-  if (kept && kept.root === viewerRoot && kept.version === version && stillFound(kept, viewerRoot)) {
+  let inRoot = found.get(viewerRoot);
+  const kept = inRoot?.get(anchor);
+  if (kept && kept.version === version && stillFound(kept, viewerRoot)) {
     spend(kept.cost);
     if (spent()) return null;
     if (kept.taught) teach(blocksOf(viewerRoot), kept.taught.hintAt, kept.taught.move);
@@ -500,7 +502,8 @@ export function resolveAnchor(anchor: Anchor, viewerRoot: HTMLElement): Range | 
   // was made of the places it found can't be trusted (nor kept: the next
   // pass tries it again).
   if (spent()) return null;
-  found.set(anchor, { root: viewerRoot, version, range, cost: counted - before, read: trace.read, taught: trace.taught });
+  if (!inRoot) found.set(viewerRoot, inRoot = new WeakMap());
+  inRoot.set(anchor, { version, range, cost: counted - before, read: trace.read, taught: trace.taught });
   return range;
 }
 
