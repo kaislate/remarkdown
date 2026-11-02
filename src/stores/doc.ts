@@ -1,8 +1,9 @@
 import { get } from 'svelte/store';
+import { tick } from 'svelte';
 import { readDocument, toAssetUrl } from '../lib/tauri-api';
 import { render } from '../lib/MarkdownRenderer';
 import { loadSidecar } from '../lib/sidecar';
-import { docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
+import { currentViewerRoot, docEpoch, orphanedAnnots, resetAnnotHistory } from './annots';
 import { addToast } from './toasts';
 import { openModal } from './modals';
 import { installFileWatcher } from '../lib/file-watch';
@@ -106,6 +107,12 @@ export async function loadIntoSession(
       );
     }
   }
+  // The active tab's page still shows the old content until Svelte renders
+  // the new one: take it away meanwhile, so the new annotations aren't
+  // looked for in it (each would miss and scan the whole article), and give
+  // it back once it shows the new document, which resolves them, once.
+  const page = session === get(activeSession) ? get(currentViewerRoot) : null;
+  if (page) currentViewerRoot.set(null);
   session.annots.set(parsedAnnotations);
   // Undo steps belonged to the content as it was.
   resetAnnotHistory(session);
@@ -133,7 +140,15 @@ export async function loadIntoSession(
     loadId: ++loadCounter,
   });
   const isActive = session === get(activeSession);
-  if (isActive) docEpoch.update((e) => e + 1);
+  if (isActive && !page) docEpoch.update((e) => e + 1);
+  const pageBack = page
+    ? tick().then(() => {
+        // Unless another page took its place meanwhile (a tab switch).
+        if (get(currentViewerRoot) !== null) return;
+        docEpoch.update((e) => e + 1); // no page yet: nothing is searched
+        if (page.isConnected) currentViewerRoot.set(page);
+      })
+    : null;
 
   // Reader mode and edit mode never go together; "ready to edit" wins.
   const s = get(settings);
@@ -161,6 +176,9 @@ export async function loadIntoSession(
     if (session.closed) await dispose();
     else session.disposeWatcher = dispose;
   }
+  // Callers (reloadSession's re-anchored count) read the annotations as
+  // resolved against the new page.
+  if (pageBack) await pageBack;
   return true;
 }
 
