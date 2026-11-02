@@ -15,7 +15,7 @@
 // language. Future contributors: this is NOT a bug to "fix".
 
 import { defaultMarkdownSerializer, MarkdownSerializer, MarkdownSerializerState } from 'prosemirror-markdown';
-import type { Node } from 'prosemirror-model';
+import type { Node, NodeType } from 'prosemirror-model';
 import { MarkdownSerializerStateImpl } from './serializer-internals';
 import type { MarkdownSerializerStateInternals } from './serializer-internals';
 
@@ -243,8 +243,147 @@ const editorMarkdownSerializer = new MarkdownSerializer(
   },
 );
 
+// ── Per-block serializing ─────────────────────────────────────────────
+//
+// prosemirror-markdown builds its output by appending to one string and
+// looking at that string's tail before every block (atBlank), which copies
+// the whole output each time: quadratic, so a 2 MB document took seconds
+// and froze the editor. Here each top-level block is rendered with its own
+// serializer state, and the result is kept per block Node: an edit makes a
+// new Node only for the block it touched, so the rest come from the memo.
+//
+// Joining the blocks reproduces exactly what the whole-document pass writes
+// between them. That pass, at the top level (no delimiter, never in a tight
+// list), only carries three things from one block to the next:
+//   - `closed`, the block a blank line is still owed for. The next block
+//     that writes anything pays it: a newline if the output doesn't end
+//     with one, then one more (two more when a list follows a list of the
+//     same type: renderList's flushClose(3)). A block that writes nothing
+//     can still close (an empty paragraph), which changes what is owed.
+//   - whether the output so far ends with a newline (atBlank).
+//   - the output's last characters, which text() checks for a `!` before a
+//     `[`; after a paid blank line they are always a newline.
+// Anything outside that model (a block that writes but never closes) falls
+// back to the whole-document pass, so the bytes never differ.
+// Each top-level serializer must depend on its node alone (none of them
+// reads `parent` or `index`), or the memo would hand back a stale string.
+
+interface BlockOut {
+  out: string;
+  // Called write() (so a blank line owed before it was paid), even if it
+  // wrote nothing visible.
+  wrote: boolean;
+  // The type of the node left closed at the end, or null.
+  closed: NodeType | null;
+}
+
+const blockMemo = new WeakMap<Node, BlockOut>();
+
+// Counts blocks actually rendered (memo misses) and whole-document
+// fallbacks, so tests can check how much work an edit costs.
+export const serializerWork = { blocksRendered: 0, fallbacks: 0 };
+
+const stateOptions = Object.assign({}, editorMarkdownSerializer.options);
+
+// Inside one block, prosemirror-markdown still checks the end of its output
+// with regexes that scan all of it: atBlank() before every line it writes,
+// and text()'s look for a `!` before every link. One block can be a whole
+// document (a changelog that is a single list), which made that quadratic
+// again: seconds for a 400 KB list. So a block's state never holds more
+// than about SPILL_AT characters; the rest is set aside as it is written
+// and joined back at the end. Those checks only ever look at the last two
+// characters (a newline, or a `!` and the one before it), and nothing else
+// reads the state's output, so leaving SPILL_KEEP characters behind changes
+// no byte. The byte-identity tests cover lists, quotes and long paragraphs.
+const SPILL_AT = 1024;
+const SPILL_KEEP = 64;
+
+function renderBlock(node: Node, parent: Node, index: number): BlockOut {
+  const hit = blockMemo.get(node);
+  if (hit) return hit;
+  serializerWork.blocksRendered += 1;
+  const internals = editorMarkdownSerializer as unknown as {
+    nodes: MarkdownSerializerStateInternals['nodes'];
+    marks: MarkdownSerializerStateInternals['marks'];
+  };
+  const state = new MarkdownSerializerStateImpl(internals.nodes, internals.marks, stateOptions) as
+    MarkdownSerializerStateInternals & { flushClose(size?: number): void; closed: Node | null };
+  let wrote = false;
+  const flushClose = state.flushClose;
+  state.flushClose = function (size?: number) {
+    wrote = true;
+    flushClose.call(this, size);
+  };
+  // Keep the state's own output short (see SPILL_AT): what is written past
+  // it moves to `spilled`, and only the last characters stay behind.
+  const spilled: string[] = [];
+  const write = state.write;
+  state.write = function (content?: string) {
+    if (this.out.length > SPILL_AT) {
+      const cut = this.out.length - SPILL_KEEP;
+      spilled.push(this.out.slice(0, cut));
+      this.out = this.out.slice(cut);
+    }
+    write.call(this, content);
+  };
+  state.render(node, parent, index);
+  const out = spilled.length ? spilled.join('') + state.out : state.out;
+  const result: BlockOut = { out, wrote, closed: state.closed ? state.closed.type : null };
+  blockMemo.set(node, result);
+  return result;
+}
+
+const LIST_TYPES = new Set(['bullet_list', 'ordered_list']);
+
+// The body (before footnote definitions) as the whole-document pass would
+// write it, or null when a block falls outside the join model above.
+function serializeBlocks(doc: Node): string | null {
+  const parts: string[] = [];
+  let closed: NodeType | null = null;
+  // An unclosed block has written: the next one would continue its line.
+  let open = false;
+  let atBlank = true;
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i);
+    const r = renderBlock(child, doc, i);
+    if (!r.wrote) {
+      if (r.out) return null;
+      if (r.closed) closed = r.closed;
+      continue;
+    }
+    if (open) return null;
+    if (closed) {
+      const size = LIST_TYPES.has(child.type.name) && closed === child.type ? 3 : 2;
+      parts.push((atBlank ? '' : '\n') + '\n'.repeat(size - 1));
+      atBlank = true;
+    }
+    if (r.out) {
+      parts.push(r.out);
+      atBlank = r.out.endsWith('\n');
+    }
+    closed = r.closed;
+    open = !r.closed;
+  }
+  return parts.join('');
+}
+
+// The whole-document pass, kept for the fallback and to check the per-block
+// output against.
+export function serializeWholeDocForTests(doc: Node): string {
+  return withFootnotes(doc, editorMarkdownSerializer.serialize(doc));
+}
+
 export function serializeDocToMarkdown(doc: Node): string {
-  let out = editorMarkdownSerializer.serialize(doc);
+  let body = serializeBlocks(doc);
+  if (body === null) {
+    serializerWork.fallbacks += 1;
+    body = editorMarkdownSerializer.serialize(doc);
+  }
+  return withFootnotes(doc, body);
+}
+
+function withFootnotes(doc: Node, body: string): string {
+  let out = body;
 
   // Walk the doc once to collect footnote definitions in document
   // order, deduped by label. The first occurrence wins — subsequent

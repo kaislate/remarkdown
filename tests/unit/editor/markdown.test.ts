@@ -115,7 +115,7 @@ describe('createEditorView', () => {
     view.destroy();
   });
 
-  it('calls onChange with serialized markdown after a doc update', () => {
+  it('calls onChange with a reader for the serialized markdown after a doc update', () => {
     const parent = document.createElement('div');
     const onChange = vi.fn();
     const view = createEditorView(parent, 'a\n', onChange);
@@ -127,7 +127,7 @@ describe('createEditorView', () => {
     );
     view.dispatch(tr);
     expect(onChange).toHaveBeenCalled();
-    expect(onChange.mock.calls[0][0]).toBe('b\n');
+    expect(onChange.mock.calls[0][0]()).toBe('b\n');
     view.destroy();
   });
 });

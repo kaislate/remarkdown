@@ -9,7 +9,7 @@
 import { get } from 'svelte/store';
 import { tick } from 'svelte';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
-import { docEpoch } from './annots';
+import { currentViewerRoot } from './annots';
 import { loadIntoSession, reloadSession } from './doc';
 import { cancelReattach } from './reattach';
 import { viewerScroll } from './viewport';
@@ -112,8 +112,12 @@ function dismissDocumentDialogs(): void {
 
 function setActive(session: DocSession): void {
   dismissDocumentDialogs();
+  // The outgoing page is on its way out: without a page, the incoming tab's
+  // annotations aren't looked for in it (each would miss and scan the whole
+  // article). The Viewer sets the incoming tab's page once it has rendered
+  // it, and that resolves them, once.
+  currentViewerRoot.set(null);
   activeSession.set(session);
-  docEpoch.update((e) => e + 1);
   restoreScroll(session);
   // A reopened tab read in the background with a malformed annotations
   // file: say so now that it's on screen (unless another dialog is up —

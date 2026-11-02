@@ -75,3 +75,21 @@ describe('Viewer — leaving edit mode while the reload is in flight', () => {
     expect(a.watcherPaused).toBe(true);      // still editing: stay paused
   });
 });
+
+describe('Viewer — a burst of typing is serialized once, when it is saved', () => {
+  it('no markdown is written per keystroke; Done writes the last edit once', async () => {
+    const a = withDoc('/a.md');
+    sessions.set([a]);
+    activeSession.set(a);
+    render(Viewer);
+    await settle();
+    a.editMode.set(true); await settle();
+    const w = window as unknown as { __editorReads?: number };
+    w.__editorReads = 0;
+    for (let i = 0; i < 5; i++) await fireEvent.click(screen.getByTestId('editor-stub-type'));
+    expect(w.__editorReads).toBe(0);
+    a.editMode.set(false); await settle();   // Done: flush the save
+    expect(w.__editorReads).toBe(1);
+    expect(diskMarkdown).toBe('original typed\n');
+  });
+});

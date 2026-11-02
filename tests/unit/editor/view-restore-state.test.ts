@@ -30,7 +30,7 @@ describe('createEditorView with a restored state', () => {
     const saved = v1.state;
     v1.destroy();
     const seen: string[] = [];
-    const v2 = createEditorView(host, 'A\n', (md) => seen.push(md), saved);
+    const v2 = createEditorView(host, 'A\n', (read) => seen.push(read()), saved);
     v2.dispatch(v2.state.tr.insertText('B', 1));
     expect(seen.at(-1)).toContain('BA');
     v2.destroy();
