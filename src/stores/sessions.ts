@@ -38,6 +38,10 @@ export interface DocSession {
   // store is frozen during edit mode, so this is what a re-mounted editor
   // must start from if the post-edit reload from disk hasn't landed yet.
   editedMarkdown: string | null;
+  // Records an edit without serializing it: `editedMarkdown` calls `read`
+  // the first time it is read. Setting `editedMarkdown` drops a reader not
+  // yet called, exactly as it would have replaced the text.
+  deferEditedMarkdown(read: () => string): void;
   // The file changed on disk while this tab was in the background; reload
   // when it's activated.
   pendingDiskReload: boolean;
@@ -70,6 +74,8 @@ let counter = 0;
 
 export function createSession(): DocSession {
   counter += 1;
+  let edited: string | null = null;
+  let readEdited: (() => string) | null = null;
   return {
     id: `s${counter}`,
     doc: writable<DocState | null>(null),
@@ -78,7 +84,20 @@ export function createSession(): DocSession {
     readerMode: writable(false),
     scrollTop: null,
     editorState: null,
-    editedMarkdown: null,
+    get editedMarkdown() {
+      if (readEdited) {
+        edited = readEdited();
+        readEdited = null;
+      }
+      return edited;
+    },
+    set editedMarkdown(value: string | null) {
+      readEdited = null;
+      edited = value;
+    },
+    deferEditedMarkdown(read: () => string) {
+      readEdited = read;
+    },
     pendingDiskReload: false,
     watcherPaused: false,
     disposeWatcher: null,

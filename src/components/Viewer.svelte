@@ -248,7 +248,9 @@
     };
   });
 
-  let pendingSave: Debounced<[string]> | null = null;
+  // Carries a reader for the edited markdown, not the text: the document is
+  // serialized when the save actually runs (or is flushed), not per keystroke.
+  let pendingSave: Debounced<[() => string]> | null = null;
 
   // CSS Custom Highlight API ranges live in a global registry; the
   // HighlightLayer component unmounts when entering edit mode but the
@@ -329,20 +331,22 @@
     const ms = $settings.saveDebounceMs;
     // Bound to this tab and file: a late flush can never write into another.
     const session = get(activeSession);
-    pendingSave = debounce((markdown: string) => {
-      void saveEditedMarkdown(session, currentDoc.path, markdown);
+    pendingSave = debounce((readMarkdown: () => string) => {
+      void saveEditedMarkdown(session, currentDoc.path, readMarkdown());
     }, ms);
     return () => pendingSave?.flush();
   });
 
-  function onEditorChange(markdown: string) {
+  function onEditorChange(readMarkdown: () => string) {
     // Only the visible tab's editor receives input.
     const session = get(activeSession);
-    session.editedMarkdown = markdown;
+    // Serialized once, by whichever asks first (the save, or a remounting
+    // editor); readMarkdown keeps the text it wrote.
+    session.deferEditedMarkdown(readMarkdown);
     // A tab opened "ready to edit" keeps watching its file until the first
     // keystroke; from here on our own saves would come back as reloads.
     if (!session.watcherPaused) void pauseFileWatcher(session);
-    pendingSave?.(markdown);
+    pendingSave?.(readMarkdown);
   }
 </script>
 

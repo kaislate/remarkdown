@@ -1,7 +1,7 @@
 <script lang="ts">
   // Test double for Editor.svelte: renders the markdown it was mounted with,
   // and a button that reports an edit the way the real editor does.
-  let { initialMarkdown, onChange }: { initialMarkdown: string; onChange?: (md: string) => void; session?: unknown } = $props();
+  let { initialMarkdown, onChange }: { initialMarkdown: string; onChange?: (read: () => string) => void; session?: unknown } = $props();
   // Like the real editor, the text is read once, when the editor mounts:
   // a different document only shows if the editor is remounted.
   // svelte-ignore state_referenced_locally
@@ -11,4 +11,9 @@
 </script>
 
 <div data-testid="editor-stub">{mountedWith}</div>
-<button data-testid="editor-stub-type" onclick={() => onChange?.(mountedWith.trimEnd() + ' typed\n')}>type</button>
+<button data-testid="editor-stub-type" onclick={() => onChange?.(() => {
+  // Counts serializations, which the real editor only does when asked.
+  const r = window as unknown as { __editorReads?: number };
+  r.__editorReads = (r.__editorReads ?? 0) + 1;
+  return mountedWith.trimEnd() + ' typed\n';
+})}>type</button>
