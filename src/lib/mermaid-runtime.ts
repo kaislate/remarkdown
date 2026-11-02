@@ -485,16 +485,63 @@ export function stackWork(source: string): number {
 }
 
 // An xychart's parser copies its list so far for each item it adds to an
-// axis or a data series (a list can't go past the end of its line), so
-// each line's items are weighed squared: 1,800 x-axis labels took 0.7 s,
-// 16,000 took 35 s (strings, the slowest kind, at about 5,000 per ms).
-// Five series of a year's daily readings weigh 700,000.
+// axis or a data series, so each list's items are weighed squared:
+// 1,800 x-axis labels took 0.7 s, 16,000 took 35 s (about 5,000 per ms).
+// A data series (`line`, `bar`), which holds only numbers, is read about
+// four times as fast, and weighs an eighth: 3,000 numbers took 0.2 s,
+// 5,200 0.7 s. Five series of a year's daily readings, with a label for
+// each day, weigh 220,000.
+//
+// A list ends at its `]`, or at a line break the lexer reads as one: a
+// line that ends in a space or a tab runs on into the next, as the space
+// and the line break are read as one gap. What the lexer reads as one
+// piece of text is skipped whole, as it is: a string, a comment, a title
+// or description, and one stray rule of the lexer's that matches a
+// fixed run of text with a `"` in it. A `]`, a `"` or a line break there
+// closes or opens nothing.
 const LIST_WORK_LIMIT = 1.5e6;
+const XYCHART_PIECES = new RegExp(
+  [
+    String.raw`[^}]%%[^\n]*`,
+    String.raw`%%[^\n]*`,
+    String.raw`\x60\) {36}\{ this\.pushState\(md_string\); \}\n<md_string>\(\?:\(\?!\x60"\)\.\)\+ {18}\{ return MD_STR; \}\n<md_string>\(\?:\x60`,
+    String.raw`"[^"]*"?`,
+    String.raw`(?<![a-z])acc(?:Title|Descr)\s*:\s*[^\n]*`,
+    String.raw`(?<![a-z])accDescr\s*\{[^}]*\}?`,
+    String.raw`(?<![a-z])(?:x-axis|y-axis|line|bar)\b`,
+    String.raw`\s+`,
+    String.raw`[[\],]`,
+  ].join('|'),
+  'gi',
+);
 
 export function listWork(source: string): number {
   if (detectDiagramType(source) !== 'xychart') return 0;
   let work = 0;
-  for (const line of source.split('\n')) work += (line.split(',').length - 1) ** 2;
+  let data = false;
+  // The list being read: its items so far, and whether it is a data
+  // series all the way.
+  let items = -1;
+  let numbers = false;
+  const close = () => {
+    if (items > 0) work += numbers ? items ** 2 / 8 : items ** 2;
+    items = -1;
+  };
+  for (const [piece] of source.matchAll(XYCHART_PIECES)) {
+    if (piece === '[') {
+      if (items < 0) {
+        items = 0;
+        numbers = data;
+      }
+    } else if (piece === ']') close();
+    else if (piece === ',') {
+      if (items >= 0) items++;
+    } else if (/^(?:x-axis|y-axis|line|bar)$/i.test(piece)) {
+      data = /^(?:line|bar)$/i.test(piece);
+      if (!data) numbers = false;
+    } else if (piece[0] === '\n' || piece[0] === '\r') close();
+  }
+  close();
   return work;
 }
 
@@ -507,23 +554,36 @@ export function listWork(source: string): number {
 // around it. `;` ends a statement as a line break does.
 //
 // An opening statement counts wherever one could be. An `end` counts
-// only at the start of a line, and not on a line inside an actor's data
-// (`@{ … }`) or a description (`accDescr { … }`), which mermaid reads
-// as one piece of text whatever lines it holds: an `end` there closes
-// nothing, and blocks it seemed to close would weigh nothing.
+// only at the start of a line (and after another `end` there), and not
+// in what mermaid reads as one piece of text whatever lines it holds: an
+// actor's data (`@{ … }`), a description (`accDescr { … }`), or a title
+// or description whose text starts on the next line (`title`, then a
+// line break). An `end` there closes nothing, and blocks it seemed to
+// close would weigh nothing. What follows an `end` on its line is read
+// as a new statement: `end loop a` closes one block and opens another.
 const BLOCK_WORK_LIMIT = 1.5e6;
 const SEQUENCE_OPENS = /^(?:loop|rect|opt|alt|par|par_over|critical|break|box)\b/i;
 const SEQUENCE_BRANCHES = /^(?:else|and|option)\b/i;
-const SEQUENCE_SPANS = /@\{[^}]*(?:\}|$)|accDescr\s*\{[^}]*(?:\}|$)/gi;
+const SEQUENCE_SPANS = /@\{[^}]*(?:\}|$)|accDescr\s*\{[^}]*(?:\}|$)|acc(?:Title|Descr)\s*:\s*[^\n]*|title:?\s[^#\n;]+/gi;
+const SEQUENCE_END = /^\s*end\b\s*/i;
 
 function sequenceBlockWork(source: string): number {
-  const lines = source.split('\n');
-  const outside = source.replace(SEQUENCE_SPANS, (span) => span.replace(/[^\n]/g, '')).split('\n');
+  // The spans are blanked with a character that is neither a space nor
+  // part of a word, so each line keeps its length.
+  const outside = source.replace(SEQUENCE_SPANS, (span) => span.replace(/[^\n]/g, '\0')).split('\n');
   const open: number[] = [];
   let branches = 0;
   let work = 0;
-  lines.forEach((line, i) => {
-    for (const piece of line.split(';')) {
+  source.split('\n').forEach((line, i) => {
+    let rest = line;
+    let seen = outside[i];
+    for (let end = SEQUENCE_END.exec(seen); end; end = SEQUENCE_END.exec(seen)) {
+      work += open.length + branches;
+      if (open.length) branches -= open.pop()!;
+      rest = rest.slice(end[0].length);
+      seen = seen.slice(end[0].length);
+    }
+    for (const piece of rest.split(';')) {
       const statement = piece.trim();
       if (!statement) continue;
       if (SEQUENCE_OPENS.test(statement)) open.push(0);
@@ -533,8 +593,6 @@ function sequenceBlockWork(source: string): number {
       }
       work += open.length + branches;
     }
-    const closes = /^\s*end\b/i;
-    if (open.length && closes.test(line) && closes.test(outside[i])) branches -= open.pop()!;
   });
   return work;
 }

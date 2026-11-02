@@ -501,6 +501,15 @@ describe('mermaid runtime', () => {
       'C4Context\n' + 'Person(a, "b")\n'.repeat(3_200),
       'C4Context\nPerson(a, ' + '"b", '.repeat(6_000) + '"b")',
       'radar-beta\naxis ' + 'a, '.repeat(8_000) + 'a',
+      // An xychart's list goes on past a line that ends in a space or a
+      // tab (48 KB of one label per line took 20 s), and a `]` in a
+      // string closes nothing.
+      'xychart\nx-axis [' + 'a, \n'.repeat(12_000) + 'a]',
+      'xychart\nx-axis [' + 'a,\t\n'.repeat(12_000) + 'a]',
+      'xychart\nline [' + '1, \n'.repeat(12_000) + '1]',
+      'xychart\nx-axis [' + 'a, \n'.repeat(3_000) + 'a]',
+      'xychart\nx-axis [' + '"a]", \n'.repeat(5_000) + 'a]',
+      'xychart\nline [' + '1, '.repeat(5_000) + '1]',
     ]) {
       const t0 = performance.now();
       const out = await renderMermaid(source, DARK);
@@ -518,6 +527,13 @@ describe('mermaid runtime', () => {
         '    line [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]',
       // A year of daily readings, three series.
       `xychart\nx-axis [${list(366, (i) => `d${i}`)}]\n${`line [${list(366, (i) => `${i}.5`)}]\n`.repeat(3)}`,
+      // Two years of daily readings, and longer series: a list of plain
+      // numbers is read far faster than labels (3,000 took 0.2 s).
+      `xychart\nx-axis 0 --> 730\n${`line [${list(730, (i) => `${50 + (i * 37) % 50}`)}]\n`.repeat(3)}`,
+      `xychart\n${`bar [${list(1_000, (i) => `${i}`)}]\n`.repeat(2)}`,
+      `xychart\nline [${list(3_000, (i) => `${i % 97}.25`)}]`,
+      // Labels one per line, with commas in their strings.
+      `xychart\nx-axis [${Array.from({ length: 1_000 }, (_, i) => `"Jan ${i}, 2024"`).join(', \n')}]`,
       `sankey\n${Array.from({ length: 300 }, (_, i) => `Source ${i},Target ${i % 17},${i}.5\n`).join('')}`,
       'sankey\n"Agricultural \'waste\'",Bio-conversion,124.729\nBio-conversion,Liquid,0.597\nBio-conversion,Losses,26.862\n',
       `flowchart TD\n${Array.from({ length: 80 }, (_, i) => `a${i} & b${i} & c${i} --> d${i} & e${i}\n`).join('')}`,
@@ -558,6 +574,17 @@ describe('mermaid runtime', () => {
       // An `end` inside an actor's data or a description closes nothing.
       'sequenceDiagram\n' + 'loop x\n'.repeat(1_500) + 'participant A@{ "type": "database", "alias": a\n' + 'end\n'.repeat(1_500) + '}\n' + 'A->>B: x\n'.repeat(3_000),
       'sequenceDiagram\n' + 'loop x\n'.repeat(1_500) + 'accDescr {\n' + 'end\n'.repeat(1_500) + '}\n' + 'A->>B: x\n'.repeat(3_000),
+      // An `end` closes a block, and what follows it on its line is read
+      // as a new statement that can open another one, or a branch.
+      'sequenceDiagram\n' + 'loop a\nend loop a\n'.repeat(2_200) + 'end\n'.repeat(2_200),
+      'sequenceDiagram\nalt x\n' + 'loop b\nend else c\n'.repeat(2_600) + 'end',
+      'sequenceDiagram\ncritical x\n' + 'loop b\nend option c\n'.repeat(2_400) + 'end',
+      'sequenceDiagram\npar x\n' + 'loop b\nend and c\n'.repeat(2_600) + 'end',
+      // A title or description can go on to the next line, and an `end`
+      // there closes nothing.
+      'sequenceDiagram\n' + 'loop x\n'.repeat(1_200) + 'title\nend\n'.repeat(1_200) + 'A->>B: x\n'.repeat(3_000),
+      'sequenceDiagram\n' + 'loop x\n'.repeat(1_200) + 'accTitle:\nend\n'.repeat(1_200) + 'A->>B: x\n'.repeat(2_500),
+      'sequenceDiagram\n' + 'loop x\n'.repeat(1_200) + 'accDescr:\nend\n'.repeat(1_200) + 'A->>B: x\n'.repeat(2_500),
       'flowchart TD\n' + 'subgraph s\n'.repeat(2_400) + 'x\n' + 'end\n'.repeat(2_400),
       'flowchart TD\n' + 'subgraph s\n'.repeat(1_000) + 'a\n'.repeat(3_000) + 'end\n'.repeat(1_000),
       // A flowchart's `end` can be text inside a label or a string.
@@ -615,6 +642,8 @@ describe('mermaid runtime', () => {
       `sequenceDiagram\nalt a\n  A->>B: x\n${Array.from({ length: 100 }, (_, i) => `else b${i}\n  A->>B: x\n`).join('')}end`,
       `sequenceDiagram\n${'loop a\n'.repeat(20)}${'  A->>B: x\n'.repeat(2_000)}${'end\n'.repeat(20)}`,
       `sequenceDiagram\nparticipant A@{ "type": "database" }\n${'loop a\n  A->>B: x\nend\n'.repeat(500)}`,
+      `sequenceDiagram\ntitle Hello\naccTitle: Pings\naccDescr: Pings and pongs\n${'loop a\n  A->>B: x\nend\n'.repeat(500)}`,
+      `sequenceDiagram\n${'loop a\n  A->>B: x\nend loop b\n  A->>B: y\nend\n'.repeat(300)}`,
       `flowchart TD\n${Array.from({ length: 100 }, (_, i) => `subgraph S${i}\n${Array.from({ length: 10 }, (_, j) => `  N${i}_${j} --> N${i}_${j + 1}\n`).join('')}end\n`).join('')}`,
       `flowchart TD\n${'subgraph a\n'.repeat(10)}${'  A --> B\n'.repeat(400)}${'end\n'.repeat(10)}`,
     ]) {
@@ -658,7 +687,8 @@ describe('mermaid runtime', () => {
     const t0 = performance.now();
     expect(blockWork(`sequenceDiagram\n${'loop x\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
     expect(blockWork(`flowchart TD\n${'subgraph s\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
-    expect(listWork(`xychart\nline [${'1,'.repeat(200_000)}1]`)).toBeGreaterThan(1e10);
+    expect(listWork(`xychart\nline [${'1,'.repeat(200_000)}1]`)).toBeGreaterThan(1e9);
+    expect(listWork(`xychart\nx-axis [${'a, \n'.repeat(50_000)}a]`)).toBeGreaterThan(1e9);
     expect(performance.now() - t0).toBeLessThan(500);
   });
 
