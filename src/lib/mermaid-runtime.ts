@@ -572,6 +572,17 @@ const MAX_TEXT_SIZE = 50_000;
 // mermaid makes before that limit reads all of it.
 const MAX_SOURCE_SIZE = 200_000;
 
+// mermaid's cleanupComments, safe to run once commentRegexWork passed.
+function cleanupComments(seen: string): string {
+  return seen.replace(/^\s*%%(?!{)[^\n]+\n?/gm, '').trimStart();
+}
+
+// Whether mermaid draws its "too big" notice in place of `source`. Safe
+// to ask only of a source tooSlowToRead let through.
+function drawnAsTooBig(source: string): boolean {
+  return cleanupComments(textMermaidSees(source)).length > MAX_TEXT_SIZE;
+}
+
 // Why mermaid would hang on `source`, if it would.
 function tooSlowToRead(source: string): string | null {
   const tangled = 'This diagram is too long and tangled to read.';
@@ -588,8 +599,7 @@ function tooSlowToRead(source: string): string | null {
     methodRegexWork(seen) > METHOD_WORK_LIMIT ||
     genericTypesWork(seen) > GENERIC_WORK_LIMIT
   ) return tangled;
-  // mermaid's cleanupComments, safe to run once commentRegexWork passed.
-  const code = seen.replace(/^\s*%%(?!{)[^\n]+\n?/gm, '').trimStart();
+  const code = cleanupComments(seen);
   if (code.length > MAX_TEXT_SIZE) return null;
   return runWork(code) > RUN_WORK_LIMIT ||
     lineTokenWork(code) > LINE_TOKEN_WORK_LIMIT ||
@@ -663,9 +673,11 @@ const isUnsafeDrawnPicture = (src: unknown) => typeof src === 'string' && (isUns
 // in this page while it draws. Each gets the check a markdown picture
 // gets, read from the parsed diagram (the value may be written with
 // escapes), and a diagram that names an unsafe one isn't drawn at all.
-// Only those three can name a picture this way.
+// Only those three can name a picture this way. A diagram mermaid draws
+// its "too big" notice for shows none of them, and isn't parsed here:
+// its shape wasn't weighed, and its parse could take seconds.
 async function namesUnsafePicture(api: MermaidApi | undefined, source: string): Promise<boolean> {
-  if (!/@\{|properties|details/i.test(source) || !api?.getDiagramFromText) return false;
+  if (!/@\{|properties|details/i.test(source) || !api?.getDiagramFromText || drawnAsTooBig(source)) return false;
   const { db } = await api.getDiagramFromText(source);
   const nodes = valuesOf(db?.getVertices?.()).map((n) => (n as { img?: unknown } | null)?.img);
   const icons = valuesOf(db?.getActors?.()).map((a) => (a as { properties?: { icon?: unknown } } | null)?.properties?.icon);

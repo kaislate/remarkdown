@@ -636,6 +636,24 @@ describe('mermaid runtime', () => {
     expect(performance.now() - t0).toBeLessThan(500);
   });
 
+  // Past mermaid's size limit, mermaid draws its notice in the diagram's
+  // place, and no picture of the diagram's loads. Its shape isn't
+  // weighed, so it isn't parsed to look for pictures either: these took
+  // mermaid 5 and 2.3 s. (A HANG source never finishes that parse.)
+  it("doesn't parse a diagram past mermaid's size limit to check its pictures", async () => {
+    for (const source of [
+      'sequenceDiagram\nparticipant HANG@{ "type": "database" }\ncritical x\n' + 'A->>B: x\noption y\n'.repeat(3_000) + 'end',
+      'sequenceDiagram\nlinks HANG: {"details": "x"}\n' + 'rect rgb(0,0,0)\n'.repeat(2_500) + 'A->>B: x\n' + 'end\n'.repeat(2_500),
+    ]) {
+      const p = renderMermaid(source, DARK);
+      await flush();
+      expect(mocked.renders.length, source.slice(0, 40)).toBe(1);
+      mocked.renders[0].resolve();
+      expect((await p).ok).toBe(true);
+      mocked.renders.length = 0;
+    }
+  });
+
   it('weighs blocks and lists in linear time', () => {
     const t0 = performance.now();
     expect(blockWork(`sequenceDiagram\n${'loop x\n'.repeat(100_000)}`)).toBeGreaterThan(1e9);
