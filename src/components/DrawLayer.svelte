@@ -30,8 +30,15 @@
   let liveLayer = $state<SVGGElement | null>(null);
   let resizeTick = $state(0);
   let drawing = $state(false);
-  let currentStroke = $state<Point[]>([]);
-  let pendingStrokes = $state<Stroke[]>([]);
+  // The stroke being drawn: a plain array, its points added in place, with
+  // a counter that says it grew (copying a long stroke's points, deep in
+  // reactive state, on every pointer move made each move slower than the
+  // last). Points aren't changed once added, and a finished stroke's array
+  // is handed on whole: the next stroke starts a new one.
+  let currentStroke = $state.raw<Point[]>([]);
+  let strokeGrew = $state(0);
+  // Only ever replaced, never changed in place.
+  let pendingStrokes = $state.raw<Stroke[]>([]);
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   let menuForId = $state<string | null>(null);
@@ -166,7 +173,8 @@
     if (!drawing) return;
     const svg = e.currentTarget as SVGSVGElement;
     const rect = svg.getBoundingClientRect();
-    currentStroke = [...currentStroke, [e.clientX - rect.left, e.clientY - rect.top]];
+    currentStroke.push([e.clientX - rect.left, e.clientY - rect.top]);
+    strokeGrew += 1;
   }
 
   function onPointerUp(_e: PointerEvent): void {
@@ -241,6 +249,7 @@
   $effect(() => {
     void drawing;
     void currentStroke;
+    void strokeGrew;
     void $tool.drawColor;
     void $settings.drawingRoughness;
     const svg = drawSvg;
