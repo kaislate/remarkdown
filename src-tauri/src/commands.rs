@@ -330,12 +330,21 @@ fn check_saved_tab_blocking(path: &str) -> SavedTabCheck {
     if check_readable(&md_path, is_document_path).is_err() {
         return SavedTabCheck::Missing;
     }
-    // The document itself, as read_document reads it (its annotations file
-    // is looked at when the tab is opened).
-    match read_document_bytes(&md_path) {
-        Ok(bytes) if std::str::from_utf8(&bytes).is_ok() => SavedTabCheck::Readable,
-        Ok(_) => SavedTabCheck::Unreadable(CommandError::NotUtf8),
-        Err(e) => SavedTabCheck::Unreadable(e),
+    // Opened, not read: this runs before the document the user double-clicked
+    // is read, so reading every saved tab here would hold it up by their
+    // size. A saved tab was read fine last time; one that has since stopped
+    // being text says so when its tab is read. (Its annotations file is
+    // looked at then too.)
+    let opened = open_to_read(&md_path).and_then(|f| f.metadata());
+    match opened {
+        Ok(meta) if !meta.is_file() => {
+            SavedTabCheck::Unreadable(CommandError::Io("it isn't an ordinary file".into()))
+        }
+        Ok(meta) if meta.len() > DOCUMENT_LIMIT => {
+            SavedTabCheck::Unreadable(CommandError::Io("the file is too large (over 50 MB)".into()))
+        }
+        Ok(_) => SavedTabCheck::Readable,
+        Err(e) => SavedTabCheck::Unreadable(e.into()),
     }
 }
 
@@ -776,7 +785,9 @@ mod tests {
         let at = |p: &std::path::Path| check_saved_tab_blocking(&p.to_string_lossy());
 
         assert!(matches!(at(&ok), SavedTabCheck::Readable));
-        assert!(matches!(at(&latin1), SavedTabCheck::Unreadable(CommandError::NotUtf8)));
+        // Not read, only opened (it would hold up the launched document):
+        // that it isn't text is found when its tab is read.
+        assert!(matches!(at(&latin1), SavedTabCheck::Readable));
         assert!(matches!(at(&huge), SavedTabCheck::Unreadable(CommandError::Io(ref m)) if m.contains("too large")));
         assert!(matches!(at(&gone), SavedTabCheck::Missing));
         assert!(matches!(at(&other), SavedTabCheck::Missing));
