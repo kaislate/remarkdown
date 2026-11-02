@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import { readerMode } from '../stores/reader-mode';
   import { doc } from '../stores/doc';
   import { currentViewerRoot } from '../stores/annots';
@@ -47,7 +48,60 @@
   // transforms) rather than re-rendering $doc.html. That way the minimap
   // visually matches what the user is actually scrolling through and the
   // indicator lines up with the right region.
-  let mirroredHtml = $state('');
+  //
+  // The copy is kept up to date block by block: a change inside one
+  // top-level block (typing in edit mode, a diagram drawn) redraws only
+  // that block's copy; blocks added or removed redraw the whole copy. The
+  // copy's top-level nodes line up one-to-one with the source's.
+  // mirroredHtml is the last whole copy, kept to fill the clone element
+  // when it is (re)created; null once block redraws have moved past it.
+  let mirroredHtml: string | null = '';
+  // The copy's nodes match the source's one-to-one (checked after every
+  // whole copy; should the HTML parser ever regroup them, every change
+  // redraws the whole copy, as it always used to).
+  let aligned = false;
+  // Set while mounted: bring the copy up to date / catch up once shown.
+  let snapshotNow: (() => void) | null = null;
+  let onDisplayed: (() => void) | null = null;
+
+  function sameShape(copy: HTMLElement, source: HTMLElement | null): boolean {
+    if (!source) return false;
+    const a = copy.childNodes;
+    const b = source.childNodes;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i].nodeName !== b[i].nodeName) return false;
+    }
+    return true;
+  }
+
+  function fillClone(html: string): void {
+    const el = cloneEl;
+    if (!el) return;
+    el.innerHTML = html;
+    aligned = sameShape(el, sourceEl);
+  }
+
+  // The clone element comes and goes with the document: fill it with the
+  // last whole copy when it appears (or make one if blocks moved on).
+  $effect(() => {
+    const el = cloneEl;
+    if (!el) return;
+    untrack(() => {
+      if (mirroredHtml !== null) fillClone(mirroredHtml);
+      else snapshotNow?.();
+    });
+  });
+
+  // Displayed again (leaving reader mode, the window widened) after
+  // changes it skipped while it wasn't: catch up before it paints.
+  $effect(() => {
+    const map = minimapEl;
+    if (!map || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => onDisplayed?.());
+    ro.observe(map);
+    return () => ro.disconnect();
+  });
 
   function updateLayout(): void {
     const scroll = $viewerScroll;
@@ -162,25 +216,106 @@
     let currentScrollEl: HTMLElement | null = null;
     let mutationObserver: MutationObserver | null = null;
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    // What changed since the copy was last brought up to date: the
+    // top-level source blocks to redraw, or everything.
+    const changedBlocks = new Set<Node>();
+    let wholeCopy = true;
+    // Changes were skipped while the minimap couldn't be seen.
+    let stale = false;
+
+    // Hidden (slid away, or not displayed at all: reader mode without it,
+    // a narrow window), nobody sees the copy, so it isn't kept up to date
+    // until it shows again.
+    function canBeSeen(): boolean {
+      if (!get(minimapShown)) return false;
+      const map = minimapEl;
+      return !map || getComputedStyle(map).display !== 'none';
+    }
+
+    // A copy of `node` (or of its children) with its ids prefixed
+    // (references rewritten to match) — the copy shares the document with
+    // the article, and each diagram svg alone carries dozens of ids its
+    // own markers, gradients and inline styles point at. See
+    // prefix-ids.ts. Returned as HTML, so a block's copy goes through the
+    // parser just as the whole copy does.
+    function copyHtml(node: Node, childrenOnly: boolean): string {
+      const holder = document.createElement('div');
+      if (childrenOnly) holder.append(...Array.from(node.cloneNode(true).childNodes));
+      else holder.appendChild(node.cloneNode(true));
+      prefixIds(holder, 'minimap-');
+      return holder.innerHTML;
+    }
+
+    function copyAll(): void {
+      if (!sourceEl) return;
+      mirroredHtml = copyHtml(sourceEl, true);
+      fillClone(mirroredHtml);
+    }
+
+    // Redraw just the changed blocks' copies. False: it can't be done
+    // block by block (the copy doesn't line up), so copy it all.
+    function copyChanged(): boolean {
+      const source = sourceEl;
+      const copy = cloneEl;
+      if (!source || !copy || !aligned) return false;
+      const sourceNodes = Array.from(source.childNodes);
+      for (const block of changedBlocks) {
+        const i = sourceNodes.indexOf(block as ChildNode);
+        const old = i < 0 ? undefined : copy.childNodes[i];
+        if (!old) return false;
+        const tpl = document.createElement('template');
+        tpl.innerHTML = copyHtml(block, false);
+        const fresh = tpl.content.childNodes;
+        if (fresh.length !== 1 || fresh[0].nodeName !== block.nodeName) return false;
+        copy.replaceChild(fresh[0], old);
+      }
+      mirroredHtml = null;
+      return true;
+    }
 
     function snapshotArticle(): void {
       if (!sourceEl) return;
-      // Mirror a clone whose ids are prefixed (references rewritten to
-      // match) — the clone shares the document with the article, and
-      // each diagram svg alone carries dozens of ids its own markers,
-      // gradients and inline styles point at. See prefix-ids.ts.
-      const clone = sourceEl.cloneNode(true) as HTMLElement;
-      prefixIds(clone, 'minimap-');
-      mirroredHtml = clone.innerHTML;
+      if (!canBeSeen()) {
+        stale = true;
+        return;
+      }
+      if (wholeCopy || stale || !copyChanged()) copyAll();
+      wholeCopy = false;
+      stale = false;
+      changedBlocks.clear();
       // Recompute the indicator after the new HTML lays out in the clone.
       requestAnimationFrame(() => requestAnimationFrame(updateLayout));
     }
+    snapshotNow = () => {
+      wholeCopy = true;
+      snapshotArticle();
+    };
+    onDisplayed = () => {
+      if (stale && canBeSeen()) snapshotArticle();
+    };
 
     function scheduleSnapshot(): void {
       if (snapshotTimer) clearTimeout(snapshotTimer);
       // ~120ms debounce coalesces the burst of mutations from a sequence
       // of mermaid renders (each diagram fires several mutations).
       snapshotTimer = setTimeout(snapshotArticle, 120);
+    }
+
+    // Note which top-level blocks the changes fall in.
+    function noteChanges(records: MutationRecord[]): void {
+      const source = sourceEl;
+      if (!source) return;
+      for (const r of records) {
+        if (r.target === source) {
+          // The source's own attributes aren't part of the copy.
+          if (r.type !== 'attributes') wholeCopy = true;
+          continue;
+        }
+        let node: Node | null = r.target;
+        while (node && node.parentNode !== source) node = node.parentNode;
+        if (node) changedBlocks.add(node);
+        else wholeCopy = true; // no longer in the source
+      }
     }
 
     // Layout changes that move or resize the page without a scroll event:
@@ -216,13 +351,20 @@
       }
       if (sourceEl) resizeObserver?.unobserve(sourceEl);
       sourceEl = next;
+      changedBlocks.clear();
+      wholeCopy = true;
+      stale = false;
       if (!next) {
         mirroredHtml = '';
+        fillClone('');
         return;
       }
       resizeObserver?.observe(next);
       snapshotArticle();
-      mutationObserver = new MutationObserver(scheduleSnapshot);
+      mutationObserver = new MutationObserver((records) => {
+        noteChanges(records);
+        scheduleSnapshot();
+      });
       mutationObserver.observe(next, {
         childList: true,
         subtree: true,
@@ -245,7 +387,10 @@
     });
 
     // Also recompute after the slide-in transition finishes so dimensions are right.
-    const unsubShown = minimapShown.subscribe(() => {
+    const unsubShown = minimapShown.subscribe((shown) => {
+      // Shown again after changes it skipped: bring the copy up to date
+      // now, before it starts sliding in.
+      if (shown && stale) snapshotArticle();
       setTimeout(updateLayout, 300);
     });
 
@@ -263,6 +408,8 @@
       window.removeEventListener('resize', updateLayout);
       if (mutationObserver) mutationObserver.disconnect();
       resizeObserver?.disconnect();
+      snapshotNow = null;
+      onDisplayed = null;
       if (snapshotTimer) clearTimeout(snapshotTimer);
       unsubDoc();
       unsubShown();
@@ -293,9 +440,7 @@
         class="minimap-content md-rendered"
         bind:this={cloneEl}
         style="transform: translateY({translateY}px) scale({scale}); transform-origin: top left; width: {cloneWidth}px; padding: {pad.t}px {pad.h}px {pad.b}px; box-sizing: border-box; font-size: {fontSize};"
-      >
-        {@html mirroredHtml}
-      </div>
+      ></div>
       <div
         class="viewport-indicator"
         class:dragging

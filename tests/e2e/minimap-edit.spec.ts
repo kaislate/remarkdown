@@ -59,3 +59,36 @@ test('in edit mode the minimap box matches the page, all the way down past the d
     expect(Math.abs(m.map - m.page) * m.boxPx, `heading ${i + 1}`).toBeLessThanOrEqual(1.5);
   }
 });
+
+// Typing redraws the minimap's copy of the paragraph being typed in, not
+// the whole document.
+test('typing in edit mode redraws only that paragraph in the minimap', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page);
+  await expect(page.locator('.viewer .mermaid-block svg')).toHaveCount(6);
+  await page.locator('.edit-mode-toggle').click();
+  await expect(page.locator('.editor-surface .mermaid-rendered svg')).toHaveCount(6);
+  await page.waitForTimeout(600); // the minimap's snapshot debounce + layout
+  // Tag every block of the copy, to see which ones get replaced.
+  const blocks = await page.evaluate(() => {
+    const copy = Array.from(document.querySelector('.minimap-content')!.children);
+    copy.forEach((el, i) => ((el as any).__tag = i));
+    return copy.length;
+  });
+  // Type at the end of Part 1's first paragraph.
+  const para = page.locator('.editor-surface .ProseMirror > p').first();
+  await para.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Zebra');
+  await expect(page.locator('.minimap-content')).toContainText('Zebra');
+  const kept = await page.evaluate(() =>
+    Array.from(document.querySelector('.minimap-content')!.children).filter((el) => (el as any).__tag !== undefined).length);
+  // Every block but the one typed in is the same node as before.
+  expect(kept).toBe(blocks - 1);
+  // The copy still matches the page block for block.
+  const shapes = await page.evaluate(() => [
+    Array.from(document.querySelector('.editor-surface .ProseMirror')!.children).map((e) => e.tagName).join(),
+    Array.from(document.querySelector('.minimap-content')!.children).map((e) => e.tagName).join(),
+  ]);
+  expect(shapes[1]).toBe(shapes[0]);
+});
