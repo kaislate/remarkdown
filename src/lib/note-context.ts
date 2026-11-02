@@ -2,7 +2,8 @@
 // column + bottom-left popover panel). Keeps the two views in lockstep
 // for the same re.mark.
 
-import { buildSentenceContext } from './sentence-context';
+import { buildSentenceContext, sentenceContextOf } from './sentence-context';
+import { domVersion } from './dom-version';
 
 export interface ContextOptions {
   /** Number of sentences of context to include (the anchor's sentence
@@ -63,7 +64,66 @@ export function contextFor(
   options: ContextOptions,
 ): string {
   if (!root) return '';
+  // Kept per range while the article (see dom-version.ts), the range's
+  // ends and the settings are what they were: the margin cards are laid
+  // out again on every change, resize and zoom, and the re.marks panel
+  // shows the same contexts.
+  const version = domVersion(root);
+  const key = `${options.sentences}|${options.stopAtParagraph}|${options.stopAtListItem}`;
+  const kept = keptContexts.get(range);
+  if (
+    kept && kept.root === root && kept.version === version && kept.key === key
+    && kept.start === range.startContainer && kept.startOffset === range.startOffset
+  ) {
+    return kept.value;
+  }
+  const value = contextAfresh(range, root, options);
+  // Only what's read from inside the article, which is what the version
+  // follows.
+  const block = startElement(range)?.closest('[data-block-id]');
+  if (root.contains(range.startContainer) && (!block || root.contains(block))) {
+    keptContexts.set(range, { root, version, key, start: range.startContainer, startOffset: range.startOffset, value });
+  }
+  return value;
+}
 
+const startElement = (range: Range): Element | null =>
+  range.startContainer.nodeType === Node.TEXT_NODE
+    ? range.startContainer.parentElement
+    : (range.startContainer as Element);
+
+interface Kept {
+  root: HTMLElement;
+  version: number;
+  key: string;
+  start: Node;
+  startOffset: number;
+  value: string;
+}
+const keptContexts = new WeakMap<Range, Kept>();
+
+// The article's blocks in order, and where each is in it, kept while the
+// article doesn't change.
+const keptBlocks = new WeakMap<HTMLElement, { version: number; list: HTMLElement[]; at: Map<HTMLElement, number> }>();
+
+function blocksOf(root: HTMLElement): { list: HTMLElement[]; at: Map<HTMLElement, number> } {
+  const version = domVersion(root);
+  let kept = keptBlocks.get(root);
+  if (!kept || kept.version !== version) {
+    const list = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
+    const at = new Map<HTMLElement, number>();
+    list.forEach((b, i) => { if (!at.has(b)) at.set(b, i); });
+    kept = { version, list, at };
+    keptBlocks.set(root, kept);
+  }
+  return kept;
+}
+
+function contextAfresh(
+  range: Range,
+  root: HTMLElement,
+  options: ContextOptions,
+): string {
   // List-item path: cap context to the bullet text alone.
   if (options.stopAtListItem) {
     const li = findListItem(range);
@@ -90,19 +150,13 @@ export function contextFor(
   const offset = anchorOffsetWithin(range, block);
   if (offset === null) return block.textContent ?? '';
 
-  const blocks = options.stopAtParagraph
-    ? [block]
-    : (() => {
-        const all = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
-        const idx = all.indexOf(block);
-        return idx < 0 ? [block] : all.slice(0, idx + 1);
-      })();
-  const blockTexts = blocks.map((b) => b.textContent ?? '');
-
-  return buildSentenceContext(
-    blockTexts,
-    offset,
-    options.sentences,
-    options.stopAtParagraph,
-  );
+  if (options.stopAtParagraph) {
+    return buildSentenceContext([block.textContent ?? ''], offset, options.sentences, true);
+  }
+  // The blocks up to the anchor's, whose texts are read back from it only
+  // as far as the sentences go.
+  const { list, at } = blocksOf(root);
+  const idx = at.get(block) ?? -1;
+  if (idx < 0) return buildSentenceContext([block.textContent ?? ''], offset, options.sentences, false);
+  return sentenceContextOf(idx + 1, (i) => list[i].textContent ?? '', offset, options.sentences, false);
 }
