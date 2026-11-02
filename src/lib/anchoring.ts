@@ -25,6 +25,22 @@ const MAX_CANDIDATES = 1000;
 // that's half of a long paragraph is found at a thousand places, and each
 // find reads it all.
 const PASS_BUDGET = 250_000_000;
+// The characters a search passes over are only a guess at what it costs: a
+// browser's search can compare a long text at each place it passes, and
+// how often it does differs between browsers. So a pass also stops at this
+// many milliseconds, whatever it has counted: ten times what the heaviest
+// real case above takes, as a pass cut short shows the rest of its
+// annotations as unplaced, and the next pass, cut at the same place, would
+// too.
+const PASS_TIME = 1_000;
+// A text longer than this is searched for by its first this-many
+// characters, and each place they're found is checked for the rest. Given
+// the whole of a long text, Chromium's search compares up to all of it at
+// each place when its last 250 characters are found there and what's
+// before them isn't: 80 ns a character with 250 of them, 2 µs with 5,000,
+// against the 4 ns the cap allows. Checking a place is counted as the
+// length of the text, which is what it costs at most.
+const SEARCH_HEAD = 64;
 
 function findContainingBlock(node: Node): HTMLElement | null {
   let n: Node | null = node;
@@ -62,7 +78,8 @@ interface Blocks { list: HTMLElement[]; byId: Map<string, HTMLElement>; joined?:
 // What the current resolvingPass has built already: per scope, its text and
 // its text nodes; per article, its blocks.
 interface ScopeCache { text: Map<HTMLElement, string>; nodes: Map<HTMLElement, TextNodes> }
-let pass: { plain: ScopeCache; noDiagrams: ScopeCache; blocks: Map<HTMLElement, Blocks>; budget: number } | null = null;
+let pass: { plain: ScopeCache; noDiagrams: ScopeCache; blocks: Map<HTMLElement, Blocks>; budget: number; deadline: number } | null =
+  null;
 
 const scopeCache = (skipDiagrams: boolean): ScopeCache | null =>
   pass && (skipDiagrams ? pass.noDiagrams : pass.plain);
@@ -73,7 +90,7 @@ const scopeCache = (skipDiagrams: boolean): ScopeCache | null =>
 export function resolvingPass<T>(fn: () => T): T {
   if (pass) return fn();
   const fresh = (): ScopeCache => ({ text: new Map(), nodes: new Map() });
-  pass = { plain: fresh(), noDiagrams: fresh(), blocks: new Map(), budget: PASS_BUDGET };
+  pass = { plain: fresh(), noDiagrams: fresh(), blocks: new Map(), budget: PASS_BUDGET, deadline: performance.now() + PASS_TIME };
   try {
     return fn();
   } finally {
@@ -87,16 +104,28 @@ function spend(chars: number): void {
   if (pass) pass.budget -= chars;
 }
 
-// Whether the pass has looked at all it may.
+// Whether the pass has looked at all it may, or taken all the time it may.
 function spent(): boolean {
-  return !!pass && pass.budget <= 0;
+  return !!pass && (pass.budget <= 0 || performance.now() > pass.deadline);
 }
 
-// `hay.indexOf(needle, from)`, counting the characters it went through.
+// `hay.indexOf(needle, from)`, counting the characters it went through. A
+// long needle is found by its head, each place checked for the rest (see
+// SEARCH_HEAD); a pass that runs out while it checks gets -1.
 function find(hay: string, needle: string, from = 0): number {
-  const i = hay.indexOf(needle, from);
-  spend(Math.max(0, (i < 0 ? hay.length : i + needle.length) - from));
-  return i;
+  if (needle.length <= SEARCH_HEAD) {
+    const i = hay.indexOf(needle, from);
+    spend(Math.max(0, (i < 0 ? hay.length : i + needle.length) - from));
+    return i;
+  }
+  const head = needle.slice(0, SEARCH_HEAD);
+  for (let at = from; !spent(); at += 1) {
+    at = find(hay, head, at);
+    if (at < 0) return -1;
+    spend(needle.length);
+    if (hay.startsWith(needle, at)) return at;
+  }
+  return -1;
 }
 
 function blocksOf(viewerRoot: HTMLElement): Blocks {

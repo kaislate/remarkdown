@@ -442,6 +442,67 @@ describe('a pass over many anchors', () => {
     expect(found).toBeNull();
   });
 
+  // A browser's search can cost far more than the characters it passes over.
+  // Chromium's compares up to the whole of a long text at each place when
+  // the text's last 250 characters are all found there and what's before
+  // them isn't: 80 ns a character with 250 of them, 2 µs with 5,000.
+  it('stays quick when every anchor is a text that is slow to search for', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(300_000)}</p>`);
+    const slow: Anchor = { text: `${'a'.repeat(10)}b${'a'.repeat(250)}`, prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:1' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 2_000; i++) resolveAnchor(slow, root);
+    });
+    // Thirty seconds before.
+    expect(performance.now() - start).toBeLessThan(3_000);
+  });
+
+  it('stays quick when one search alone would take seconds', () => {
+    const root = buildRoot(`<p data-block-id="p:1">${'a'.repeat(300_000)}</p>`);
+    const slow: Anchor = { text: `${'a'.repeat(10)}b${'a'.repeat(20_000)}`, prefix: '', suffix: '', blockHint: 'p:1', endBlockHint: 'p:1' };
+    const start = performance.now();
+    resolvingPass(() => {
+      for (let i = 0; i < 20; i++) resolveAnchor(slow, root);
+    });
+    // Two seconds a search before, and nothing counted them as more than one
+    // pass over the paragraph.
+    expect(performance.now() - start).toBeLessThan(1_500);
+  });
+
+  it('still finds a long text whose opening words also occur earlier', () => {
+    const passage = 'The reader sees every line here before we edit any of it, and then reads on. '.repeat(4);
+    const opening = passage.slice(0, 120);
+    const root = buildRoot(
+      `<p data-block-id="p:1">${opening} but then it goes elsewhere.</p>` +
+        `<p data-block-id="p:2">Before it. ${passage} After it.</p>`,
+    );
+    const within: Anchor = { text: passage, prefix: 'Before it. ', suffix: ' After it.', blockHint: 'gone' };
+    const across: Anchor = { ...within, endBlockHint: 'p:2' };
+    for (const anchor of [across, within]) {
+      const range = resolvingPass(() => resolveAnchor(anchor, root));
+      expect(range?.toString()).toBe(passage);
+      expect((range!.startContainer.parentElement as HTMLElement).dataset.blockId).toBe('p:2');
+    }
+  });
+
+  it('stops at a time limit whatever the searches cost, and the next pass tries again', () => {
+    const root = buildRoot('<p data-block-id="p:1">One fish, two fish.</p>');
+    const anchor: Anchor = { text: 'two', prefix: 'One fish, ', suffix: ' fish.', blockHint: 'p:1' };
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      const found = resolvingPass(() => {
+        const first = resolveAnchor(anchor, root)?.toString();
+        now += 60_000;
+        return [first, resolveAnchor(anchor, root)?.toString()];
+      });
+      expect(found).toEqual(['two', undefined]);
+      expect(resolvingPass(() => resolveAnchor(anchor, root))?.toString()).toBe('two');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('still places hundreds of annotations in a long article whose paragraphs all moved', () => {
     // A paragraph added at the top renumbers every block after it, so no
     // anchor is in the block it remembers and each searches the whole article.
