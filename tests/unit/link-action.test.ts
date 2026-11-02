@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { linkAction } from '../../src/lib/link-action';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { linkAction, DOCUMENT_EXTS } from '../../src/lib/link-action';
 
 const NONE = { kind: 'none' };
 
@@ -108,6 +110,18 @@ describe('links to other documents', () => {
   it('needs the document folder', () => {
     expect(linkAction('other.md', null)).toEqual(NONE);
     expect(linkAction('other.md', undefined)).toEqual(NONE);
+  });
+
+  it('opens a document in any of the kinds the app opens', () => {
+    for (const ext of ['md', 'markdown', 'mkd', 'MDOWN', 'mkdn', 'mdwn']) {
+      expect(linkAction(`part2.${ext}`, 'C:\\docs'), ext).toEqual({ kind: 'open', path: `C:\\docs\\part2.${ext}` });
+    }
+  });
+
+  it('knows the same kinds as the file commands', () => {
+    const rust = readFileSync(resolve(__dirname, '../../src-tauri/src/doc_paths.rs'), 'utf-8');
+    const list = /DOCUMENT_EXTS: \[&str; \d+\] = \[([^\]]*)\]/.exec(rust)?.[1];
+    expect(list && [...list.matchAll(/"(\w+)"/g)].map((m) => m[1])).toEqual([...DOCUMENT_EXTS]);
   });
 
   it('opens only markdown files', () => {

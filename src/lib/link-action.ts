@@ -18,7 +18,10 @@ export type LinkAction =
 
 const NONE: LinkAction = { kind: 'none' };
 const SCHEME_RE = /^([a-z][a-z0-9+.-]*):/i;
-const MD_RE = /\.(md|markdown)$/i;
+// Every kind of document the file commands open (DOCUMENT_EXTS in
+// doc_paths.rs), as a double-click can bring any of them.
+export const DOCUMENT_EXTS = ['md', 'markdown', 'mkd', 'mdown', 'mkdn', 'mdwn'] as const;
+const MD_RE = new RegExp(`\\.(${DOCUMENT_EXTS.join('|')})$`, 'i');
 // Hosts that only mean something inside the app's webview.
 const INTERNAL_HOSTS = new Set(['tauri.localhost', 'asset.localhost', 'ipc.localhost']);
 
