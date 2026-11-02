@@ -24,14 +24,14 @@
 // markdown-it runs with html off, and DOMPurify's defaults drop iframe,
 // object and embed. Whoever lets a frame in, loosens a sanitizer, lets a
 // link reach asset URLs, or writes the app's CSP must keep asset: and
-// http(s)://asset.localhost out of frames (frame-src / child-src), or an
-// .svg here could call every command.
+// http(s)://asset.* (WebView2 sends any host after asset. here) out of
+// frames (frame-src / child-src), or an .svg here could call every command.
 
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::path::{Component, Path, PathBuf, Prefix};
 
-use tauri::http::{header, HeaderMap, Request, Response, StatusCode};
+use tauri::http::{header, HeaderMap, Request, Response, StatusCode, Uri};
 use tauri::path::SafePathBuf;
 use tauri::plugin::TauriPlugin;
 use tauri::utils::mime_type::MimeType;
@@ -47,13 +47,22 @@ pub fn handle<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let path = request_path(request.uri().path());
         let scope = app.asset_protocol_scope();
-        let served = if opened_as_page(request.headers()) {
+        let served = if !from_the_app(request.uri()) || opened_as_page(request.headers()) {
             Err(StatusCode::FORBIDDEN)
         } else {
             serve(&path, |p| scope.is_allowed(p))
         };
         responder.respond(response(served, &app_origin(&app)));
     });
+}
+
+/// Whether a request is one the app made: the app only ever asks for
+/// asset://localhost/… (http://asset.localhost/… on Windows). WebView2
+/// hands every http://asset.<anything>/… here, as asset://<anything>/…, so
+/// a request for any other host came from a URL the app didn't make.
+fn from_the_app(uri: &Uri) -> bool {
+    uri.host()
+        .is_some_and(|h| h.eq_ignore_ascii_case("localhost"))
 }
 
 /// Whether the window asked for this as a page (a link followed, a frame)
@@ -77,14 +86,13 @@ fn opened_as_page(headers: &HeaderMap) -> bool {
 }
 
 /// Whether a URL names something served here: asset://… on macOS and
-/// Linux, http(s)://asset.localhost on Windows. The url parser has already
-/// undone any escapes and case in the host.
+/// Linux, http(s)://asset.<any host> on Windows, where WebView2 hands every
+/// such request to the handler here, not only asset.localhost. The url
+/// parser has already undone any escapes and case in the host.
 pub fn is_asset_page(url: &Url) -> bool {
     match url.scheme() {
         "asset" => true,
-        "http" | "https" => url
-            .host_str()
-            .is_some_and(|h| h.trim_end_matches('.') == "asset.localhost"),
+        "http" | "https" => url.host_str().is_some_and(|h| h.starts_with("asset.")),
         _ => false,
     }
 }
@@ -273,11 +281,20 @@ fn serve(path: &str, allowed: impl Fn(&Path) -> bool) -> Result<(String, Vec<u8>
     if !allowed(safe.as_ref()) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let mut file = File::open(&safe).map_err(|e| match e.kind() {
+    let status = |e: std::io::Error| match e.kind() {
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
-    })?;
+    };
+    // Only a plain file, looked at before it is opened: a picture linked to
+    // /dev/zero would be read until memory runs out, and opening a pipe
+    // waits for a writer forever. And never more than the size it had, as
+    // Tauri's own handler does.
+    let meta = std::fs::metadata(&safe).map_err(status)?;
+    if !meta.is_file() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let mut file = File::open(&safe).map_err(status)?.take(meta.len());
     let failed = |_| StatusCode::INTERNAL_SERVER_ERROR;
     // Its type from the first bytes (or the extension), as Tauri does,
     // before the rest is read.
@@ -409,6 +426,13 @@ mod tests {
             "http://user@asset.localhost/x.svg",
             "http://asset%2Elocalhost/x.svg",
             "http://asset.localhost:8080/x.svg",
+            // WebView2 hands every http(s)://asset.<anything> to the
+            // handler here, whatever host follows.
+            "http://asset.localhost.example.com/x.svg",
+            "http://asset.evil.example/C%3A%2F..%2Fx.svg",
+            "HTTPS://Asset.Evil.Example/x.svg",
+            "http://asset./x.svg",
+            "http:asset.evil/x.svg",
         ] {
             assert!(is_asset_page(&Url::parse(u).unwrap()), "{u}");
         }
@@ -418,11 +442,38 @@ mod tests {
             "tauri://localhost/",
             "http://localhost:1420/",
             "https://example.com/asset.localhost/x.svg",
-            "http://asset.localhost.example.com/x.svg",
+            "http://assets.example.com/x.svg",
+            "http://asset/x.svg",
             "http://ipc.localhost/x",
         ] {
             assert!(!is_asset_page(&Url::parse(u).unwrap()), "{u}");
         }
+    }
+
+    // WebView2 sends every http://asset.<anything>/ here, as
+    // asset://<anything>/; the app only ever asks for asset://localhost/.
+    #[test]
+    fn only_a_request_for_localhost_is_served() {
+        let asked = |uri: &str| from_the_app(&uri.parse::<Uri>().unwrap());
+        for u in [
+            "asset://localhost/C%3A%2Fa.png",
+            "asset://localhost/%2Fhome%2Fme%2Fa.png",
+            "asset://LocalHost/%2Fhome%2Fme%2Fa.png",
+            "asset://localhost:8080/C%3A%2Fa.png",
+        ] {
+            assert!(asked(u), "{u}");
+        }
+        for u in [
+            "asset://evil.example/%5C%5Cattacker%5Cs%5Cx.png",
+            "asset://localhost.evil.example/C%3A%2Fa.png",
+            "asset://localhost./C%3A%2Fa.png",
+            "/C%3A%2Fa.png",
+        ] {
+            assert!(!asked(u), "{u}");
+        }
+        // http://asset./x becomes asset:///x, which isn't a request at all,
+        // so WebView2 answers it with an error before it gets here.
+        assert!("asset:///C%3A%2Fa.png".parse::<Uri>().is_err());
     }
 
     #[test]
@@ -541,6 +592,51 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    // Only a plain file is read, and never past the size it had: a
+    // directory, a device or a pipe named like a picture is refused before
+    // it is opened.
+    #[test]
+    fn refuses_a_folder_named_like_a_picture() {
+        let dir = tempdir().unwrap();
+        let folder = dir.path().join("pic.svg");
+        fs::create_dir(&folder).unwrap();
+        assert_eq!(
+            serve(&folder.to_string_lossy(), |_| true).unwrap_err(),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    // A cloned repo can ship pic.svg -> /dev/zero; reading it would never
+    // end.
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_link_to_a_device() {
+        let dir = tempdir().unwrap();
+        let link = dir.path().join("pic.svg");
+        make_file_link(Path::new("/dev/zero"), &link).unwrap();
+        assert_eq!(
+            serve(&link.to_string_lossy(), |_| true).unwrap_err(),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    // Opening a pipe would wait for a writer forever.
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_pipe_without_opening_it() {
+        let dir = tempdir().unwrap();
+        let fifo = dir.path().join("pic.svg");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        assert_eq!(
+            serve(&fifo.to_string_lossy(), |_| true).unwrap_err(),
+            StatusCode::FORBIDDEN
+        );
     }
 
     #[test]
