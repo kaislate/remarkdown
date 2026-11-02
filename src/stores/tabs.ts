@@ -137,7 +137,26 @@ let switchTicket = 0;
 // presses each move one more tab instead of all aiming at the same one.
 let switchTarget: DocSession | null = null;
 
-export async function activateSession(id: string): Promise<void> {
+// The latest switch asked for, until it has landed (or come to nothing).
+let latestSwitch: Promise<void> = Promise.resolve();
+
+export function activateSession(id: string): Promise<void> {
+  const run = activateSessionNow(id);
+  latestSwitch = run.catch(() => {});
+  return run;
+}
+
+// Resolves once no switch is on its way any more: the last one asked for has
+// landed, or come to nothing.
+export async function switchesSettled(): Promise<void> {
+  let seen: Promise<void>;
+  do {
+    seen = latestSwitch;
+    await seen;
+  } while (seen !== latestSwitch);
+}
+
+async function activateSessionNow(id: string): Promise<void> {
   const target = get(sessions).find((s) => s.id === id);
   if (!target) return;
   if (target === get(activeSession)) {

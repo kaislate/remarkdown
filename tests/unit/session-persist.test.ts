@@ -275,6 +275,52 @@ describe('switching while reopened tabs are still loading', () => {
     await Promise.all([forward, back]);
     expect(activePath()).toBe('/d2.md');
   });
+
+  // The tab bar fills with every reopened tab at once, while the saved
+  // active tab is still being read: a tab the user picks meanwhile is the
+  // one that stays shown.
+  it('a tab clicked while the saved tab loads stays shown (it loads first)', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/big.md', '/small.md'], 0));
+    loadDelays.set('/big.md', 60);
+    loadDelays.set('/small.md', 5);
+    await restoreSavedTabs();
+    const finishing = finishSessionRestore();
+    await pause(10);
+    const small = get(sessions).find((s) => s.lazyPath === '/small.md')!;
+    await activateSession(small.id);
+    expect(activePath()).toBe('/small.md');
+    await finishing;
+    expect(activePath()).toBe('/small.md');
+    expect(tabPaths()).toEqual(['/big.md', '/small.md']);
+  });
+
+  it('a tab clicked while the saved tab loads stays shown (the saved tab loads first)', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/slow.md'], 0));
+    loadDelays.set('/a.md', 20);
+    loadDelays.set('/slow.md', 60);
+    await restoreSavedTabs();
+    const finishing = finishSessionRestore();
+    await pause(5);
+    const slow = get(sessions).find((s) => s.lazyPath === '/slow.md')!;
+    const click = activateSession(slow.id);
+    await Promise.all([finishing, click]);
+    expect(activePath()).toBe('/slow.md');
+    expect(tabPaths()).toEqual(['/a.md', '/slow.md']);
+  });
+
+  it('a clicked tab that cannot be read leaves the saved tab to be shown', async () => {
+    vi.mocked(loadSessionJson).mockResolvedValueOnce(serializeSession(['/a.md', '/broken.md'], 0));
+    loadDelays.set('/a.md', 20);
+    loadDelays.set('/broken.md', 40);
+    await restoreSavedTabs();
+    const finishing = finishSessionRestore();
+    await pause(5);
+    const broken = get(sessions).find((s) => s.lazyPath === '/broken.md')!;
+    const click = activateSession(broken.id);
+    await Promise.all([finishing, click]);
+    expect(activePath()).toBe('/a.md');
+    expect(get(sessions)).toHaveLength(1);
+  });
 });
 
 describe('installSessionAutosave', () => {

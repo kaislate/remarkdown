@@ -9,7 +9,7 @@
 
 import { get } from 'svelte/store';
 import { activeSession, createSession, sessionPath, sessions, type DocSession } from './sessions';
-import { activateSession, ensureSessionLoaded } from './tabs';
+import { activateSession, ensureSessionLoaded, switchesSettled } from './tabs';
 import { settings } from './settings';
 import { checkPathsExist, loadSessionJson, saveSessionJson, windowLabel } from '../lib/tauri-api';
 import { runOpenExclusive } from '../lib/open-files';
@@ -110,7 +110,9 @@ async function restoreSavedTabsNow(): Promise<void> {
 
 // After the launch's own opens: if nothing loaded into the start tab, show
 // the saved active tab (or the next one that can be read), then drop the
-// empty start tab so it never shows up as a tab.
+// empty start tab so it never shows up as a tab. Every reopened tab is in the
+// tab bar while the saved one is read: if the user picks one meanwhile (a
+// click, Ctrl+Tab), that switch lands and the saved tab isn't forced over it.
 export function finishSessionRestore(): Promise<void> {
   return runOpenExclusive(finishSessionRestoreNow);
 }
@@ -127,7 +129,11 @@ async function finishSessionRestoreNow(): Promise<void> {
       ? [preferred, ...order.filter((s) => s !== preferred)]
       : order;
     for (const s of candidates) {
-      if (s.lazyPath === null || (await ensureSessionLoaded(s))) {
+      if (s.closed) continue;
+      const ok = s.lazyPath === null || (await ensureSessionLoaded(s));
+      await switchesSettled();
+      if (get(activeSession) !== start) break;
+      if (ok) {
         await activateSession(s.id);
         break;
       }
