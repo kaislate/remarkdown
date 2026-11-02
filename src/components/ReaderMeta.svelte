@@ -7,35 +7,34 @@
   import { viewerScroll } from '../stores/viewport';
   import { currentViewerRoot } from '../stores/annots';
   import { doc } from '../stores/doc';
-  import { countWords, wordsBelow, minutesLeft, sectionAt } from '../lib/reading-time';
+  import { minutesLeft, sectionAt } from '../lib/reading-time';
+  import { readerGeometry, invalidateReaderGeometry, refreshReaderGeometry, wordsBelowFold, type ReaderGeometry } from '../lib/reader-geometry';
 
   let minutes = $state(0);
   let section = $state<string | null>(null);
 
-  // Word counts per block, computed once per element. Diagrams are looked
-  // at, not read word by word, so their labels don't count.
-  const wordCache = new WeakMap<Element, number>();
-  function wordsIn(el: Element): number {
-    let n = wordCache.get(el);
-    if (n === undefined) {
-      n = el.matches('.mermaid-block, .mermaid-error') ? 0 : countWords(el.textContent ?? '');
-      wordCache.set(el, n);
-    }
-    return n;
-  }
+  // The h1/h2 blocks and their names, found once per measured layout.
+  let headingsFor: ReaderGeometry | null = null;
+  let headingIdx: { i: number; text: string }[] = [];
 
+  // Blocks are measured once per layout (lib/reader-geometry.ts); a
+  // scroll frame only reads where the article is now.
   function measure(scroll: HTMLElement, article: HTMLElement): void {
     const view = scroll.getBoundingClientRect();
-    const blocks = [];
-    const headings = [];
-    for (const el of Array.from(article.children)) {
-      const r = el.getBoundingClientRect();
-      blocks.push({ top: r.top, bottom: r.bottom, words: wordsIn(el) });
-      if (el.matches('h1, h2')) headings.push({ text: (el.textContent ?? '').trim(), top: r.top });
+    const g = readerGeometry(article);
+    const origin = article.getBoundingClientRect().top;
+    if (headingsFor !== g) {
+      headingsFor = g;
+      headingIdx = [];
+      g.els.forEach((el, i) => {
+        if (el.matches('h1, h2')) headingIdx.push({ i, text: (el.textContent ?? '').trim() });
+      });
     }
-    minutes = minutesLeft(wordsBelow(blocks, view.bottom));
+    minutes = minutesLeft(wordsBelowFold(g, origin, view.bottom));
     // At the very top the title is right there; no need to name it.
-    section = scroll.scrollTop < 8 ? null : sectionAt(headings, view.top + view.height / 3);
+    section = scroll.scrollTop < 8
+      ? null
+      : sectionAt(headingIdx.map((h) => ({ text: h.text, top: g.tops[h.i] + origin })), view.top + view.height / 3);
   }
 
   $effect(() => {
@@ -51,16 +50,22 @@
         measure(scroll, article);
       });
     };
+    // The blocks moved: measure them again on the next frame.
+    const relayout = () => {
+      invalidateReaderGeometry(article);
+      schedule();
+    };
+    refreshReaderGeometry(article);
     measure(scroll, article);
     scroll.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
+    window.addEventListener('resize', relayout);
     // Late layout changes (diagrams drawn, images loaded) move the fold.
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(relayout) : null;
     ro?.observe(article);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       scroll.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('resize', relayout);
       ro?.disconnect();
     };
   });

@@ -9,7 +9,8 @@
   import { viewerScroll } from '../stores/viewport';
   import { currentViewerRoot } from '../stores/annots';
   import { doc } from '../stores/doc';
-  import { countWords, wordsBelow, minutesLeft } from '../lib/reading-time';
+  import { minutesLeft } from '../lib/reading-time';
+  import { readerGeometry, invalidateReaderGeometry, refreshReaderGeometry, wordsBelowFold, blockTop } from '../lib/reader-geometry';
   import { jumpToSection } from '../lib/section-jump';
 
   interface Entry { el: HTMLElement; text: string; level: number }
@@ -31,16 +32,6 @@
     marker = el ? { top: el.offsetTop, height: el.offsetHeight } : null;
   });
 
-  const wordCache = new WeakMap<Element, number>();
-  function wordsIn(el: Element): number {
-    let n = wordCache.get(el);
-    if (n === undefined) {
-      n = el.matches('.mermaid-block, .mermaid-error') ? 0 : countWords(el.textContent ?? '');
-      wordCache.set(el, n);
-    }
-    return n;
-  }
-
   function collect(article: HTMLElement): void {
     entries = Array.from(article.querySelectorAll<HTMLElement>(':scope > h1, :scope > h2, :scope > h3')).map((el) => ({
       el,
@@ -50,13 +41,19 @@
   }
 
   // Same rule as the meta line: the section being read is the last heading
-  // that has come up to the reading line, a third of the way down.
+  // that has come up to the reading line, a third of the way down. Blocks
+  // are measured once per layout, shared with the meta line
+  // (lib/reader-geometry.ts); a scroll frame only reads where the article
+  // is now.
   function measure(scroll: HTMLElement, article: HTMLElement): void {
     const view = scroll.getBoundingClientRect();
+    const g = readerGeometry(article);
+    const origin = article.getBoundingClientRect().top;
     const line = view.top + view.height / 3;
     let at = -1;
     for (let i = 0; i < entries.length; i++) {
-      if (entries[i].el.getBoundingClientRect().top > line) break;
+      const el = entries[i].el;
+      if ((blockTop(g, el, origin) ?? el.getBoundingClientRect().top) > line) break;
       at = i;
     }
     if (performance.now() < lockedUntil) at = current;
@@ -66,11 +63,7 @@
         listEl?.querySelector<HTMLElement>('[aria-current]')?.scrollIntoView({ block: 'nearest' });
       });
     }
-    const blocks = Array.from(article.children).map((el) => {
-      const r = el.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, words: wordsIn(el) };
-    });
-    minutes = minutesLeft(wordsBelow(blocks, view.bottom));
+    minutes = minutesLeft(wordsBelowFold(g, origin, view.bottom));
   }
 
   $effect(() => {
@@ -89,15 +82,21 @@
         measure(scroll, article);
       });
     };
+    // The blocks moved: measure them again on the next frame.
+    const relayout = () => {
+      invalidateReaderGeometry(article);
+      schedule();
+    };
+    refreshReaderGeometry(article);
     untrack(() => measure(scroll, article));
     scroll.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    window.addEventListener('resize', relayout);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(relayout) : null;
     ro?.observe(article);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       scroll.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('resize', relayout);
       ro?.disconnect();
     };
   });
